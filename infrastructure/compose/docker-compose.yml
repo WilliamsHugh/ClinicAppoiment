@@ -1,0 +1,101 @@
+services:
+  api-gateway:
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/node-service.Dockerfile
+      args:
+        APP_PATH: gateway/api-gateway
+    env_file:
+      - ../../.env
+    ports:
+      - "8080:8080"
+    depends_on:
+      - user-service
+      - doctor-service
+      - appointment-service
+      - medical-record-service
+      - notification-service
+
+  user-service:
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/node-service.Dockerfile
+      args:
+        APP_PATH: services/user-service
+    env_file:
+      - ../../.env
+    ports:
+      - "3001:3001"
+
+  doctor-service:
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/node-service.Dockerfile
+      args:
+        APP_PATH: services/doctor-service
+    env_file:
+      - ../../.env
+    ports:
+      - "3002:3002"
+
+  appointment-service:
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/node-service.Dockerfile
+      args:
+        APP_PATH: services/appointment-service
+    env_file:
+      - ../../.env
+    ports:
+      - "3003:3003"
+    depends_on:
+      - doctor-service
+      - notification-service
+
+  medical-record-service:
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/node-service.Dockerfile
+      args:
+        APP_PATH: services/medical-record-service
+    env_file:
+      - ../../.env
+    ports:
+      - "3004:3004"
+    depends_on:
+      - appointment-service
+      - notification-service
+
+  notification-service:
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/node-service.Dockerfile
+      args:
+        APP_PATH: services/notification-service
+    env_file:
+      - ../../.env
+    ports:
+      - "3005:3005"
+
+  patient-web:
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/web-app.Dockerfile
+      args:
+        APP_PATH: apps/patient-web
+    ports:
+      - "5173:5173"
+    environment:
+      VITE_API_BASE_URL: http://localhost:8080
+
+  clinic-management-web:
+    build:
+      context: ../..
+      dockerfile: infrastructure/docker/web-app.Dockerfile
+      args:
+        APP_PATH: apps/clinic-management-web
+    ports:
+      - "5174:5174"
+    environment:
+      VITE_API_BASE_URL: http://localhost:8080
+
