@@ -1,0 +1,27 @@
+{
+  "name": "clinic-appointment-system",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "gateway/*",
+    "services/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:gateway": "npm run dev -w @clinic/api-gateway",
+    "dev:patient": "npm run dev -w @clinic/patient-web",
+    "dev:clinic": "npm run dev -w @clinic/clinic-management-web",
+    "dev:user": "npm run dev -w @clinic/user-service",
+    "dev:doctor": "npm run dev -w @clinic/doctor-service",
+    "dev:appointment": "npm run dev -w @clinic/appointment-service",
+    "dev:medical-record": "npm run dev -w @clinic/medical-record-service",
+    "dev:notification": "npm run dev -w @clinic/notification-service",
+    "build": "npm run build --workspaces --if-present",
+    "lint": "npm run lint --workspaces --if-present"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}
+
