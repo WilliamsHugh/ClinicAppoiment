@@ -13,10 +13,10 @@ Phạm vi MVP gồm đúng 6 backend service:
 5. Medical Record Service
 6. Notification Service
 
-Hai frontend độc lập:
+Hai nền tảng frontend độc lập:
 
-1. Patient Web
-2. Clinic Management Web
+1. Patient App: Flutter Android
+2. Clinic Management Web: Next.js/Web trong thiết kế mục tiêu
 
 Supabase được dùng cho PostgreSQL và có thể dùng Supabase Auth để đăng ký, đăng nhập, phát hành JWT. User Service không lưu mật khẩu, chỉ quản lý hồ sơ, vai trò và thông tin nghiệp vụ.
 
@@ -24,7 +24,7 @@ Supabase được dùng cho PostgreSQL và có thể dùng Supabase Auth để �
 
 ```text
                     +---------------------+
-                    |     Patient Web     |
+                    |     Patient App     |
                     +----------+----------+
                                |
                     +----------v----------+
@@ -71,7 +71,7 @@ Supabase được dùng cho PostgreSQL và có thể dùng Supabase Auth để �
 
 Trách nhiệm:
 
-- Là điểm truy cập duy nhất của Patient Web và Clinic Management Web.
+- Là điểm truy cập duy nhất của Flutter Patient App và Clinic Management Web.
 - Xác minh access token từ Supabase Auth.
 - Kiểm tra quyền truy cập cơ bản theo role.
 - Chuyển tiếp request đến service nội bộ phù hợp.
@@ -240,7 +240,7 @@ Trong MVP, việc gửi email hoặc SMS được mô phỏng bằng cách lưu 
 
 ```text
 1. Bệnh nhân đăng nhập bằng Supabase Auth.
-2. Patient Web gửi request qua API Gateway kèm access token.
+2. Flutter Patient App gửi request qua API Gateway kèm access token.
 3. Gateway xác minh JWT và role PATIENT.
 4. Bệnh nhân chọn chuyên khoa.
 5. Gateway gọi Doctor Service để lấy danh sách bác sĩ.
@@ -720,7 +720,7 @@ Khuyến nghị:
 ```text
 clinic-appointment-system/
 ├── apps/
-│   ├── patient-web/
+│   ├── patient-app/              # Flutter Android
 │   └── clinic-management-web/
 ├── gateway/
 │   └── api-gateway/
@@ -763,7 +763,7 @@ Quy tắc `packages`:
 ### Phase 2: Scaffold repo
 
 - Tạo monorepo đúng cấu trúc đã chốt.
-- Tạo 2 Vite React app.
+- Tạo Flutter Android Patient App và web quản lý phòng khám.
 - Tạo 6 Express TypeScript service.
 - Thêm Dockerfile cho từng service.
 - Thêm Docker Compose cho local.
@@ -774,7 +774,7 @@ Quy tắc `packages`:
 - Tích hợp Supabase Auth.
 - User Service quản lý profile/role.
 - Gateway verify JWT và role.
-- Patient Web đăng ký/đăng nhập.
+- Patient App đăng ký/đăng nhập.
 
 ### Phase 4: Doctor Service
 
@@ -830,4 +830,3 @@ Quy tắc `packages`:
 - Appointment Service dùng transaction, unique partial index và idempotency key để ngăn double booking.
 - Medical Record Service quản lý đơn thuốc cơ bản trong chính service này.
 - Không thêm Payment Service, Prescription Service hay service mới trong MVP.
-

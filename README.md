@@ -4,7 +4,7 @@ Hệ thống đặt lịch khám theo kiến trúc hướng dịch vụ cho đ�
 
 ## Thành Phần
 
-- `apps/patient-web`: frontend dành cho bệnh nhân.
+- `apps/patient-app`: ứng dụng Flutter Android dành cho bệnh nhân.
 - `apps/clinic-management-web`: frontend dành cho bác sĩ, nhân viên phòng khám và quản trị viên.
 - `gateway/api-gateway`: điểm truy cập duy nhất của hai frontend.
 - `services/user-service`: tài khoản, hồ sơ người dùng, hồ sơ bệnh nhân và vai trò.
@@ -21,11 +21,22 @@ cp .env.example .env
 docker compose -f infrastructure/compose/docker-compose.yml up -d
 ```
 
+Flutter SDK được đặt local tại `.tools/flutter`. Nếu máy chưa nhận Flutter toàn cục, dùng trực tiếp binary này.
+
+Để dùng lệnh `flutter` trong terminal hiện tại:
+
+```bash
+export PATH="$PWD/.tools/flutter/bin:$PATH"
+flutter doctor -v
+```
+
+Để chạy Android, cần cài Android Studio và Android SDK, sau đó cấu hình bằng
+`flutter config --android-sdk <đường-dẫn-android-sdk>` nếu SDK không nằm ở vị trí mặc định.
+
 ## Chạy Local
 
 ```bash
 npm run dev:gateway
-npm run dev:patient
 npm run dev:clinic
 npm run dev:user
 npm run dev:doctor
@@ -34,9 +45,15 @@ npm run dev:medical-record
 npm run dev:notification
 ```
 
+Chạy Patient App trên Android emulator:
+
+```bash
+npm run dev:patient
+```
+
 Mặc định:
 
-- Patient Web: http://localhost:5173
+- Patient App: Flutter Android emulator, gọi Gateway qua `http://10.0.2.2:8080`
 - Clinic Management Web: http://localhost:5174
 - API Gateway: http://localhost:8080
 - User Service: http://localhost:3001
@@ -49,6 +66,7 @@ Mặc định:
 
 ```bash
 npm run build
+npm run build:patient
 npm run lint
 npm audit --omit=dev --audit-level=high
 ```
@@ -57,4 +75,3 @@ npm audit --omit=dev --audit-level=high
 
 - Thiết kế hệ thống: `docs/system-design.md`
 - Supabase schema: `infrastructure/supabase/schema.sql`
-
