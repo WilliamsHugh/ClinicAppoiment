@@ -3,14 +3,15 @@
   "version": "0.1.0",
   "private": true,
   "workspaces": [
-    "apps/*",
+    "apps/clinic-management-web",
     "gateway/*",
     "services/*",
     "packages/*"
   ],
   "scripts": {
     "dev:gateway": "npm run dev -w @clinic/api-gateway",
-    "dev:patient": "npm run dev -w @clinic/patient-web",
+    "dev:patient": ".tools/flutter/bin/flutter run -d android --dart-define=API_BASE_URL=http://10.0.2.2:8080",
+    "build:patient": ".tools/flutter/bin/flutter build apk --dart-define=API_BASE_URL=http://10.0.2.2:8080",
     "dev:clinic": "npm run dev -w @clinic/clinic-management-web",
     "dev:user": "npm run dev -w @clinic/user-service",
     "dev:doctor": "npm run dev -w @clinic/doctor-service",
@@ -24,4 +25,3 @@
     "typescript": "^5.9.3"
   }
 }
-
