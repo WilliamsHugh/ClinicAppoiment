@@ -32,7 +32,6 @@ const app = express();
 app.use(
   cors({
     origin: [
-      process.env.PATIENT_WEB_URL ?? "http://localhost:5173",
       process.env.CLINIC_MANAGEMENT_WEB_URL ?? "http://localhost:5174"
     ],
     credentials: true
