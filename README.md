@@ -5,7 +5,7 @@ Hệ thống đặt lịch khám theo kiến trúc hướng dịch vụ cho đ�
 ## Thành Phần
 
 - `apps/patient-app`: ứng dụng Flutter Android dành cho bệnh nhân.
-- `apps/clinic-management-web`: frontend dành cho bác sĩ, nhân viên phòng khám và quản trị viên.
+- `apps/clinic-management-web`: frontend Next.js dành cho bác sĩ, nhân viên phòng khám và quản trị viên.
 - `gateway/api-gateway`: điểm truy cập duy nhất của hai frontend.
 - `services/user-service`: tài khoản, hồ sơ người dùng, hồ sơ bệnh nhân và vai trò.
 - `services/doctor-service`: bác sĩ, chuyên khoa, lịch làm việc và khung giờ khám.
@@ -54,7 +54,7 @@ npm run dev:patient
 Mặc định:
 
 - Patient App: Flutter Android emulator, gọi Gateway qua `http://10.0.2.2:8080`
-- Clinic Management Web: http://localhost:5174
+- Clinic Management Web (Next.js): http://localhost:5174
 - API Gateway: http://localhost:8080
 - User Service: http://localhost:3001
 - Doctor Service: http://localhost:3002
@@ -70,6 +70,10 @@ npm run build:patient
 npm run lint
 npm audit --omit=dev --audit-level=high
 ```
+
+Đây là scaffold nền: các service hiện có repository in-memory để kiểm tra luồng API. Việc kết nối
+Supabase thật, xác thực Supabase Auth và cơ chế chống double booking bằng transaction/constraint sẽ
+được triển khai ở các phase nghiệp vụ tiếp theo.
 
 ## Tài Liệu
 

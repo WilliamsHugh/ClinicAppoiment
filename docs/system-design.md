@@ -16,7 +16,7 @@ Phạm vi MVP gồm đúng 6 backend service:
 Hai nền tảng frontend độc lập:
 
 1. Patient App: Flutter Android
-2. Clinic Management Web: Next.js/Web trong thiết kế mục tiêu
+2. Clinic Management Web: Next.js
 
 Supabase được dùng cho PostgreSQL và có thể dùng Supabase Auth để đăng ký, đăng nhập, phát hành JWT. User Service không lưu mật khẩu, chỉ quản lý hồ sơ, vai trò và thông tin nghiệp vụ.
 
@@ -711,9 +711,8 @@ Khuyến nghị:
 
 ### Frontend
 
-- `VITE_API_BASE_URL`
-- `VITE_SUPABASE_URL`
-- `VITE_SUPABASE_ANON_KEY`
+- `NEXT_PUBLIC_API_BASE_URL` cho Clinic Management Web.
+- Patient App nhận địa chỉ Gateway qua `--dart-define=API_BASE_URL=...`.
 
 ## 14. Cấu Trúc Thư Mục Monorepo
 
@@ -721,7 +720,7 @@ Khuyến nghị:
 clinic-appointment-system/
 ├── apps/
 │   ├── patient-app/              # Flutter Android
-│   └── clinic-management-web/
+│   └── clinic-management-web/    # Next.js web quản lý phòng khám
 ├── gateway/
 │   └── api-gateway/
 ├── services/
