@@ -356,7 +356,7 @@ Tất cả API public qua Gateway dùng prefix `/api/v1`.
 - `POST /api/v1/medical-records`
 - `GET /api/v1/medical-records/:id`
 - `PATCH /api/v1/medical-records/:id`
-- `GET /api/v1/patients/:patientId/medical-records`
+- `GET /api/v1/medical-records?patientId=:patientId`
 - `GET /internal/v1/medical-records/by-appointment/:appointmentId`
 
 ### Notification Service

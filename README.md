@@ -78,4 +78,5 @@ Supabase thật, xác thực Supabase Auth và cơ chế chống double booking 
 ## Tài Liệu
 
 - Thiết kế hệ thống: `docs/system-design.md`
+- Hợp đồng API v1: `docs/api-contract.md`
 - Supabase schema: `infrastructure/supabase/schema.sql`
