@@ -657,6 +657,7 @@ Khuyến nghị:
 
 - `GATEWAY_PORT`
 - `NODE_ENV`
+- `AUTH_DEV_MODE` chỉ bật cho local, bắt buộc tắt trong production
 - `CORS_ORIGINS`
 - `SUPABASE_URL`
 - `SUPABASE_ANON_KEY`
@@ -668,6 +669,9 @@ Khuyến nghị:
 - `NOTIFICATION_SERVICE_URL`
 - `RATE_LIMIT_WINDOW_MS`
 - `RATE_LIMIT_MAX`
+- `AUTH_TIMEOUT_MS`
+- `HEALTH_CHECK_TIMEOUT_MS`
+- `PROXY_TIMEOUT_MS`
 
 ### User Service
 
