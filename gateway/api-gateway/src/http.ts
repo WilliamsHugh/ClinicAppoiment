@@ -5,6 +5,11 @@ import type { GatewayRequest } from "./types.js";
 export type GatewayLogger = Pick<Console, "info" | "error">;
 
 const requestIdPattern = /^[A-Za-z0-9._:-]{1,128}$/;
+const resourceIdInPath = /\/(users|patients|specialties|doctors|schedules|appointments|medical-records|notifications)\/[^/]+/g;
+
+function safeLogPath(path: string): string {
+  return path.replace(resourceIdInPath, "/$1/:id");
+}
 
 export function requestContext(logger: GatewayLogger) {
   return (req: GatewayRequest, res: Response, next: NextFunction) => {
@@ -19,7 +24,7 @@ export function requestContext(logger: GatewayLogger) {
         event: "request.completed",
         requestId: req.requestId,
         method: req.method,
-        path: req.path,
+        path: safeLogPath(req.path),
         statusCode: res.statusCode,
         durationMs: Math.round(performance.now() - startedAt),
         actorRole: req.user?.role
@@ -55,7 +60,7 @@ export function createErrorHandler(logger: GatewayLogger): ErrorRequestHandler {
       event: "request.failed",
       requestId: req.requestId,
       method: req.method,
-      path: req.path,
+      path: safeLogPath(req.path),
       error: "Unexpected request failure"
     }));
     if (res.headersSent) return;

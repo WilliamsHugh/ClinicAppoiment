@@ -34,7 +34,7 @@ export function createUserProfileResolver(config: GatewayConfig): UserProfileRes
   return async (authUserId, requestId) => {
     const response = await fetch(`${config.serviceTargets.users}/api/v1/auth/me`, {
       headers: { "X-Supabase-Auth-User-Id": authUserId, "X-Request-Id": requestId },
-      signal: AbortSignal.timeout(config.healthTimeoutMs)
+      signal: AbortSignal.timeout(config.authTimeoutMs)
     });
     if (response.status === 404) return null;
     if (!response.ok) throw new Error(`User Service returned ${response.status}`);

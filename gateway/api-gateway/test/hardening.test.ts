@@ -17,7 +17,10 @@ async function startUpstream(handler: UpstreamHandler): Promise<RunningUpstream>
   const { port } = server.address() as AddressInfo;
   const upstream = {
     url: `http://127.0.0.1:${port}`,
-    close: () => new Promise<void>((resolve, reject) => server.close((error) => error ? reject(error) : resolve()))
+    close: () => new Promise<void>((resolve, reject) => {
+      if (!server.listening) return resolve();
+      server.close((error) => error ? reject(error) : resolve());
+    })
   };
   running.push(upstream);
   return upstream;
@@ -93,6 +96,20 @@ describe("Gateway authentication dependency handling", () => {
     expect(response.status).toBe(503);
     expect(JSON.stringify(response.body)).not.toContain("private upstream URL");
   });
+
+  it("times out profile resolution with a controlled 503 response", async () => {
+    const app = createGatewayApp({
+      config: configFor("http://127.0.0.1:1", { authTimeoutMs: 15 }),
+      authVerifier: async () => ({ authUserId: "auth-user" }),
+      profileResolver: () => new Promise(() => undefined),
+      logger: { info: vi.fn(), error: vi.fn() }
+    });
+    const response = await request(app)
+      .get("/api/v1/system/health")
+      .set("Authorization", "Bearer valid-token");
+    expect(response.status).toBe(503);
+    expect(response.body.error.code).toBe("AUTH_SERVICE_UNAVAILABLE");
+  });
 });
 
 describe("Gateway exact route authorization", () => {
@@ -138,6 +155,26 @@ describe("Gateway proxy boundary", () => {
     expect(response.body.data.headers["x-request-id"]).toBe("request-123");
   });
 
+  it("redacts resource identifiers from structured request logs", async () => {
+    const upstream = await startUpstream((_req, res) => sendJson(res, 200, { success: true, data: {} }));
+    const logger = { info: vi.fn(), error: vi.fn() };
+    const app = createGatewayApp({
+      config: configFor(upstream.url),
+      authVerifier: async () => ({ authUserId: "verified-auth-user" }),
+      profileResolver: async () => ({ id: "verified-user", role: "PATIENT", status: "ACTIVE" }),
+      logger
+    });
+    await request(app)
+      .get("/api/v1/appointments/patient-sensitive-appointment")
+      .set("Authorization", "Bearer token");
+
+    const log = logger.info.mock.calls.at(-1)?.[0] as string;
+    expect(JSON.parse(log).path).toBe("/api/v1/appointments/:id");
+    expect(log).not.toContain("patient-sensitive-appointment");
+    expect(log).not.toContain("verified-user");
+    expect(log).not.toContain("verified-auth-user");
+  });
+
   it("keeps gateway CORS and request-id headers across proxied responses", async () => {
     const upstream = await startUpstream((_req, res) => {
       res.setHeader("Access-Control-Allow-Origin", "https://malicious.example");
@@ -167,6 +204,33 @@ describe("Gateway proxy boundary", () => {
     expect(response.status).toBe(502);
     expect(response.body.error.code).toBe("UPSTREAM_INVALID_RESPONSE");
     expect(JSON.stringify(response.body)).not.toContain("database connection secret");
+  });
+
+  it("preserves a valid upstream error while replacing its request ID", async () => {
+    const upstream = await startUpstream((_req, res) => sendJson(res, 409, {
+      success: false,
+      error: { code: "APPOINTMENT_SLOT_UNAVAILABLE", message: "Slot unavailable", details: [] },
+      requestId: "untrusted-upstream-id"
+    }));
+    const response = await request(appFor(upstream.url))
+      .patch("/api/v1/appointments/appt-1/cancel")
+      .set("Authorization", "Bearer token")
+      .set("X-Request-Id", "gateway-error-id");
+
+    expect(response.status).toBe(409);
+    expect(response.body.error.code).toBe("APPOINTMENT_SLOT_UNAVAILABLE");
+    expect(response.body.requestId).toBe("gateway-error-id");
+  });
+
+  it("returns a controlled error when the upstream network connection fails", async () => {
+    const upstream = await startUpstream((_req, res) => sendJson(res, 200, { success: true, data: {} }));
+    await upstream.close();
+    const response = await request(appFor(upstream.url))
+      .get("/api/v1/specialties")
+      .set("Authorization", "Bearer token");
+
+    expect(response.status).toBe(502);
+    expect(response.body.error.code).toBe("UPSTREAM_SERVICE_UNAVAILABLE");
   });
 
   it("returns a controlled error when an upstream times out", async () => {

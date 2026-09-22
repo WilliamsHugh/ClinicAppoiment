@@ -141,6 +141,14 @@ describe("API Gateway platform middleware", () => {
       expect.arrayContaining([expect.objectContaining({ name: "page" }), expect.objectContaining({ name: "limit" })])
     );
     expect(response.body.components.schemas.Appointment).toBeDefined();
+    expect(response.body.paths["/api/v1/schedules/{scheduleId}"].patch.requestBody.content["application/json"].schema.$ref)
+      .toBe("#/components/schemas/UpdateScheduleRequest");
+    expect(response.body.components.schemas.UpdateScheduleRequest.required).toBeUndefined();
+    expect(response.body.paths["/api/v1/medical-records/{recordId}"].patch.requestBody.content["application/json"].schema.$ref)
+      .toBe("#/components/schemas/UpdateMedicalRecordRequest");
+    expect(response.body.components.schemas.UpdateMedicalRecordRequest.required).toBeUndefined();
+    expect(response.body.paths["/api/v1/appointments/{appointmentId}/cancel"].patch.requestBody.required).toBe(false);
+    expect(response.body.paths["/api/v1/notifications/{notificationId}/read"].patch.requestBody).toBeUndefined();
   });
 
   it("normalizes unknown routes", async () => {

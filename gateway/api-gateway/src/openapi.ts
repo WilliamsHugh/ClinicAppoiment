@@ -12,6 +12,7 @@ type OperationOptions = {
   created?: boolean;
   response?: object;
   body?: object;
+  bodyRequired?: boolean;
   parameters?: object[];
   conflict?: boolean;
   unprocessable?: boolean;
@@ -25,7 +26,7 @@ function operation(summary: string, tags: string[], options: OperationOptions = 
     tags,
     ...(secured ? { security: bearerSecurity } : {}),
     ...(options.parameters ? { parameters: options.parameters } : {}),
-    ...(options.body ? { requestBody: { required: true, content: json(options.body) } } : {}),
+    ...(options.body ? { requestBody: { required: options.bodyRequired ?? true, content: json(options.body) } } : {}),
     responses: {
       [status]: { description: options.created ? "Resource created" : "Successful response", content: json(options.response ?? ref("SuccessEnvelope")) },
       ...(options.body ? { "400": { $ref: "#/components/responses/BadRequest" } } : {}),
@@ -101,7 +102,7 @@ export const gatewayOpenApiDocument = {
       get: list("List doctor schedules", ["Doctors"], ref("Schedule"), [], [id("doctorId")]),
       post: operation("Create doctor schedule", ["Doctors"], { created: true, parameters: [id("doctorId")], body: ref("ScheduleRequest"), response: ref("ScheduleResponse") })
     },
-    "/api/v1/schedules/{scheduleId}": { patch: operation("Update doctor schedule", ["Doctors"], { parameters: [id("scheduleId")], body: ref("ScheduleRequest"), response: ref("ScheduleResponse") }) },
+    "/api/v1/schedules/{scheduleId}": { patch: operation("Update doctor schedule", ["Doctors"], { parameters: [id("scheduleId")], body: ref("UpdateScheduleRequest"), response: ref("ScheduleResponse") }) },
     "/api/v1/doctors/{doctorId}/available-slots": { get: operation("List available appointment slots", ["Doctors"], {
       parameters: [id("doctorId"), { name: "date", in: "query", required: true, schema: { type: "string", format: "date" } }], response: ref("AvailableSlotsResponse")
     }) },
@@ -114,11 +115,11 @@ export const gatewayOpenApiDocument = {
     },
     "/api/v1/appointments/{appointmentId}": { get: operation("Get an appointment", ["Appointments"], { parameters: [appointmentId], response: ref("AppointmentResponse") }) },
     "/api/v1/appointments/{appointmentId}/reschedule": { patch: operation("Reschedule an appointment", ["Appointments"], { conflict: true, unprocessable: true, parameters: [appointmentId], body: ref("RescheduleAppointmentRequest"), response: ref("AppointmentResponse") }) },
-    "/api/v1/appointments/{appointmentId}/cancel": { patch: operation("Cancel an appointment", ["Appointments"], { conflict: true, parameters: [appointmentId], body: transitionBody, response: ref("AppointmentResponse") }) },
-    "/api/v1/appointments/{appointmentId}/confirm": { patch: operation("Confirm an appointment", ["Appointments"], { conflict: true, parameters: [appointmentId], body: transitionBody, response: ref("AppointmentResponse") }) },
-    "/api/v1/appointments/{appointmentId}/check-in": { patch: operation("Check in a patient", ["Appointments"], { conflict: true, parameters: [appointmentId], body: transitionBody, response: ref("AppointmentResponse") }) },
-    "/api/v1/appointments/{appointmentId}/complete": { patch: operation("Complete an appointment", ["Appointments"], { conflict: true, parameters: [appointmentId], body: transitionBody, response: ref("AppointmentResponse") }) },
-    "/api/v1/appointments/{appointmentId}/no-show": { patch: operation("Mark an appointment as no-show", ["Appointments"], { conflict: true, parameters: [appointmentId], body: transitionBody, response: ref("AppointmentResponse") }) },
+    "/api/v1/appointments/{appointmentId}/cancel": { patch: operation("Cancel an appointment", ["Appointments"], { conflict: true, parameters: [appointmentId], body: transitionBody, bodyRequired: false, response: ref("AppointmentResponse") }) },
+    "/api/v1/appointments/{appointmentId}/confirm": { patch: operation("Confirm an appointment", ["Appointments"], { conflict: true, parameters: [appointmentId], body: transitionBody, bodyRequired: false, response: ref("AppointmentResponse") }) },
+    "/api/v1/appointments/{appointmentId}/check-in": { patch: operation("Check in a patient", ["Appointments"], { conflict: true, parameters: [appointmentId], body: transitionBody, bodyRequired: false, response: ref("AppointmentResponse") }) },
+    "/api/v1/appointments/{appointmentId}/complete": { patch: operation("Complete an appointment", ["Appointments"], { conflict: true, parameters: [appointmentId], body: transitionBody, bodyRequired: false, response: ref("AppointmentResponse") }) },
+    "/api/v1/appointments/{appointmentId}/no-show": { patch: operation("Mark an appointment as no-show", ["Appointments"], { conflict: true, parameters: [appointmentId], body: transitionBody, bodyRequired: false, response: ref("AppointmentResponse") }) },
     "/api/v1/medical-records": {
       get: list("List medical records visible to current actor", ["Medical Records"], ref("MedicalRecord"), [
         { name: "patientId", in: "query", schema: { type: "string" } }, { name: "doctorId", in: "query", schema: { type: "string" } }, { name: "appointmentId", in: "query", schema: { type: "string" } }
@@ -127,11 +128,11 @@ export const gatewayOpenApiDocument = {
     },
     "/api/v1/medical-records/{recordId}": {
       get: operation("Get a medical record", ["Medical Records"], { parameters: [recordId], response: ref("MedicalRecordResponse") }),
-      patch: operation("Update a medical record", ["Medical Records"], { parameters: [recordId], body: ref("MedicalRecordRequest"), response: ref("MedicalRecordResponse") })
+      patch: operation("Update a medical record", ["Medical Records"], { parameters: [recordId], body: ref("UpdateMedicalRecordRequest"), response: ref("MedicalRecordResponse") })
     },
     "/api/v1/notifications": { get: list("List current user's notifications", ["Notifications"], ref("Notification"), [{ name: "status", in: "query", schema: { type: "string", enum: ["UNREAD", "READ", "FAILED"] } }]) },
     "/api/v1/notifications/{notificationId}": { get: operation("Get a notification", ["Notifications"], { parameters: [id("notificationId")], response: ref("NotificationResponse") }) },
-    "/api/v1/notifications/{notificationId}/read": { patch: operation("Mark a notification as read", ["Notifications"], { parameters: [id("notificationId")], body: { type: "object", additionalProperties: false }, response: ref("NotificationResponse") }) }
+    "/api/v1/notifications/{notificationId}/read": { patch: operation("Mark a notification as read", ["Notifications"], { parameters: [id("notificationId")], response: ref("NotificationResponse") }) }
   },
   components: {
     securitySchemes: { bearerAuth: { type: "http", scheme: "bearer", bearerFormat: "JWT" } },
@@ -163,9 +164,11 @@ export const gatewayOpenApiDocument = {
       CreateDoctorRequest: { type: "object", required: ["userId", "specialtyId", "displayName"], properties: { userId: { type: "string" }, specialtyId: { type: "string" }, displayName: { type: "string" }, bio: { type: "string" } }, additionalProperties: false },
       UpdateDoctorRequest: { type: "object", properties: { specialtyId: { type: "string" }, displayName: { type: "string" }, bio: { type: "string" }, isActive: { type: "boolean" } }, additionalProperties: false },
       ScheduleRequest: { type: "object", required: ["weekday", "startTime", "endTime", "slotDurationMinutes"], properties: { weekday: { type: "integer", minimum: 0, maximum: 6 }, startTime: { type: "string", pattern: "^([01]\\d|2[0-3]):[0-5]\\d$" }, endTime: { type: "string", pattern: "^([01]\\d|2[0-3]):[0-5]\\d$" }, slotDurationMinutes: { type: "integer", minimum: 1 } }, additionalProperties: false },
+      UpdateScheduleRequest: { type: "object", properties: { weekday: { type: "integer", minimum: 0, maximum: 6 }, startTime: { type: "string", pattern: "^([01]\\d|2[0-3]):[0-5]\\d$" }, endTime: { type: "string", pattern: "^([01]\\d|2[0-3]):[0-5]\\d$" }, slotDurationMinutes: { type: "integer", minimum: 1 } }, additionalProperties: false },
       CreateAppointmentRequest: { type: "object", required: ["doctorId", "scheduledStartAt", "scheduledEndAt"], properties: { patientId: { type: "string" }, doctorId: { type: "string" }, specialtyId: { type: "string" }, scheduledStartAt: { type: "string", format: "date-time" }, scheduledEndAt: { type: "string", format: "date-time" }, reason: { type: "string" } }, additionalProperties: false },
       RescheduleAppointmentRequest: { type: "object", required: ["scheduledStartAt", "scheduledEndAt"], properties: { scheduledStartAt: { type: "string", format: "date-time" }, scheduledEndAt: { type: "string", format: "date-time" }, reason: { type: "string" } }, additionalProperties: false },
       MedicalRecordRequest: { type: "object", required: ["appointmentId", "patientId", "doctorId"], properties: { appointmentId: { type: "string" }, patientId: { type: "string" }, doctorId: { type: "string" }, symptoms: { type: "string" }, diagnosis: { type: "string" }, notes: { type: "string" }, treatmentPlan: { type: "string" }, prescription: { type: "array", items: ref("PrescriptionItem") }, status: { type: "string", enum: ["DRAFT", "FINAL"] } }, additionalProperties: false },
+      UpdateMedicalRecordRequest: { type: "object", properties: { symptoms: { type: "string" }, diagnosis: { type: "string" }, notes: { type: "string" }, treatmentPlan: { type: "string" }, prescription: { type: "array", items: ref("PrescriptionItem") }, status: { type: "string", enum: ["DRAFT", "FINAL"] } }, additionalProperties: false },
       HealthResponse: {
         allOf: [ref("SuccessEnvelope"), { type: "object", properties: {
           data: { type: "object", required: ["service", "status"], properties: {
