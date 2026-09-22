@@ -301,7 +301,11 @@ Notification tối thiểu xử lý event types `appointment.created`, `appointm
 |---|---:|---|
 | `AUTH_TOKEN_MISSING` | 401 | Không gửi bearer token |
 | `AUTH_TOKEN_INVALID` | 401 | Token sai/hết hạn |
+| `USER_PROFILE_NOT_FOUND` | 403 | Token hợp lệ nhưng chưa có profile nghiệp vụ |
+| `ACCOUNT_INACTIVE` | 403 | Profile bị khóa hoặc không hoạt động |
 | `ACCESS_DENIED` | 403 | Không đủ quyền |
+| `AUTH_NOT_CONFIGURED` | 503 | Gateway chưa có cấu hình Supabase và dev auth không được bật |
+| `AUTH_SERVICE_UNAVAILABLE` | 503 | Supabase Auth hoặc User Service không khả dụng khi xác thực |
 | `VALIDATION_ERROR` | 400 | Field/query sai cấu trúc |
 | `ROUTE_NOT_FOUND` | 404 | Không tồn tại route |
 | `USER_NOT_FOUND` | 404 | Không tìm thấy profile |
@@ -314,7 +318,10 @@ Notification tối thiểu xử lý event types `appointment.created`, `appointm
 | `IDEMPOTENCY_KEY_REUSED` | 409 | Key được dùng lại với payload khác |
 | `APPOINTMENT_SLOT_INVALID` | 422 | Slot ngoài lịch hoặc bác sĩ không hoạt động |
 | `UPSTREAM_SERVICE_UNAVAILABLE` | 502 | Gateway không gọi được service |
+| `UPSTREAM_SERVICE_TIMEOUT` | 502 | Service nội bộ không phản hồi trong thời gian chờ của Gateway |
+| `UPSTREAM_INVALID_RESPONSE` | 502 | Service nội bộ trả lỗi không đúng response envelope chuẩn |
 | `RATE_LIMIT_EXCEEDED` | 429 | Vượt ngưỡng request |
+| `INTERNAL_SERVER_ERROR` | 500 | Lỗi không mong đợi; response không lộ chi tiết nội bộ |
 
 ## 8. Gateway Routing Và Ownership
 
@@ -332,8 +339,6 @@ Gateway chịu trách nhiệm xác thực, rate limit, request ID, CORS, routing
 
 Các mục dưới đây là gap giữa scaffold hiện tại và contract; không phải ngoại lệ của contract:
 
-- Gateway hiện lấy role từ JWT user metadata và khi thiếu cấu hình Supabase chấp nhận `X-Role`/`X-User-Id`. `GW-001`/`GW-002` phải chuyển sang profile role có thẩm quyền và khóa dev fallback khỏi production.
-- Gateway health hiện trả các URL service nội bộ. `GW-004` phải đổi thành trạng thái service, không trả host/URL nội bộ.
 - Service repositories hiện dùng in-memory arrays; persistence Supabase thuộc các task service tương ứng.
 - Doctor list/specialty/available slot và một số list endpoint hiện chưa áp dụng pagination/filter đầy đủ.
 - Appointment hiện chỉ kiểm tra conflict bằng memory trước khi insert; `BOOK-004` phải dùng transaction và constraint PostgreSQL.

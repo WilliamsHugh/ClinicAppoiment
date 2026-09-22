@@ -1,3 +1,5 @@
+import { EmptyState } from "../src/components/states";
+
 export default function NotFound() {
-  return <main className="layout"><h1>Không tìm thấy trang</h1></main>;
+  return <EmptyState title="Không tìm thấy trang" message="Đường dẫn này không tồn tại trong ứng dụng quản lý." />;
 }

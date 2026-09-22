@@ -1,0 +1,5 @@
+services:
+  api-gateway:
+    environment:
+      SUPABASE_URL: ${SUPABASE_URL:?Set SUPABASE_URL before enabling the Supabase override}
+      SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:?Set SUPABASE_ANON_KEY before enabling the Supabase override}
