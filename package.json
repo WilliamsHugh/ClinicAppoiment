@@ -10,8 +10,8 @@
   ],
   "scripts": {
     "dev:gateway": "npm run dev -w @clinic/api-gateway",
-    "dev:patient": ".tools/flutter/bin/flutter run -d android --dart-define=API_BASE_URL=http://10.0.2.2:8080",
-    "build:patient": ".tools/flutter/bin/flutter build apk --dart-define=API_BASE_URL=http://10.0.2.2:8080",
+    "dev:patient": "scripts/with-env.sh scripts/flutter-patient.sh run",
+    "build:patient": "scripts/with-env.sh scripts/flutter-patient.sh build",
     "dev:clinic": "npm run dev -w @clinic/clinic-management-web",
     "dev:user": "npm run dev -w @clinic/user-service",
     "dev:doctor": "npm run dev -w @clinic/doctor-service",

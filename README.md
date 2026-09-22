@@ -48,8 +48,11 @@ npm run dev:notification
 Chạy Patient App trên Android emulator:
 
 ```bash
-npm run dev:patient
+npm run dev:patient -- --device emulator-5554
 ```
+
+Hoặc đặt `FLUTTER_DEVICE_ID` trong `.env`. Android build cần JDK có `javac`; script ưu tiên
+`JAVA_HOME`, JDK trong `.tools/jdk-17`, rồi Temurin 17 tại `~/.local/opt/temurin-17`.
 
 Mặc định:
 
@@ -61,6 +64,10 @@ Mặc định:
 - Appointment Service: http://localhost:3003
 - Medical Record Service: http://localhost:3004
 - Notification Service: http://localhost:3005
+
+API Gateway cung cấp OpenAPI JSON tại `http://localhost:8080/openapi.json` và Swagger UI tại
+`http://localhost:8080/docs`. `AUTH_DEV_MODE=true` chỉ dành cho local scaffold; khi triển khai thật
+phải đặt `AUTH_DEV_MODE=false` và cấu hình Supabase Auth.
 
 ## Kiểm Tra
 
