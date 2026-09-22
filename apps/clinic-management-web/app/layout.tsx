@@ -1,4 +1,6 @@
 import type { Metadata } from "next";
+import { AppShell } from "../src/components/app-shell";
+import { SessionProvider } from "../src/lib/session/session-context";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -9,7 +11,11 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="vi">
-      <body>{children}</body>
+      <body>
+        <SessionProvider>
+          <AppShell>{children}</AppShell>
+        </SessionProvider>
+      </body>
     </html>
   );
 }

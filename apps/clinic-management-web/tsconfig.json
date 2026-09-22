@@ -2,6 +2,8 @@
   "extends": "../../packages/shared-config/tsconfig.base.json",
   "compilerOptions": {
     "jsx": "preserve",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
     "plugins": [
       {
         "name": "next"
