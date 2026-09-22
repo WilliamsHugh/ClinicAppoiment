@@ -1,0 +1,20 @@
+services:
+  user-service:
+    ports:
+      - "${USER_SERVICE_PORT:-3001}:3001"
+
+  doctor-service:
+    ports:
+      - "${DOCTOR_SERVICE_PORT:-3002}:3002"
+
+  appointment-service:
+    ports:
+      - "${APPOINTMENT_SERVICE_PORT:-3003}:3003"
+
+  medical-record-service:
+    ports:
+      - "${MEDICAL_RECORD_SERVICE_PORT:-3004}:3004"
+
+  notification-service:
+    ports:
+      - "${NOTIFICATION_SERVICE_PORT:-3005}:3005"

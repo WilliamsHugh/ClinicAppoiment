@@ -5,16 +5,42 @@ services:
       dockerfile: infrastructure/docker/node-service.Dockerfile
       args:
         APP_PATH: gateway/api-gateway
-    env_file:
-      - ../../.env
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      GATEWAY_PORT: 8080
+      AUTH_DEV_MODE: ${AUTH_DEV_MODE:-false}
+      CLINIC_MANAGEMENT_WEB_URL: ${CLINIC_MANAGEMENT_WEB_URL:-http://localhost:5174}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:5174}
+      RATE_LIMIT_WINDOW_MS: ${RATE_LIMIT_WINDOW_MS:-60000}
+      RATE_LIMIT_MAX: ${RATE_LIMIT_MAX:-120}
+      AUTH_TIMEOUT_MS: ${AUTH_TIMEOUT_MS:-3000}
+      HEALTH_CHECK_TIMEOUT_MS: ${HEALTH_CHECK_TIMEOUT_MS:-1500}
+      PROXY_TIMEOUT_MS: ${PROXY_TIMEOUT_MS:-10000}
+      USER_SERVICE_URL: http://user-service:3001
+      DOCTOR_SERVICE_URL: http://doctor-service:3002
+      APPOINTMENT_SERVICE_URL: http://appointment-service:3003
+      MEDICAL_RECORD_SERVICE_URL: http://medical-record-service:3004
+      NOTIFICATION_SERVICE_URL: http://notification-service:3005
     ports:
-      - "8080:8080"
+      - "${GATEWAY_PORT:-8080}:8080"
     depends_on:
-      - user-service
-      - doctor-service
-      - appointment-service
-      - medical-record-service
-      - notification-service
+      user-service:
+        condition: service_healthy
+      doctor-service:
+        condition: service_healthy
+      appointment-service:
+        condition: service_healthy
+      medical-record-service:
+        condition: service_healthy
+      notification-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:8080/health').then((response) => { if (!response.ok) process.exit(1); }).catch(() => process.exit(1));"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
 
   user-service:
     build:
@@ -22,10 +48,17 @@ services:
       dockerfile: infrastructure/docker/node-service.Dockerfile
       args:
         APP_PATH: services/user-service
-    env_file:
-      - ../../.env
-    ports:
-      - "3001:3001"
+    environment:
+      USER_SERVICE_PORT: 3001
+    expose:
+      - "3001"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/health').then((response) => { if (!response.ok) process.exit(1); }).catch(() => process.exit(1));"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
 
   doctor-service:
     build:
@@ -33,10 +66,17 @@ services:
       dockerfile: infrastructure/docker/node-service.Dockerfile
       args:
         APP_PATH: services/doctor-service
-    env_file:
-      - ../../.env
-    ports:
-      - "3002:3002"
+    environment:
+      DOCTOR_SERVICE_PORT: 3002
+    expose:
+      - "3002"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3002/health').then((response) => { if (!response.ok) process.exit(1); }).catch(() => process.exit(1));"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
 
   appointment-service:
     build:
@@ -44,13 +84,24 @@ services:
       dockerfile: infrastructure/docker/node-service.Dockerfile
       args:
         APP_PATH: services/appointment-service
-    env_file:
-      - ../../.env
-    ports:
-      - "3003:3003"
+    environment:
+      APPOINTMENT_SERVICE_PORT: 3003
+      DOCTOR_SERVICE_URL: http://doctor-service:3002
+      NOTIFICATION_SERVICE_URL: http://notification-service:3005
+    expose:
+      - "3003"
     depends_on:
-      - doctor-service
-      - notification-service
+      doctor-service:
+        condition: service_healthy
+      notification-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3003/health').then((response) => { if (!response.ok) process.exit(1); }).catch(() => process.exit(1));"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
 
   medical-record-service:
     build:
@@ -58,13 +109,24 @@ services:
       dockerfile: infrastructure/docker/node-service.Dockerfile
       args:
         APP_PATH: services/medical-record-service
-    env_file:
-      - ../../.env
-    ports:
-      - "3004:3004"
+    environment:
+      MEDICAL_RECORD_SERVICE_PORT: 3004
+      APPOINTMENT_SERVICE_URL: http://appointment-service:3003
+      NOTIFICATION_SERVICE_URL: http://notification-service:3005
+    expose:
+      - "3004"
     depends_on:
-      - appointment-service
-      - notification-service
+      appointment-service:
+        condition: service_healthy
+      notification-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3004/health').then((response) => { if (!response.ok) process.exit(1); }).catch(() => process.exit(1));"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
 
   notification-service:
     build:
@@ -72,16 +134,37 @@ services:
       dockerfile: infrastructure/docker/node-service.Dockerfile
       args:
         APP_PATH: services/notification-service
-    env_file:
-      - ../../.env
-    ports:
-      - "3005:3005"
+    environment:
+      NOTIFICATION_SERVICE_PORT: 3005
+    expose:
+      - "3005"
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3005/health').then((response) => { if (!response.ok) process.exit(1); }).catch(() => process.exit(1));"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
 
   clinic-management-web:
     build:
       context: ../..
       dockerfile: infrastructure/docker/next-web.Dockerfile
-    ports:
-      - "5174:5174"
+      args:
+        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL:-http://localhost:8080}
     environment:
-      NEXT_PUBLIC_API_BASE_URL: http://localhost:8080
+      API_BASE_URL_INTERNAL: http://api-gateway:8080
+      PORT: 5174
+      HOSTNAME: 0.0.0.0
+    ports:
+      - "${CLINIC_MANAGEMENT_WEB_PORT:-5174}:5174"
+    depends_on:
+      api-gateway:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:5174/').then((response) => { if (!response.ok) process.exit(1); }).catch(() => process.exit(1));"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 15s
+    restart: unless-stopped

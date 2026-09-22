@@ -1,3 +1,5 @@
+import { LoadingState } from "../src/components/states";
+
 export default function Loading() {
-  return <main className="layout"><p>Đang tải giao diện quản lý...</p></main>;
+  return <LoadingState message="Đang tải giao diện quản lý..." />;
 }
