@@ -1,4 +1,4 @@
-# Clinic Patient App
+# Health&Human Patient App
 
 Flutter Android shell for the patient-facing clinic application.
 

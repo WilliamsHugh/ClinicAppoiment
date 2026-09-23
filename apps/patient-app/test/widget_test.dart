@@ -22,7 +22,7 @@ void main() {
     await tester.pumpWidget(const PatientApp());
     await tester.pumpAndSettle();
 
-    expect(find.text('Clinic Patient'), findsOneWidget);
+    expect(find.text('Health&Human'), findsOneWidget);
     expect(
       find.text(
         'Đăng nhập sẽ được kết nối qua session provider của mô-đun xác thực.',

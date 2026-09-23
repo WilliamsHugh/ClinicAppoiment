@@ -79,7 +79,7 @@ class WelcomePage extends StatelessWidget {
                                 color: Colors.white, size: 20),
                             const SizedBox(width: 6),
                             Text(
-                              'Renata Limited',
+                              'Health&Human',
                               style: TextStyle(
                                 color: Colors.white.withOpacity(0.95),
                                 fontWeight: FontWeight.w600,

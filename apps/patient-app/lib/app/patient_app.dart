@@ -37,7 +37,7 @@ class _PatientAppState extends State<PatientApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Clinic Patient',
+      title: 'Health&Human',
       debugShowCheckedModeBanner: false,
       theme: buildPatientTheme(),
       home: ListenableBuilder(

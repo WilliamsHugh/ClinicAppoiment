@@ -18,7 +18,7 @@ class AuthHeader extends StatelessWidget {
               color: Theme.of(context).colorScheme.primary,
             ),
             const SizedBox(height: 16),
-            Text('Clinic Patient',
+            Text('Health&Human',
                 style: Theme.of(context).textTheme.headlineSmall),
             const SizedBox(height: 8),
             const Text(

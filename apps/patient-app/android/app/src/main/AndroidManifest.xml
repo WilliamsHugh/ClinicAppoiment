@@ -2,7 +2,7 @@
     <uses-permission android:name="android.permission.INTERNET" />
 
     <application
-        android:label="Patient App"
+        android:label="Health&amp;Human"
         android:name="${applicationName}"
         android:icon="@android:drawable/sym_def_app_icon">
         <activity
