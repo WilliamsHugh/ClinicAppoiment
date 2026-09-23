@@ -3,9 +3,63 @@ import type { Role } from "@clinic/shared-types";
 import type { NextFunction, Response } from "express";
 import type { GatewayConfig } from "./config.js";
 import { sendError } from "./http.js";
-import type { AccessTokenVerifier, GatewayRequest, UserProfileResolver } from "./types.js";
+import type { AccessTokenVerifier, AuthBroker, AuthTokens, GatewayRequest, UserProfileResolver } from "./types.js";
 
 const roles: Role[] = ["PATIENT", "DOCTOR", "STAFF", "ADMIN"];
+
+function toAuthTokens(data: {
+  session: { access_token: string; refresh_token: string; expires_in: number; user: { id: string } } | null;
+}): AuthTokens | null {
+  const session = data.session;
+  if (!session) return null;
+  return {
+    authUserId: session.user.id,
+    accessToken: session.access_token,
+    refreshToken: session.refresh_token,
+    expiresIn: session.expires_in
+  };
+}
+
+export function createSupabaseAuthBroker(config: GatewayConfig): AuthBroker | null {
+  if (!config.supabaseUrl || !config.supabaseAnonKey) return null;
+  const createAuthClient = () => createClient(config.supabaseUrl!, config.supabaseAnonKey!, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+  });
+
+  return {
+    async signIn(email, password) {
+      const { data, error } = await createAuthClient().auth.signInWithPassword({ email, password });
+      const tokens = toAuthTokens(data);
+      if (error || !tokens) throw new Error("AUTH_INVALID_CREDENTIALS");
+      return tokens;
+    },
+    async signUp(fullName, email, password) {
+      const { data, error } = await createAuthClient().auth.signUp({
+        email,
+        password,
+        options: { data: { full_name: fullName } }
+      });
+      if (error || !data.user) throw new Error("AUTH_REGISTRATION_FAILED");
+      return { authUserId: data.user.id, tokens: toAuthTokens(data) };
+    },
+    async refresh(refreshToken) {
+      const { data, error } = await createAuthClient().auth.refreshSession({ refresh_token: refreshToken });
+      const tokens = toAuthTokens(data);
+      if (error || !tokens) throw new Error("AUTH_REFRESH_INVALID");
+      return tokens;
+    },
+    async signOut(accessToken, refreshToken) {
+      const client = createAuthClient();
+      const { error: sessionError } = await client.auth.setSession({
+        access_token: accessToken,
+        refresh_token: refreshToken
+      });
+      if (sessionError) throw new Error("AUTH_SESSION_INVALID");
+      const { error } = await client.auth.signOut({ scope: "global" });
+      if (error) throw new Error("AUTH_SIGN_OUT_FAILED");
+    }
+  };
+}
 
 async function withTimeout<T>(operation: Promise<T>, timeoutMs: number): Promise<T> {
   let timeout: NodeJS.Timeout | undefined;

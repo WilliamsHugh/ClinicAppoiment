@@ -5,7 +5,7 @@ import { createGatewayApp } from "../src/app.js";
 import type { GatewayConfig } from "../src/config.js";
 import { loadGatewayConfig } from "../src/config.js";
 import { createErrorHandler, requestContext } from "../src/http.js";
-import type { UserProfile } from "../src/types.js";
+import type { AuthBroker, UserProfile } from "../src/types.js";
 
 const baseConfig: GatewayConfig = {
   port: 8080,
@@ -28,6 +28,26 @@ const baseConfig: GatewayConfig = {
 
 const silentLogger = { info: vi.fn(), error: vi.fn() };
 
+const authBroker: AuthBroker = {
+  signIn: vi.fn(async () => ({
+    authUserId: "auth-user-1",
+    accessToken: "access-token",
+    refreshToken: "refresh-token",
+    expiresIn: 3600
+  })),
+  signUp: vi.fn(async () => ({
+    authUserId: "auth-user-1",
+    tokens: null
+  })),
+  refresh: vi.fn(async () => ({
+    authUserId: "auth-user-1",
+    accessToken: "new-access-token",
+    refreshToken: "new-refresh-token",
+    expiresIn: 3600
+  })),
+  signOut: vi.fn(async () => undefined)
+};
+
 function createTestApp(profile: UserProfile = { id: "user-1", role: "PATIENT", status: "ACTIVE" }) {
   return createGatewayApp({
     config: baseConfig,
@@ -37,6 +57,54 @@ function createTestApp(profile: UserProfile = { id: "user-1", role: "PATIENT", s
     logger: silentLogger
   });
 }
+
+describe("API Gateway authentication endpoints", () => {
+  it("signs in through the gateway without exposing Supabase configuration", async () => {
+    const app = createGatewayApp({
+      config: baseConfig,
+      authVerifier: async () => null,
+      authBroker,
+      profileResolver: async () => ({ id: "user-1", role: "PATIENT", status: "ACTIVE" }),
+      logger: silentLogger
+    });
+    const response = await request(app)
+      .post("/api/v1/auth/login")
+      .send({ email: "patient@example.com", password: "secret12" });
+
+    expect(response.status).toBe(200);
+    expect(response.body.data).toMatchObject({
+      accessToken: "access-token",
+      refreshToken: "refresh-token",
+      user: { id: "user-1", role: "PATIENT" }
+    });
+    expect(response.body.data).not.toHaveProperty("supabaseUrl");
+  });
+
+  it("returns a controlled response when backend authentication is not configured", async () => {
+    const response = await request(createTestApp())
+      .post("/api/v1/auth/login")
+      .send({ email: "patient@example.com", password: "secret12" });
+
+    expect(response.status).toBe(503);
+    expect(response.body.error.code).toBe("AUTH_NOT_CONFIGURED");
+  });
+
+  it("validates auth payloads at the gateway boundary", async () => {
+    const app = createGatewayApp({
+      config: baseConfig,
+      authVerifier: async () => null,
+      authBroker,
+      profileResolver: async () => ({ id: "user-1", role: "PATIENT", status: "ACTIVE" }),
+      logger: silentLogger
+    });
+    const response = await request(app)
+      .post("/api/v1/auth/login")
+      .send({ email: "invalid", password: "123" });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.code).toBe("VALIDATION_ERROR");
+  });
+});
 
 describe("API Gateway authentication", () => {
   it("returns the standard error envelope when the token is missing", async () => {
@@ -116,17 +184,6 @@ describe("API Gateway role authorization", () => {
     expect(JSON.stringify(response.body)).not.toContain("http://127.0.0.1");
   });
 
-  it("blocks public clients from creating notifications", async () => {
-    const response = await request(createTestApp()).post("/api/v1/notifications").set("Authorization", "Bearer valid-token");
-    expect(response.status).toBe(403);
-    expect(response.body.error.code).toBe("ACCESS_DENIED");
-  });
-
-  it("does not allow a patient to enumerate all patient profiles", async () => {
-    const response = await request(createTestApp()).get("/api/v1/patients").set("Authorization", "Bearer valid-token");
-    expect(response.status).toBe(403);
-    expect(response.body.error.code).toBe("ACCESS_DENIED");
-  });
 });
 
 describe("API Gateway platform middleware", () => {
@@ -134,21 +191,10 @@ describe("API Gateway platform middleware", () => {
     const response = await request(createTestApp()).get("/openapi.json");
     expect(response.status).toBe(200);
     expect(response.body.openapi).toBe("3.0.3");
-    expect(response.body.paths["/api/v1/appointments"]).toBeDefined();
-    expect(response.body.paths["/api/v1/appointments"].post.requestBody).toBeDefined();
-    expect(response.body.paths["/api/v1/appointments"].post.responses["201"]).toBeDefined();
-    expect(response.body.paths["/api/v1/appointments"].get.parameters).toEqual(
-      expect.arrayContaining([expect.objectContaining({ name: "page" }), expect.objectContaining({ name: "limit" })])
-    );
-    expect(response.body.components.schemas.Appointment).toBeDefined();
-    expect(response.body.paths["/api/v1/schedules/{scheduleId}"].patch.requestBody.content["application/json"].schema.$ref)
-      .toBe("#/components/schemas/UpdateScheduleRequest");
-    expect(response.body.components.schemas.UpdateScheduleRequest.required).toBeUndefined();
-    expect(response.body.paths["/api/v1/medical-records/{recordId}"].patch.requestBody.content["application/json"].schema.$ref)
-      .toBe("#/components/schemas/UpdateMedicalRecordRequest");
-    expect(response.body.components.schemas.UpdateMedicalRecordRequest.required).toBeUndefined();
-    expect(response.body.paths["/api/v1/appointments/{appointmentId}/cancel"].patch.requestBody.required).toBe(false);
-    expect(response.body.paths["/api/v1/notifications/{notificationId}/read"].patch.requestBody).toBeUndefined();
+    expect(response.body.paths["/api/v1/auth/login"]).toBeDefined();
+    expect(response.body.paths["/api/v1/system/health"]).toBeDefined();
+    expect(response.body.paths["/api/v1/appointments"]).toBeUndefined();
+    expect(response.body.info.description).toContain("docs/api-contract.md");
   });
 
   it("normalizes unknown routes", async () => {

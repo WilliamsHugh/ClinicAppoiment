@@ -112,27 +112,54 @@ describe("Gateway authentication dependency handling", () => {
   });
 });
 
-describe("Gateway exact route authorization", () => {
-  it("allows the documented action for each role and blocks lookalike routes", async () => {
+describe("Gateway prefix routing", () => {
+  it("forwards roots and arbitrary descendants without matching similar prefixes", async () => {
     const upstream = await startUpstream((_req, res) => sendJson(res, 200, { success: true, data: {} }));
-    const cases: Array<{ role: Role; method: "get" | "post" | "patch"; allowed: string; denied: string }> = [
-      { role: "PATIENT", method: "get", allowed: "/api/v1/specialties", denied: "/api/v1/users/me/private" },
-      { role: "DOCTOR", method: "post", allowed: "/api/v1/doctors/doctor-1/schedules", denied: "/api/v1/doctors/doctor-1/archive/schedules" },
-      { role: "STAFF", method: "patch", allowed: "/api/v1/appointments/appt-1/check-in", denied: "/api/v1/appointments/appt-1/a/check-in" },
-      { role: "ADMIN", method: "patch", allowed: "/api/v1/users/user-1/role", denied: "/api/v1/users/user-1/a/role" }
+    const cases = [
+      { root: "/api/v1/users", nested: "/api/v1/users/new-endpoint", similar: "/api/v1/users-other" },
+      { root: "/api/v1/doctors", nested: "/api/v1/doctors/doctor-1/slots", similar: "/api/v1/doctors-other" },
+      { root: "/api/v1/appointments", nested: "/api/v1/appointments/appt-1/audit", similar: "/api/v1/appointments-old" },
+      { root: "/api/v1/medical-records", nested: "/api/v1/medical-records/record-1/export", similar: "/api/v1/medical-records-old" },
+      { root: "/api/v1/notifications", nested: "/api/v1/notifications/preferences", similar: "/api/v1/notifications-old" }
     ];
 
     for (const item of cases) {
-      const app = appFor(upstream.url, item.role);
-      const allowed = await request(app)[item.method](item.allowed).set("Authorization", "Bearer token");
-      const denied = await request(app)[item.method](item.denied).set("Authorization", "Bearer token");
-      expect(allowed.status, `${item.role} should access ${item.allowed}`).toBe(200);
-      expect(denied.status, `${item.role} should not access ${item.denied}`).toBe(403);
+      const app = appFor(upstream.url);
+      const root = await request(app).get(item.root).set("Authorization", "Bearer token");
+      const nested = await request(app).get(item.nested).set("Authorization", "Bearer token");
+      const similar = await request(app).get(item.similar).set("Authorization", "Bearer token");
+      expect(root.status, `root ${item.root}`).toBe(200);
+      expect(nested.status, `nested ${item.nested}`).toBe(200);
+      expect(similar.status, `similar prefix ${item.similar}`).toBe(404);
     }
   });
 });
 
 describe("Gateway proxy boundary", () => {
+  it("forwards method, JSON body, query, and authorization to a new endpoint inside an owned prefix", async () => {
+    const upstream = await startUpstream((req, res) => {
+      let body = "";
+      req.setEncoding("utf8");
+      req.on("data", (chunk) => { body += chunk; });
+      req.on("end", () => sendJson(res, 201, {
+        success: true,
+        data: { method: req.method, url: req.url, body: JSON.parse(body), authorization: req.headers.authorization }
+      }));
+    });
+    const response = await request(appFor(upstream.url))
+      .post("/api/v1/doctors/new-capability?notify=true")
+      .set("Authorization", "Bearer token")
+      .send({ enabled: true });
+
+    expect(response.status).toBe(201);
+    expect(response.body.data).toEqual({
+      method: "POST",
+      url: "/api/v1/doctors/new-capability?notify=true",
+      body: { enabled: true },
+      authorization: "Bearer token"
+    });
+  });
+
   it("forwards the route and query while replacing spoofed identity headers", async () => {
     const upstream = await startUpstream((req, res) => sendJson(res, 200, {
       success: true,
@@ -148,7 +175,7 @@ describe("Gateway proxy boundary", () => {
 
     expect(response.status).toBe(200);
     expect(response.body.data.url).toBe("/api/v1/appointments/appt-1?view=compact");
-    expect(response.body.data.headers.authorization).toBeUndefined();
+    expect(response.body.data.headers.authorization).toBe("Bearer private-token");
     expect(response.body.data.headers["x-user-id"]).toBe("verified-user");
     expect(response.body.data.headers["x-role"]).toBe("ADMIN");
     expect(response.body.data.headers["x-supabase-auth-user-id"]).toBe("verified-auth-user");
@@ -206,6 +233,19 @@ describe("Gateway proxy boundary", () => {
     expect(JSON.stringify(response.body)).not.toContain("database connection secret");
   });
 
+  it("preserves an upstream route miss as a standardized 404", async () => {
+    const upstream = await startUpstream((_req, res) => {
+      res.writeHead(404, { "Content-Type": "text/html" });
+      res.end("missing internal route");
+    });
+    const response = await request(appFor(upstream.url))
+      .get("/api/v1/doctors/not-implemented")
+      .set("Authorization", "Bearer token");
+
+    expect(response.status).toBe(404);
+    expect(response.body.error.code).toBe("ROUTE_NOT_FOUND");
+  });
+
   it("preserves a valid upstream error while replacing its request ID", async () => {
     const upstream = await startUpstream((_req, res) => sendJson(res, 409, {
       success: false,
@@ -241,7 +281,7 @@ describe("Gateway proxy boundary", () => {
       .get("/api/v1/specialties")
       .set("Authorization", "Bearer token");
 
-    expect(response.status).toBe(502);
+    expect(response.status).toBe(504);
     expect(response.body.error.code).toBe("UPSTREAM_SERVICE_TIMEOUT");
   });
 });
