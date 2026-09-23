@@ -5,9 +5,14 @@ import '../shared/widgets/async_states.dart';
 import 'app_routes.dart';
 
 class PatientShell extends StatefulWidget {
-  const PatientShell({required this.session, super.key});
+  const PatientShell({
+    required this.session,
+    required this.onSignOut,
+    super.key,
+  });
 
   final AuthSession session;
+  final Future<void> Function() onSignOut;
 
   @override
   State<PatientShell> createState() => _PatientShellState();
@@ -42,13 +47,21 @@ class _PatientShellState extends State<PatientShell> {
           ? null
           : AppBar(
               title: Text(selectedRoute.label),
-              actions: [
-                IconButton(
-                  tooltip: 'Hồ sơ cá nhân',
-                  onPressed: () => _selectPath(routes, AppRoutes.profile),
-                  icon: const Icon(Icons.account_circle_outlined),
-                ),
-              ],
+              actions: selectedRoute.path == AppRoutes.profile
+                  ? [
+                      IconButton(
+                        tooltip: 'Đăng xuất',
+                        onPressed: widget.onSignOut,
+                        icon: const Icon(Icons.logout),
+                      ),
+                    ]
+                  : [
+                      IconButton(
+                        tooltip: 'Hồ sơ cá nhân',
+                        onPressed: () => _selectPath(routes, AppRoutes.profile),
+                        icon: const Icon(Icons.account_circle_outlined),
+                      ),
+                    ],
             ),
       body: IndexedStack(
         index: _selectedIndex,
@@ -62,7 +75,7 @@ class _PatientShellState extends State<PatientShell> {
           color: Colors.white,
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.06),
+              color: Colors.black.withValues(alpha: 0.06),
               blurRadius: 16,
               offset: const Offset(0, -4),
             ),
@@ -70,8 +83,7 @@ class _PatientShellState extends State<PatientShell> {
           borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
         ),
         child: ClipRRect(
-          borderRadius:
-              const BorderRadius.vertical(top: Radius.circular(20)),
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
           child: NavigationBar(
             height: 64,
             backgroundColor: Colors.white,

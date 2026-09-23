@@ -3,7 +3,8 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/app_theme.dart';
 
 class DateItem {
-  const DateItem({required this.day, required this.label, required this.isoDate});
+  const DateItem(
+      {required this.day, required this.label, required this.isoDate});
   final String day;
   final String label;
   final String isoDate; // YYYY-MM-DD
@@ -22,11 +23,13 @@ class DateSelector extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final firstDate = DateTime.parse(dates.first.isoDate);
+    final monthLabel = 'Tháng ${firstDate.month}/${firstDate.year}';
     return Column(
       children: [
         Row(
           children: [
-            const Text('Select Date',
+            const Text('Chọn ngày',
                 style: TextStyle(
                     fontSize: 12,
                     fontWeight: FontWeight.w700,
@@ -34,15 +37,17 @@ class DateSelector extends StatelessWidget {
             const Spacer(),
             Row(
               children: [
-                const Icon(Icons.chevron_left, size: 14, color: ClinicColors.muted),
+                const Icon(Icons.chevron_left,
+                    size: 14, color: ClinicColors.muted),
                 const SizedBox(width: 4),
-                const Text('February',
-                    style: TextStyle(
+                Text(monthLabel,
+                    style: const TextStyle(
                         fontSize: 11,
                         fontWeight: FontWeight.w600,
                         color: ClinicColors.ink)),
                 const SizedBox(width: 4),
-                const Icon(Icons.chevron_right, size: 14, color: ClinicColors.muted),
+                const Icon(Icons.chevron_right,
+                    size: 14, color: ClinicColors.muted),
               ],
             ),
           ],
@@ -62,11 +67,14 @@ class DateSelector extends StatelessWidget {
                     color: selected ? ClinicColors.primary : Colors.white,
                     borderRadius: BorderRadius.circular(14),
                     border: Border.all(
-                        color: selected ? ClinicColors.primary : ClinicColors.border),
+                        color: selected
+                            ? ClinicColors.primary
+                            : ClinicColors.border),
                     boxShadow: selected
                         ? [
                             BoxShadow(
-                                color: ClinicColors.primary.withOpacity(0.3),
+                                color:
+                                    ClinicColors.primary.withValues(alpha: 0.3),
                                 blurRadius: 10,
                                 offset: const Offset(0, 4))
                           ]
@@ -78,14 +86,15 @@ class DateSelector extends StatelessWidget {
                           style: TextStyle(
                               fontSize: 14,
                               fontWeight: FontWeight.w800,
-                              color: selected ? Colors.white : ClinicColors.ink)),
+                              color:
+                                  selected ? Colors.white : ClinicColors.ink)),
                       const SizedBox(height: 2),
                       Text(d.label,
                           style: TextStyle(
                               fontSize: 10,
                               fontWeight: FontWeight.w500,
                               color: selected
-                                  ? Colors.white.withOpacity(0.9)
+                                  ? Colors.white.withValues(alpha: 0.9)
                                   : ClinicColors.muted)),
                     ],
                   ),

@@ -22,7 +22,7 @@ class SsoButtons extends StatelessWidget {
               child: Text('hoặc tiếp tục với',
                   style: TextStyle(
                       fontSize: 11,
-                      color: ClinicColors.muted.withOpacity(0.9))),
+                      color: ClinicColors.muted.withValues(alpha: 0.9))),
             ),
             const Expanded(child: Divider(color: ClinicColors.border)),
           ],
@@ -34,8 +34,8 @@ class SsoButtons extends StatelessWidget {
               child: _SsoTile(
                 label: 'Google',
                 icon: Icons.g_mobiledata,
-                onTap: onGoogleTap ??
-                    () => _showComingSoon(context, 'Google SSO'),
+                onTap:
+                    onGoogleTap ?? () => _showComingSoon(context, 'Google SSO'),
               ),
             ),
             const SizedBox(width: 10),
@@ -43,8 +43,8 @@ class SsoButtons extends StatelessWidget {
               child: _SsoTile(
                 label: 'Apple',
                 icon: Icons.apple,
-                onTap: onAppleTap ??
-                    () => _showComingSoon(context, 'Apple SSO'),
+                onTap:
+                    onAppleTap ?? () => _showComingSoon(context, 'Apple SSO'),
               ),
             ),
           ],
@@ -60,7 +60,8 @@ class SsoButtons extends StatelessWidget {
 }
 
 class _SsoTile extends StatelessWidget {
-  const _SsoTile({required this.label, required this.icon, required this.onTap});
+  const _SsoTile(
+      {required this.label, required this.icon, required this.onTap});
   final String label;
   final IconData icon;
   final VoidCallback onTap;
@@ -76,7 +77,7 @@ class _SsoTile extends StatelessWidget {
           border: Border.all(color: ClinicColors.border),
           boxShadow: [
             BoxShadow(
-                color: Colors.black.withOpacity(0.04),
+                color: Colors.black.withValues(alpha: 0.04),
                 blurRadius: 10,
                 offset: const Offset(0, 4))
           ],

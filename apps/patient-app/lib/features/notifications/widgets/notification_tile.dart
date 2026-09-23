@@ -39,9 +39,14 @@ class NotificationTile extends StatelessWidget {
         color: Colors.white,
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
-            color: unread ? ClinicColors.primary.withOpacity(0.18) : ClinicColors.border),
+            color: unread
+                ? ClinicColors.primary.withValues(alpha: 0.18)
+                : ClinicColors.border),
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.04), blurRadius: 10, offset: const Offset(0, 4))
+          BoxShadow(
+              color: Colors.black.withValues(alpha: 0.04),
+              blurRadius: 10,
+              offset: const Offset(0, 4))
         ],
       ),
       child: InkWell(
@@ -55,13 +60,17 @@ class NotificationTile extends StatelessWidget {
               height: 36,
               decoration: BoxDecoration(
                 color: unread
-                    ? (isReminder ? const Color(0xFFFFF7ED) : const Color(0xFFEFF6FF))
+                    ? (isReminder
+                        ? const Color(0xFFFFF7ED)
+                        : const Color(0xFFEFF6FF))
                     : const Color(0xFFF1F5F9),
                 shape: BoxShape.circle,
               ),
               child: Icon(_iconForType(type),
                   size: 18,
-                  color: isReminder ? const Color(0xFFF59E0B) : ClinicColors.primary),
+                  color: isReminder
+                      ? const Color(0xFFF59E0B)
+                      : ClinicColors.primary),
             ),
             const SizedBox(width: 10),
             Expanded(
@@ -74,7 +83,8 @@ class NotificationTile extends StatelessWidget {
                         child: Text(data['title'].toString(),
                             style: TextStyle(
                                 fontSize: 12,
-                                fontWeight: unread ? FontWeight.w700 : FontWeight.w600,
+                                fontWeight:
+                                    unread ? FontWeight.w700 : FontWeight.w600,
                                 color: ClinicColors.ink)),
                       ),
                       if (unread)
@@ -82,29 +92,42 @@ class NotificationTile extends StatelessWidget {
                           width: 8,
                           height: 8,
                           decoration: const BoxDecoration(
-                              color: ClinicColors.primary, shape: BoxShape.circle),
+                              color: ClinicColors.primary,
+                              shape: BoxShape.circle),
                         ),
                     ],
                   ),
                   const SizedBox(height: 4),
                   Text(data['message'].toString(),
-                      maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: ClinicColors.muted, height: 1.35)),
+                      maxLines: 2,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                          fontSize: 11,
+                          color: ClinicColors.muted,
+                          height: 1.35)),
                   const SizedBox(height: 6),
                   Row(
                     children: [
                       if (isReminder)
                         Container(
-                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
                               color: const Color(0xFFFFF7ED),
                               borderRadius: BorderRadius.circular(8)),
                           child: Text(
-                              type == 'appointment.reminder.24h' ? 'Nhắc 24h' : 'Nhắc 1h',
-                              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w700, color: Color(0xFFF59E0B))),
+                              type == 'appointment.reminder.24h'
+                                  ? 'Nhắc 24h'
+                                  : 'Nhắc 1h',
+                              style: const TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w700,
+                                  color: Color(0xFFF59E0B))),
                         ),
                       const Spacer(),
                       Text(_fmt(data['createdAt'].toString()),
-                          style: const TextStyle(fontSize: 10, color: ClinicColors.mutedLight)),
+                          style: const TextStyle(
+                              fontSize: 10, color: ClinicColors.mutedLight)),
                     ],
                   ),
                 ],
@@ -115,7 +138,8 @@ class NotificationTile extends StatelessWidget {
               TextButton(
                 onPressed: onMarkRead,
                 style: TextButton.styleFrom(
-                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                     minimumSize: Size.zero,
                     tapTargetSize: MaterialTapTargetSize.shrinkWrap),
                 child: const Text('Đã đọc', style: TextStyle(fontSize: 11)),

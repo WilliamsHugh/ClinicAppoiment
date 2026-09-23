@@ -92,13 +92,21 @@ class TimeSelector extends StatelessWidget {
                         mainAxisAlignment: MainAxisAlignment.center,
                         crossAxisAlignment: CrossAxisAlignment.end,
                         children: [
-                          _Bar(height: isSelected ? 34 : 18, selected: isSelected),
+                          _Bar(
+                              height: isSelected ? 34 : 18,
+                              selected: isSelected),
                           const SizedBox(width: 3),
-                          _Bar(height: isSelected ? 48 : 26, selected: isSelected),
+                          _Bar(
+                              height: isSelected ? 48 : 26,
+                              selected: isSelected),
                           const SizedBox(width: 3),
-                          _Bar(height: isSelected ? 26 : 14, selected: isSelected),
+                          _Bar(
+                              height: isSelected ? 26 : 14,
+                              selected: isSelected),
                           const SizedBox(width: 3),
-                          _Bar(height: isSelected ? 38 : 20, selected: isSelected),
+                          _Bar(
+                              height: isSelected ? 38 : 20,
+                              selected: isSelected),
                         ],
                       ),
                       const SizedBox(height: 6),
@@ -128,8 +136,9 @@ class TimeSelector extends StatelessWidget {
                     child: Text(t,
                         style: TextStyle(
                             fontSize: 11,
-                            fontWeight:
-                                t == selectedTime ? FontWeight.w700 : FontWeight.w500,
+                            fontWeight: t == selectedTime
+                                ? FontWeight.w700
+                                : FontWeight.w500,
                             color: t == selectedTime
                                 ? ClinicColors.primary
                                 : ClinicColors.muted)),

@@ -1,175 +1,154 @@
 import 'package:flutter/material.dart';
 
+import '../../core/api/api_models.dart';
+import '../../core/api/clinic_api_client.dart';
+import '../../core/session/session.dart';
 import '../../core/theme/app_theme.dart';
+import '../../shared/widgets/async_states.dart';
 import '../doctor_detail/doctor_detail_page.dart';
-import 'widgets/category_chip.dart';
+import 'data/doctor_repository.dart';
 import 'widgets/doctor_card.dart';
 import 'widgets/home_header.dart';
 import 'widgets/search_field.dart';
-import 'widgets/top_doctor_tile.dart';
 
-/// Home - màn trái Figma, đã tách ra widgets chuyên nghiệp:
-/// - widgets/home_header.dart
-/// - widgets/search_field.dart
-/// - widgets/category_chip.dart
-/// - widgets/doctor_card.dart
-/// - widgets/top_doctor_tile.dart
 class HomePage extends StatefulWidget {
-  const HomePage({super.key});
+  const HomePage({
+    required this.tokenProvider,
+    required this.onOpenNotifications,
+    this.api,
+    super.key,
+  });
+
+  final TokenProvider tokenProvider;
+  final VoidCallback onOpenNotifications;
+  final ClinicApiClient? api;
 
   @override
   State<HomePage> createState() => _HomePageState();
 }
 
 class _HomePageState extends State<HomePage> {
-  String _selectedCategory = 'Gynecologist';
   final _searchController = TextEditingController();
+  late final ClinicApiClient _api;
+  late final DoctorRepository _repository;
+  List<DoctorSummary> _doctors = [];
+  bool _loading = true;
+  ApiException? _error;
+
+  @override
+  void initState() {
+    super.initState();
+    _api = widget.api ?? ClinicApiClient(tokenProvider: widget.tokenProvider);
+    _repository = DoctorRepository(_api);
+    _searchController.addListener(_refreshFilter);
+    _load();
+  }
 
   @override
   void dispose() {
-    _searchController.dispose();
+    _searchController
+      ..removeListener(_refreshFilter)
+      ..dispose();
     super.dispose();
+  }
+
+  void _refreshFilter() => setState(() {});
+
+  Future<void> _load() async {
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
+    try {
+      final doctors = await _repository.fetchActive();
+      if (mounted) setState(() => _doctors = doctors);
+    } on ApiException catch (error) {
+      if (mounted) setState(() => _error = error);
+    } finally {
+      if (mounted) setState(() => _loading = false);
+    }
+  }
+
+  List<DoctorSummary> get _filteredDoctors {
+    final query = _searchController.text.trim().toLowerCase();
+    if (query.isEmpty) return _doctors;
+    return _doctors
+        .where((doctor) =>
+            doctor.displayName.toLowerCase().contains(query) ||
+            (doctor.bio?.toLowerCase().contains(query) ?? false))
+        .toList(growable: false);
   }
 
   @override
   Widget build(BuildContext context) {
+    final doctors = _filteredDoctors;
     return Scaffold(
       backgroundColor: ClinicColors.scaffold,
       body: SafeArea(
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.fromLTRB(16, 10, 16, 24),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
+        child: RefreshIndicator(
+          onRefresh: _load,
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 24),
             children: [
-              HomeHeader(
-                onNotificationTap: () {
-                  // điều hướng tới tab Thông báo nếu cần
-                  ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('Mở thông báo')));
-                },
-              ),
+              HomeHeader(onNotificationTap: widget.onOpenNotifications),
               const SizedBox(height: 18),
               const Text(
-                'Manage Your\nHealth with Ease',
+                'Chăm sóc sức khỏe\ndễ dàng hơn',
                 style: TextStyle(
                   fontSize: 24,
                   height: 1.1,
                   fontWeight: FontWeight.w800,
-                  letterSpacing: -0.6,
                   color: ClinicColors.ink,
                 ),
               ),
               const SizedBox(height: 16),
               HomeSearchField(controller: _searchController),
-              const SizedBox(height: 18),
-              _SectionLabel(
-                  title: 'Doctor Categories', onViewAll: () {}),
-              const SizedBox(height: 10),
-              SizedBox(
-                height: 36,
-                child: ListView(
-                  scrollDirection: Axis.horizontal,
-                  children: [
-                    CategoryChip(
-                      label: 'Gynecologist',
-                      icon: Icons.favorite_border,
-                      selected: _selectedCategory == 'Gynecologist',
-                      onTap: () =>
-                          setState(() => _selectedCategory = 'Gynecologist'),
-                    ),
-                    const SizedBox(width: 8),
-                    CategoryChip(
-                      label: 'Cardiologist',
-                      icon: Icons.monitor_heart_outlined,
-                      selected: _selectedCategory == 'Cardiologist',
-                      onTap: () =>
-                          setState(() => _selectedCategory = 'Cardiologist'),
-                    ),
-                    const SizedBox(width: 8),
-                    CategoryChip(
-                      label: 'Neurologist',
-                      icon: Icons.psychology_outlined,
-                      selected: _selectedCategory == 'Neurologist',
-                      onTap: () =>
-                          setState(() => _selectedCategory = 'Neurologist'),
-                    ),
-                  ],
+              const SizedBox(height: 20),
+              const Text(
+                'Bác sĩ đang hoạt động',
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight: FontWeight.w700,
+                  color: ClinicColors.ink,
                 ),
               ),
-              const SizedBox(height: 18),
-              _SectionLabel(title: 'Available Doctor', onViewAll: () {}),
               const SizedBox(height: 10),
-              SizedBox(
-                height: 176,
-                child: ListView.separated(
-                  scrollDirection: Axis.horizontal,
-                  itemCount: 3,
-                  separatorBuilder: (_, __) => const SizedBox(width: 12),
-                  itemBuilder: (context, index) {
-                    if (index == 0) {
-                      return AvailableDoctorCard(
-                        onTap: () => Navigator.of(context).push(
-                          MaterialPageRoute(
-                              builder: (_) => const DoctorDetailPage()),
+              if (_loading)
+                const AppLoadingState(label: 'Đang tải danh sách bác sĩ...')
+              else if (_error != null)
+                AppErrorState(
+                  message: _error!.message,
+                  requestId: _error!.requestId,
+                  onRetry: _load,
+                )
+              else if (doctors.isEmpty)
+                const AppEmptyState(
+                  title: 'Không tìm thấy bác sĩ',
+                  message: 'Thử một từ khóa khác hoặc tải lại danh sách.',
+                  icon: Icons.medical_services_outlined,
+                )
+              else
+                ...doctors.map(
+                  (doctor) => Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: AvailableDoctorCard(
+                      doctor: doctor,
+                      onTap: () => Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => DoctorDetailPage(
+                            doctorId: doctor.id,
+                            tokenProvider: widget.tokenProvider,
+                            api: _api,
+                          ),
                         ),
-                      );
-                    }
-                    return AvailableDoctorCardCompact(index: index);
-                  },
-                ),
-              ),
-              const SizedBox(height: 18),
-              _SectionLabel(title: 'Top 20 Doctor', onViewAll: () {}),
-              const SizedBox(height: 10),
-              TopDoctorTile(
-                onCall: () => ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Gọi Dr. Alex Johnson'))),
-                onTap: () => Navigator.of(context).push(
-                  MaterialPageRoute(builder: (_) => const DoctorDetailPage()),
-                ),
-              ),
-              const SizedBox(height: 10),
-              Center(
-                child: Container(
-                  width: 120,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: ClinicColors.ink,
-                    borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
                   ),
                 ),
-              ),
             ],
           ),
         ),
       ),
-    );
-  }
-}
-
-class _SectionLabel extends StatelessWidget {
-  const _SectionLabel({required this.title, required this.onViewAll});
-  final String title;
-  final VoidCallback onViewAll;
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Text(title,
-            style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w700,
-                color: ClinicColors.ink)),
-        const Spacer(),
-        GestureDetector(
-          onTap: onViewAll,
-          child: const Text('View All',
-              style: TextStyle(
-                  fontSize: 11,
-                  color: ClinicColors.muted,
-                  fontWeight: FontWeight.w500)),
-        ),
-      ],
     );
   }
 }

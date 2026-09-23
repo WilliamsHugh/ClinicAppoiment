@@ -20,23 +20,20 @@ class HomeHeader extends StatelessWidget {
             border: Border.all(color: Colors.white, width: 2),
           ),
           alignment: Alignment.center,
-          child: const Text('SJ',
-              style: TextStyle(
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
-                  color: ClinicColors.ink)),
+          child: const Icon(Icons.local_hospital_outlined,
+              size: 20, color: ClinicColors.ink),
         ),
         const SizedBox(width: 10),
         const Expanded(
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Sarah Johnson',
+              Text('Health&Human',
                   style: TextStyle(
                       fontSize: 13,
                       fontWeight: FontWeight.w700,
                       color: ClinicColors.ink)),
-              Text('Good Morning',
+              Text('Chào bạn',
                   style: TextStyle(
                       fontSize: 11,
                       color: ClinicColors.muted,
@@ -54,7 +51,7 @@ class HomeHeader extends StatelessWidget {
               shape: BoxShape.circle,
               boxShadow: [
                 BoxShadow(
-                  color: Colors.black.withOpacity(0.06),
+                  color: Colors.black.withValues(alpha: 0.06),
                   blurRadius: 10,
                   offset: const Offset(0, 4),
                 )

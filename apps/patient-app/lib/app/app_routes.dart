@@ -38,13 +38,16 @@ final patientRoutes = <PatientRoute>[
     path: AppRoutes.doctors,
     label: 'Bác sĩ',
     icon: Icons.medical_services_outlined,
-    builder: (_, __, ___) => const DoctorsPage(),
+    builder: (_, session, navigate) => DoctorsPage(
+      tokenProvider: session,
+      onOpenNotifications: () => navigate(AppRoutes.notifications),
+    ),
   ),
   PatientRoute(
     path: AppRoutes.appointments,
     label: 'Lịch hẹn',
     icon: Icons.calendar_month_outlined,
-    builder: (_, __, ___) => const AppointmentsPage(),
+    builder: (_, session, __) => AppointmentsPage(tokenProvider: session),
   ),
   PatientRoute(
     path: AppRoutes.records,

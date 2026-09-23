@@ -10,7 +10,8 @@ class ReminderBanner extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       decoration: BoxDecoration(
-        gradient: const LinearGradient(colors: [Color(0xFFEFF6FF), Color(0xFFFFF7ED)]),
+        gradient: const LinearGradient(
+            colors: [Color(0xFFEFF6FF), Color(0xFFFFF7ED)]),
         borderRadius: BorderRadius.circular(14),
         border: Border.all(color: ClinicColors.border),
       ),
@@ -19,8 +20,10 @@ class ReminderBanner extends StatelessWidget {
           Icon(Icons.alarm, size: 16, color: ClinicColors.primary),
           SizedBox(width: 8),
           Expanded(
-            child: Text('Nhắc lịch tự động: 24h và 1h trước giờ hẹn qua push notification',
-                style: TextStyle(fontSize: 11, color: ClinicColors.muted, height: 1.35)),
+            child: Text(
+                'Nhắc lịch tự động: 24h và 1h trước giờ hẹn qua push notification',
+                style: TextStyle(
+                    fontSize: 11, color: ClinicColors.muted, height: 1.35)),
           ),
         ],
       ),

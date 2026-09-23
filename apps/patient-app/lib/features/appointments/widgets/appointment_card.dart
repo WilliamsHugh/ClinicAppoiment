@@ -35,7 +35,10 @@ class AppointmentCard extends StatelessWidget {
         color: Colors.white,
         borderRadius: BorderRadius.circular(20),
         boxShadow: [
-          BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 12, offset: const Offset(0, 6)),
+          BoxShadow(
+              color: Colors.black.withValues(alpha: 0.05),
+              blurRadius: 12,
+              offset: const Offset(0, 6)),
         ],
       ),
       child: Column(
@@ -49,7 +52,8 @@ class AppointmentCard extends StatelessWidget {
                 decoration: BoxDecoration(
                     color: const Color(0xFFE0E7FF),
                     borderRadius: BorderRadius.circular(12)),
-                child: const Icon(Icons.person, size: 18, color: Color(0xFF6366F1)),
+                child: const Icon(Icons.person,
+                    size: 18, color: Color(0xFF6366F1)),
               ),
               const SizedBox(width: 10),
               Expanded(
@@ -62,7 +66,8 @@ class AppointmentCard extends StatelessWidget {
                             fontWeight: FontWeight.w700,
                             color: ClinicColors.ink)),
                     Text(data['specialty'].toString(),
-                        style: const TextStyle(fontSize: 11, color: ClinicColors.muted)),
+                        style: const TextStyle(
+                            fontSize: 11, color: ClinicColors.muted)),
                   ],
                 ),
               ),
@@ -72,21 +77,32 @@ class AppointmentCard extends StatelessWidget {
           const SizedBox(height: 12),
           Row(
             children: [
-              const Icon(Icons.calendar_month_outlined, size: 14, color: ClinicColors.muted),
+              const Icon(Icons.calendar_month_outlined,
+                  size: 14, color: ClinicColors.muted),
               const SizedBox(width: 6),
               Text(_fmt(data['scheduledStartAt'].toString()),
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: ClinicColors.ink)),
+                  style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: ClinicColors.ink)),
               const SizedBox(width: 12),
-              const Icon(Icons.access_time, size: 14, color: ClinicColors.muted),
+              const Icon(Icons.access_time,
+                  size: 14, color: ClinicColors.muted),
               const SizedBox(width: 6),
-              Text(_fmt(data['scheduledEndAt'].toString()).split('•').last.trim(),
-                  style: const TextStyle(fontSize: 12, color: ClinicColors.muted)),
+              Text(
+                  _fmt(data['scheduledEndAt'].toString())
+                      .split('•')
+                      .last
+                      .trim(),
+                  style:
+                      const TextStyle(fontSize: 12, color: ClinicColors.muted)),
             ],
           ),
           if (data['reason'] != null) ...[
             const SizedBox(height: 6),
             Text('Lý do: ${data['reason']}',
-                style: const TextStyle(fontSize: 11, color: ClinicColors.muted)),
+                style:
+                    const TextStyle(fontSize: 11, color: ClinicColors.muted)),
           ],
           if (canCancel || canReschedule) ...[
             const SizedBox(height: 12),
@@ -97,10 +113,12 @@ class AppointmentCard extends StatelessWidget {
                     child: OutlinedButton.icon(
                       onPressed: onReschedule,
                       icon: const Icon(Icons.edit_calendar, size: 14),
-                      label: const Text('Đổi lịch', style: TextStyle(fontSize: 12)),
+                      label: const Text('Đổi lịch',
+                          style: TextStyle(fontSize: 12)),
                       style: OutlinedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 10),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14)),
                       ),
                     ),
                   ),
@@ -109,12 +127,16 @@ class AppointmentCard extends StatelessWidget {
                   Expanded(
                     child: OutlinedButton.icon(
                       onPressed: onCancel,
-                      icon: const Icon(Icons.close, size: 14, color: Color(0xFFDC2626)),
-                      label: const Text('Hủy', style: TextStyle(fontSize: 12, color: Color(0xFFDC2626))),
+                      icon: const Icon(Icons.close,
+                          size: 14, color: Color(0xFFDC2626)),
+                      label: const Text('Hủy',
+                          style: TextStyle(
+                              fontSize: 12, color: Color(0xFFDC2626))),
                       style: OutlinedButton.styleFrom(
                         padding: const EdgeInsets.symmetric(vertical: 10),
                         side: const BorderSide(color: Color(0xFFFECACA)),
-                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                        shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(14)),
                       ),
                     ),
                   ),

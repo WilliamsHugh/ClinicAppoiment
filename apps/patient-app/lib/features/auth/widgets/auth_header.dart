@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 
-/// Header dùng chung cho Auth - giữ đúng text test kỳ vọng
-/// để không break widget_test.dart:21
 class AuthHeader extends StatelessWidget {
   const AuthHeader({super.key});
 
@@ -22,7 +20,7 @@ class AuthHeader extends StatelessWidget {
                 style: Theme.of(context).textTheme.headlineSmall),
             const SizedBox(height: 8),
             const Text(
-              'Đăng nhập sẽ được kết nối qua session provider của mô-đun xác thực.',
+              'Sức khỏe của bạn, sự tận tâm của chúng tôi.',
               textAlign: TextAlign.center,
               style: TextStyle(fontSize: 13, height: 1.4),
             ),

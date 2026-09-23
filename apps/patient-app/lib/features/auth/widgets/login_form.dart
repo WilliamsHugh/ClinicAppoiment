@@ -1,10 +1,8 @@
 import 'package:flutter/material.dart';
 
-import '../../../core/theme/app_theme.dart';
-
 class LoginForm extends StatefulWidget {
-  const LoginForm({super.key, this.onSubmit});
-  final void Function(String email, String password)? onSubmit;
+  const LoginForm({required this.onSubmit, super.key});
+  final Future<void> Function(String email, String password) onSubmit;
 
   @override
   State<LoginForm> createState() => _LoginFormState();
@@ -27,14 +25,15 @@ class _LoginFormState extends State<LoginForm> {
   Future<void> _handle() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _loading = true);
-    await Future<void>.delayed(const Duration(milliseconds: 400));
-    if (!mounted) return;
-    setState(() => _loading = false);
-    if (widget.onSubmit != null) {
-      widget.onSubmit!(_email.text.trim(), _pass.text);
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Đăng nhập demo - sẽ thay bằng Supabase Auth')));
+    try {
+      await widget.onSubmit(_email.text.trim(), _pass.text);
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(error.toString())));
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
     }
   }
 
@@ -52,9 +51,8 @@ class _LoginFormState extends State<LoginForm> {
               hintText: 'Email',
               prefixIcon: Icon(Icons.mail_outline, size: 18),
             ),
-            validator: (v) => (v == null || !v.contains('@'))
-                ? 'Email không hợp lệ'
-                : null,
+            validator: (v) =>
+                (v == null || !v.contains('@')) ? 'Email không hợp lệ' : null,
           ),
           const SizedBox(height: 12),
           TextFormField(
@@ -73,14 +71,9 @@ class _LoginFormState extends State<LoginForm> {
                 (v == null || v.length < 6) ? 'Tối thiểu 6 ký tự' : null,
           ),
           const SizedBox(height: 8),
-          Align(
+          const Align(
             alignment: Alignment.centerRight,
-            child: TextButton(
-              onPressed: () => ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Quên mật khẩu - Supabase reset'))),
-              child: const Text('Quên mật khẩu?',
-                  style: TextStyle(fontSize: 12, color: ClinicColors.primary)),
-            ),
+            child: SizedBox.shrink(),
           ),
           const SizedBox(height: 4),
           FilledButton(

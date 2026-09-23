@@ -33,14 +33,4 @@ class SlotRepository {
             ))
         .toList();
   }
-
-  /// Nếu API chưa sẵn, fallback vẫn cho phép demo bằng 4 slot Figma
-  List<Slot> fallbackSlots(String isoDate) {
-    return [
-      Slot(startAt: DateTime.parse('${isoDate}T07:30:00.000Z'), endAt: DateTime.parse('${isoDate}T08:00:00.000Z')),
-      Slot(startAt: DateTime.parse('${isoDate}T08:00:00.000Z'), endAt: DateTime.parse('${isoDate}T08:30:00.000Z')),
-      Slot(startAt: DateTime.parse('${isoDate}T09:30:00.000Z'), endAt: DateTime.parse('${isoDate}T10:00:00.000Z')),
-      Slot(startAt: DateTime.parse('${isoDate}T10:00:00.000Z'), endAt: DateTime.parse('${isoDate}T10:30:00.000Z')),
-    ];
-  }
 }

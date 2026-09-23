@@ -48,8 +48,12 @@ class _PatientAppState extends State<PatientApp> {
             ),
           SessionStatus.authenticated => PatientShell(
               session: _sessionController.session!,
+              onSignOut: _sessionController.signOut,
             ),
-          SessionStatus.unauthenticated => const AuthPage(),
+          SessionStatus.unauthenticated => AuthPage(
+              onLogin: _sessionController.signIn,
+              onRegister: _sessionController.signUp,
+            ),
         },
       ),
     );

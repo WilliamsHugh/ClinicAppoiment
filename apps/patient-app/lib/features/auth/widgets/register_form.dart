@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 
 class RegisterForm extends StatefulWidget {
-  const RegisterForm({super.key, this.onSubmit});
-  final void Function(String name, String email, String password)? onSubmit;
+  const RegisterForm({required this.onSubmit, super.key});
+  final Future<bool> Function(String name, String email, String password)
+      onSubmit;
 
   @override
   State<RegisterForm> createState() => _RegisterFormState();
@@ -29,14 +30,26 @@ class _RegisterFormState extends State<RegisterForm> {
   Future<void> _handle() async {
     if (!_formKey.currentState!.validate()) return;
     setState(() => _loading = true);
-    await Future<void>.delayed(const Duration(milliseconds: 400));
-    if (!mounted) return;
-    setState(() => _loading = false);
-    if (widget.onSubmit != null) {
-      widget.onSubmit!(_name.text.trim(), _email.text.trim(), _pass.text);
-    } else {
-      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
-          content: Text('Đăng ký demo - sẽ gọi Supabase signUp')));
+    try {
+      final signedIn = await widget.onSubmit(
+        _name.text.trim(),
+        _email.text.trim(),
+        _pass.text,
+      );
+      if (!signedIn && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Hãy xác nhận email trước khi đăng nhập.'),
+          ),
+        );
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(error.toString())));
+      }
+    } finally {
+      if (mounted) setState(() => _loading = false);
     }
   }
 
@@ -64,9 +77,8 @@ class _RegisterFormState extends State<RegisterForm> {
               hintText: 'Email',
               prefixIcon: Icon(Icons.mail_outline, size: 18),
             ),
-            validator: (v) => (v == null || !v.contains('@'))
-                ? 'Email không hợp lệ'
-                : null,
+            validator: (v) =>
+                (v == null || !v.contains('@')) ? 'Email không hợp lệ' : null,
           ),
           const SizedBox(height: 12),
           TextFormField(

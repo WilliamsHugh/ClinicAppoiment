@@ -3,9 +3,15 @@ import 'package:flutter/material.dart';
 import '../../../core/theme/app_theme.dart';
 
 class DoctorHero extends StatelessWidget {
-  const DoctorHero({super.key, this.onBack, this.onVideoTap});
+  const DoctorHero({
+    required this.displayName,
+    this.bio,
+    super.key,
+    this.onBack,
+  });
+  final String displayName;
+  final String? bio;
   final VoidCallback? onBack;
-  final VoidCallback? onVideoTap;
 
   @override
   Widget build(BuildContext context) {
@@ -28,7 +34,7 @@ class DoctorHero extends StatelessWidget {
               width: 180,
               height: 180,
               decoration: BoxDecoration(
-                color: const Color(0xFFBFD0FF).withOpacity(0.5),
+                color: const Color(0xFFBFD0FF).withValues(alpha: 0.5),
                 shape: BoxShape.circle,
               ),
             ),
@@ -66,43 +72,40 @@ class DoctorHero extends StatelessWidget {
                 onTap: onBack ?? () => Navigator.of(context).maybePop()),
           ),
           Positioned(
-            top: 10,
-            right: 14,
-            child: _CircleIcon(
-                icon: Icons.videocam_outlined,
-                onTap: onVideoTap ?? () {}),
-          ),
-          const Positioned(
             left: 18,
-            bottom: 56,
+            bottom: 48,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  children: [
-                    Icon(Icons.star, size: 10, color: ClinicColors.ink),
-                    SizedBox(width: 3),
-                    Text('4.9',
-                        style: TextStyle(
-                            fontSize: 10,
-                            fontWeight: FontWeight.w700,
-                            color: ClinicColors.ink)),
-                  ],
-                ),
-                SizedBox(height: 6),
-                Text('Sarah\nJohnson',
-                    style: TextStyle(
+                SizedBox(
+                  width: 165,
+                  child: Text(
+                    displayName,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
                         fontSize: 20,
-                        height: 1.05,
+                        height: 1.1,
                         fontWeight: FontWeight.w800,
-                        color: ClinicColors.ink)),
-                SizedBox(height: 6),
-                Text('MBBS, MD\nMedicine Specialist',
-                    style: TextStyle(
+                        color: ClinicColors.ink),
+                  ),
+                ),
+                const SizedBox(height: 6),
+                SizedBox(
+                  width: 165,
+                  child: Text(
+                    bio?.trim().isNotEmpty == true
+                        ? bio!.trim()
+                        : 'Bác sĩ đang nhận lịch khám',
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
                         fontSize: 9,
                         height: 1.25,
                         color: ClinicColors.muted,
-                        fontWeight: FontWeight.w500)),
+                        fontWeight: FontWeight.w500),
+                  ),
+                ),
               ],
             ),
           ),
@@ -128,7 +131,7 @@ class _CircleIcon extends StatelessWidget {
           shape: BoxShape.circle,
           boxShadow: [
             BoxShadow(
-                color: Colors.black.withOpacity(0.08),
+                color: Colors.black.withValues(alpha: 0.08),
                 blurRadius: 10,
                 offset: const Offset(0, 4)),
           ],

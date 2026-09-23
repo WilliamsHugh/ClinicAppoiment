@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../core/api/api_models.dart';
 import '../../core/api/clinic_api_client.dart';
 import '../../core/session/session.dart';
 import '../../core/theme/app_theme.dart';
@@ -9,7 +10,10 @@ import 'widgets/appointment_card.dart';
 import 'widgets/reschedule_sheet.dart';
 
 class AppointmentsPage extends StatefulWidget {
-  const AppointmentsPage({super.key});
+  const AppointmentsPage({required this.tokenProvider, this.api, super.key});
+
+  final TokenProvider tokenProvider;
+  final ClinicApiClient? api;
 
   @override
   State<AppointmentsPage> createState() => _AppointmentsPageState();
@@ -33,7 +37,8 @@ class _AppointmentsPageState extends State<AppointmentsPage>
     _tab = TabController(length: _tabs.length, vsync: this);
     _tab.addListener(_onTabChanged);
     _repo = AppointmentRepository(
-        ClinicApiClient(tokenProvider: _FallbackTokenProvider()));
+      widget.api ?? ClinicApiClient(tokenProvider: widget.tokenProvider),
+    );
     _load();
   }
 
@@ -57,10 +62,9 @@ class _AppointmentsPageState extends State<AppointmentsPage>
     final status = _statusForTab[_tab.index];
     try {
       final data = await _repo.fetch(status: status);
-      setState(() => _items = data.isEmpty ? _repo.fallback(status) : data);
-    } catch (e) {
-      // fallback để không phá UI
-      setState(() => _items = _repo.fallback(status));
+      if (mounted) setState(() => _items = data);
+    } on ApiException catch (error) {
+      if (mounted) setState(() => _error = error.message);
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -71,10 +75,15 @@ class _AppointmentsPageState extends State<AppointmentsPage>
         context: context,
         builder: (_) => AlertDialog(
               title: const Text('Hủy lịch hẹn?'),
-              content: const Text('Bạn có chắc muốn hủy? Thao tác này không thể hoàn tác nếu đã qua xác nhận.'),
+              content: const Text(
+                  'Bạn có chắc muốn hủy? Thao tác này không thể hoàn tác nếu đã qua xác nhận.'),
               actions: [
-                TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('Không')),
-                FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('Hủy lịch')),
+                TextButton(
+                    onPressed: () => Navigator.pop(context, false),
+                    child: const Text('Không')),
+                FilledButton(
+                    onPressed: () => Navigator.pop(context, true),
+                    child: const Text('Hủy lịch')),
               ],
             ));
     if (confirm != true) return;
@@ -120,43 +129,44 @@ class _AppointmentsPageState extends State<AppointmentsPage>
         backgroundColor: ClinicColors.scaffold,
         title: const Text('Lịch hẹn',
             style: TextStyle(
-                fontSize: 16, fontWeight: FontWeight.w800, color: ClinicColors.ink)),
+                fontSize: 16,
+                fontWeight: FontWeight.w800,
+                color: ClinicColors.ink)),
         bottom: TabBar(
           controller: _tab,
           isScrollable: true,
           labelColor: ClinicColors.primary,
           unselectedLabelColor: ClinicColors.muted,
           indicatorColor: ClinicColors.primary,
-          labelStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
+          labelStyle:
+              const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
           tabs: _tabs.map((t) => Tab(text: t)).toList(),
         ),
       ),
       body: _loading
           ? const AppLoadingState(label: 'Đang tải lịch hẹn...')
-          : _items.isEmpty
-              ? AppEmptyState(
-                  title: 'Chưa có lịch hẹn',
-                  message: 'Trạng thái ${_tabs[_tab.index]} trống',
-                  icon: Icons.calendar_month_outlined,
-                )
-              : RefreshIndicator(
-                  onRefresh: _load,
-                  child: ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-                    itemCount: _items.length,
-                    separatorBuilder: (_, __) => const SizedBox(height: 12),
-                    itemBuilder: (_, i) => AppointmentCard(
-                      data: _items[i],
-                      onCancel: () => _cancel(_items[i]['id'].toString()),
-                      onReschedule: () => _reschedule(_items[i]['id'].toString()),
+          : _error != null
+              ? AppErrorState(message: _error!, onRetry: _load)
+              : _items.isEmpty
+                  ? AppEmptyState(
+                      title: 'Chưa có lịch hẹn',
+                      message: 'Trạng thái ${_tabs[_tab.index]} trống',
+                      icon: Icons.calendar_month_outlined,
+                    )
+                  : RefreshIndicator(
+                      onRefresh: _load,
+                      child: ListView.separated(
+                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
+                        itemCount: _items.length,
+                        separatorBuilder: (_, __) => const SizedBox(height: 12),
+                        itemBuilder: (_, i) => AppointmentCard(
+                          data: _items[i],
+                          onCancel: () => _cancel(_items[i]['id'].toString()),
+                          onReschedule: () =>
+                              _reschedule(_items[i]['id'].toString()),
+                        ),
+                      ),
                     ),
-                  ),
-                ),
     );
   }
-}
-
-class _FallbackTokenProvider implements TokenProvider {
-  @override
-  Future<String?> getAccessToken() async => 'dev-token';
 }

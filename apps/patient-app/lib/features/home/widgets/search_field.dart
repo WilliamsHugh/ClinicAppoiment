@@ -14,7 +14,7 @@ class HomeSearchField extends StatelessWidget {
         borderRadius: BorderRadius.circular(24),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.04),
+            color: Colors.black.withValues(alpha: 0.04),
             blurRadius: 16,
             offset: const Offset(0, 6),
           ),
@@ -24,11 +24,11 @@ class HomeSearchField extends StatelessWidget {
         controller: controller,
         style: const TextStyle(fontSize: 13, color: ClinicColors.ink),
         decoration: InputDecoration(
-          hintText: 'Type name here....',
+          hintText: 'Tìm bác sĩ',
           hintStyle:
               const TextStyle(color: ClinicColors.mutedLight, fontSize: 13),
-          prefixIcon:
-              const Icon(Icons.search, size: 18, color: ClinicColors.mutedLight),
+          prefixIcon: const Icon(Icons.search,
+              size: 18, color: ClinicColors.mutedLight),
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(24),
             borderSide: BorderSide.none,

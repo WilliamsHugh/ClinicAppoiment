@@ -14,18 +14,25 @@ class StatsRow extends StatelessWidget {
         borderRadius: BorderRadius.circular(18),
         boxShadow: [
           BoxShadow(
-              color: Colors.black.withOpacity(0.04),
+              color: Colors.black.withValues(alpha: 0.04),
               blurRadius: 12,
               offset: const Offset(0, 6)),
         ],
       ),
       child: Row(
         children: [
-          _Stat(icon: Icons.access_time, title: '10 Years', subtitle: 'Experience'),
+          const _Stat(
+              icon: Icons.access_time,
+              title: '10 Years',
+              subtitle: 'Experience'),
           _DividerVertical(),
-          _Stat(icon: Icons.groups_outlined, title: '4.5k+', subtitle: 'Patients'),
+          const _Stat(
+              icon: Icons.groups_outlined,
+              title: '4.5k+',
+              subtitle: 'Patients'),
           _DividerVertical(),
-          _Stat(icon: Icons.star_border, title: '2.9k+', subtitle: 'Reviews'),
+          const _Stat(
+              icon: Icons.star_border, title: '2.9k+', subtitle: 'Reviews'),
         ],
       ),
     );
@@ -33,7 +40,8 @@ class StatsRow extends StatelessWidget {
 }
 
 class _Stat extends StatelessWidget {
-  const _Stat({required this.icon, required this.title, required this.subtitle});
+  const _Stat(
+      {required this.icon, required this.title, required this.subtitle});
   final IconData icon;
   final String title;
   final String subtitle;

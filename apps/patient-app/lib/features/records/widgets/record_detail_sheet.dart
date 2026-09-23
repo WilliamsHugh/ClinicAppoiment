@@ -25,22 +25,42 @@ class RecordDetailSheet extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Center(
-                child: Container(width: 40, height: 4, decoration: BoxDecoration(color: ClinicColors.border, borderRadius: BorderRadius.circular(2))),
+                child: Container(
+                    width: 40,
+                    height: 4,
+                    decoration: BoxDecoration(
+                        color: ClinicColors.border,
+                        borderRadius: BorderRadius.circular(2))),
               ),
               const SizedBox(height: 16),
-              Text('Chi tiết kết quả khám', style: Theme.of(context).textTheme.titleLarge?.copyWith(fontWeight: FontWeight.w800)),
+              Text('Chi tiết kết quả khám',
+                  style: Theme.of(context)
+                      .textTheme
+                      .titleLarge
+                      ?.copyWith(fontWeight: FontWeight.w800)),
               const SizedBox(height: 12),
-              _Row(label: 'Chẩn đoán', value: record['diagnosis']?.toString() ?? '—'),
-              _Row(label: 'Triệu chứng', value: record['symptoms']?.toString() ?? '—'),
+              _Row(
+                  label: 'Chẩn đoán',
+                  value: record['diagnosis']?.toString() ?? '—'),
+              _Row(
+                  label: 'Triệu chứng',
+                  value: record['symptoms']?.toString() ?? '—'),
               _Row(label: 'Ghi chú', value: record['notes']?.toString() ?? '—'),
-              _Row(label: 'Điều trị', value: record['treatmentPlan']?.toString() ?? '—'),
+              _Row(
+                  label: 'Điều trị',
+                  value: record['treatmentPlan']?.toString() ?? '—'),
               const SizedBox(height: 12),
-              Text('Đơn thuốc', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700)),
+              Text('Đơn thuốc',
+                  style: Theme.of(context)
+                      .textTheme
+                      .titleMedium
+                      ?.copyWith(fontWeight: FontWeight.w700)),
               const SizedBox(height: 8),
               PrescriptionSection(prescription: record['prescription']),
               const SizedBox(height: 12),
               Text('ID lịch hẹn: ${record['appointmentId']}',
-                  style: const TextStyle(color: ClinicColors.mutedLight, fontSize: 11)),
+                  style: const TextStyle(
+                      color: ClinicColors.mutedLight, fontSize: 11)),
             ],
           ),
         ),
@@ -60,13 +80,19 @@ class _Row extends StatelessWidget {
       child: Container(
         width: double.infinity,
         padding: const EdgeInsets.all(12),
-        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(14)),
+        decoration: BoxDecoration(
+            color: Colors.white, borderRadius: BorderRadius.circular(14)),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(label, style: const TextStyle(fontWeight: FontWeight.w700, color: ClinicColors.muted, fontSize: 11)),
+            Text(label,
+                style: const TextStyle(
+                    fontWeight: FontWeight.w700,
+                    color: ClinicColors.muted,
+                    fontSize: 11)),
             const SizedBox(height: 4),
-            Text(value, style: const TextStyle(fontSize: 13, color: ClinicColors.ink)),
+            Text(value,
+                style: const TextStyle(fontSize: 13, color: ClinicColors.ink)),
           ],
         ),
       ),

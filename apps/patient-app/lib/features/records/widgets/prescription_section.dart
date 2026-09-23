@@ -9,7 +9,8 @@ class PrescriptionSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (prescription == null || (prescription as List).isEmpty) {
-      return const Text('Không có đơn thuốc.', style: TextStyle(color: ClinicColors.muted, fontSize: 12));
+      return const Text('Không có đơn thuốc.',
+          style: TextStyle(color: ClinicColors.muted, fontSize: 12));
     }
     return Column(
       children: (prescription as List).map((p) {
@@ -27,8 +28,11 @@ class PrescriptionSection extends StatelessWidget {
               Container(
                 width: 36,
                 height: 36,
-                decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(10)),
-                child: const Icon(Icons.medication_outlined, size: 18, color: ClinicColors.primary),
+                decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(10)),
+                child: const Icon(Icons.medication_outlined,
+                    size: 18, color: ClinicColors.primary),
               ),
               const SizedBox(width: 10),
               Expanded(
@@ -36,9 +40,14 @@ class PrescriptionSection extends StatelessWidget {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(m['medicineName'].toString(),
-                        style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w700, color: ClinicColors.ink)),
-                    Text('Liều: ${m['dosage']} • Tần suất: ${m['frequency']} • Thời gian: ${m['duration']}',
-                        style: const TextStyle(fontSize: 11, color: ClinicColors.muted)),
+                        style: const TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w700,
+                            color: ClinicColors.ink)),
+                    Text(
+                        'Liều: ${m['dosage']} • Tần suất: ${m['frequency']} • Thời gian: ${m['duration']}',
+                        style: const TextStyle(
+                            fontSize: 11, color: ClinicColors.muted)),
                   ],
                 ),
               ),

@@ -31,7 +31,10 @@ class RecordCard extends StatelessWidget {
           color: Colors.white,
           borderRadius: BorderRadius.circular(20),
           boxShadow: [
-            BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 12, offset: const Offset(0, 6))
+            BoxShadow(
+                color: Colors.black.withValues(alpha: 0.05),
+                blurRadius: 12,
+                offset: const Offset(0, 6))
           ],
         ),
         child: Row(
@@ -39,8 +42,11 @@ class RecordCard extends StatelessWidget {
             Container(
               width: 42,
               height: 42,
-              decoration: BoxDecoration(color: const Color(0xFFEFF6FF), borderRadius: BorderRadius.circular(12)),
-              child: const Icon(Icons.description_outlined, size: 18, color: ClinicColors.primary),
+              decoration: BoxDecoration(
+                  color: const Color(0xFFEFF6FF),
+                  borderRadius: BorderRadius.circular(12)),
+              child: const Icon(Icons.description_outlined,
+                  size: 18, color: ClinicColors.primary),
             ),
             const SizedBox(width: 12),
             Expanded(
@@ -50,30 +56,43 @@ class RecordCard extends StatelessWidget {
                   Text(title,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w700, color: ClinicColors.ink)),
+                      style: const TextStyle(
+                          fontSize: 13,
+                          fontWeight: FontWeight.w700,
+                          color: ClinicColors.ink)),
                   const SizedBox(height: 4),
-                  Text('Ngày: ${_fmt(data['createdAt'].toString())} • ${data['status']}',
-                      style: const TextStyle(fontSize: 11, color: ClinicColors.muted)),
+                  Text(
+                      'Ngày: ${_fmt(data['createdAt'].toString())} • ${data['status']}',
+                      style: const TextStyle(
+                          fontSize: 11, color: ClinicColors.muted)),
                   if (data['symptoms'] != null)
                     Text('Triệu chứng: ${data['symptoms']}',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontSize: 11, color: ClinicColors.mutedLight)),
+                        style: const TextStyle(
+                            fontSize: 11, color: ClinicColors.mutedLight)),
                   if (hasPres)
                     Padding(
                       padding: const EdgeInsets.only(top: 4),
                       child: Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-                        decoration:
-                            BoxDecoration(color: const Color(0xFFECFDF5), borderRadius: BorderRadius.circular(8)),
-                        child: Text('Đơn thuốc: ${(data['prescription'] as List).length} loại',
-                            style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w600, color: Color(0xFF059669))),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 8, vertical: 3),
+                        decoration: BoxDecoration(
+                            color: const Color(0xFFECFDF5),
+                            borderRadius: BorderRadius.circular(8)),
+                        child: Text(
+                            'Đơn thuốc: ${(data['prescription'] as List).length} loại',
+                            style: const TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF059669))),
                       ),
                     ),
                 ],
               ),
             ),
-            const Icon(Icons.chevron_right, size: 18, color: ClinicColors.mutedLight),
+            const Icon(Icons.chevron_right,
+                size: 18, color: ClinicColors.mutedLight),
           ],
         ),
       ),

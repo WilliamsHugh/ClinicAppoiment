@@ -32,18 +32,23 @@ class _RescheduleSheetState extends State<RescheduleSheet> {
             child: Container(
               width: 40,
               height: 4,
-              decoration:
-                  BoxDecoration(color: Colors.grey[300], borderRadius: BorderRadius.circular(2)),
+              decoration: BoxDecoration(
+                  color: Colors.grey[300],
+                  borderRadius: BorderRadius.circular(2)),
             ),
           ),
           const SizedBox(height: 16),
           const Text('Đổi lịch hẹn',
               style: TextStyle(
-                  fontSize: 16, fontWeight: FontWeight.w800, color: ClinicColors.ink)),
+                  fontSize: 16,
+                  fontWeight: FontWeight.w800,
+                  color: ClinicColors.ink)),
           const SizedBox(height: 12),
           const Text('Chọn ngày',
               style: TextStyle(
-                  fontSize: 12, fontWeight: FontWeight.w700, color: ClinicColors.ink)),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: ClinicColors.ink)),
           const SizedBox(height: 8),
           GestureDetector(
             onTap: () async {
@@ -68,7 +73,8 @@ class _RescheduleSheetState extends State<RescheduleSheet> {
                   Text('${_date.day}/${_date.month}/${_date.year}',
                       style: const TextStyle(fontSize: 13)),
                   const Spacer(),
-                  const Icon(Icons.chevron_right, size: 16, color: ClinicColors.muted),
+                  const Icon(Icons.chevron_right,
+                      size: 16, color: ClinicColors.muted),
                 ],
               ),
             ),
@@ -76,7 +82,9 @@ class _RescheduleSheetState extends State<RescheduleSheet> {
           const SizedBox(height: 12),
           const Text('Chọn giờ',
               style: TextStyle(
-                  fontSize: 12, fontWeight: FontWeight.w700, color: ClinicColors.ink)),
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: ClinicColors.ink)),
           const SizedBox(height: 8),
           Wrap(
             spacing: 8,

@@ -30,7 +30,7 @@ class CategoryChip extends StatelessWidget {
           boxShadow: selected
               ? [
                   BoxShadow(
-                      color: ClinicColors.primary.withOpacity(0.3),
+                      color: ClinicColors.primary.withValues(alpha: 0.3),
                       blurRadius: 10,
                       offset: const Offset(0, 4))
                 ]
@@ -47,8 +47,7 @@ class CategoryChip extends StatelessWidget {
               ),
               child: Icon(icon,
                   size: 14,
-                  color:
-                      selected ? ClinicColors.primary : ClinicColors.muted),
+                  color: selected ? ClinicColors.primary : ClinicColors.muted),
             ),
             const SizedBox(width: 8),
             Text(label,

@@ -25,7 +25,7 @@ void main() {
     expect(find.text('Health&Human'), findsOneWidget);
     expect(
       find.text(
-        'Đăng nhập sẽ được kết nối qua session provider của mô-đun xác thực.',
+        'Sức khỏe của bạn, sự tận tâm của chúng tôi.',
       ),
       findsOneWidget,
     );

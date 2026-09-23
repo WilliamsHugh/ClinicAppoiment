@@ -29,7 +29,7 @@ class WelcomePage extends StatelessWidget {
                   shape: BoxShape.circle,
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withOpacity(0.15),
+                      color: Colors.black.withValues(alpha: 0.15),
                       blurRadius: 8,
                       offset: const Offset(0, 4),
                     ),
@@ -44,7 +44,7 @@ class WelcomePage extends StatelessWidget {
                 width: 8,
                 height: 8,
                 decoration: BoxDecoration(
-                  color: const Color(0xFF00E5CC).withOpacity(0.9),
+                  color: const Color(0xFF00E5CC).withValues(alpha: 0.9),
                   shape: BoxShape.circle,
                 ),
               ),
@@ -81,7 +81,7 @@ class WelcomePage extends StatelessWidget {
                             Text(
                               'Health&Human',
                               style: TextStyle(
-                                color: Colors.white.withOpacity(0.95),
+                                color: Colors.white.withValues(alpha: 0.95),
                                 fontWeight: FontWeight.w600,
                                 fontSize: 13,
                                 letterSpacing: 0.2,
@@ -134,16 +134,16 @@ class WelcomePage extends StatelessWidget {
                           borderRadius: BorderRadius.circular(18),
                           boxShadow: [
                             BoxShadow(
-                              color: Colors.black.withOpacity(0.16),
+                              color: Colors.black.withValues(alpha: 0.16),
                               blurRadius: 24,
                               offset: const Offset(0, 12),
                             ),
                           ],
                         ),
-                        child: Column(
+                        child: const Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
-                            const Text(
+                            Text(
                               'Doctor\nConsultations',
                               style: TextStyle(
                                 fontSize: 20,
@@ -153,20 +153,17 @@ class WelcomePage extends StatelessWidget {
                                 color: ClinicColors.ink,
                               ),
                             ),
-                            const SizedBox(height: 16),
+                            SizedBox(height: 16),
                             Row(
                               children: [
                                 _AvatarMini(
-                                    color: const Color(0xFFBFD0FF),
-                                    label: 'S'),
-                                const SizedBox(width: 8),
+                                    color: Color(0xFFBFD0FF), label: 'S'),
+                                SizedBox(width: 8),
                                 _AvatarMini(
-                                    color: const Color(0xFFFFD6C8),
-                                    label: 'A'),
-                                const SizedBox(width: 8),
+                                    color: Color(0xFFFFD6C8), label: 'A'),
+                                SizedBox(width: 8),
                                 _AvatarMini(
-                                    color: const Color(0xFFBCE8FF),
-                                    label: 'J'),
+                                    color: Color(0xFFBCE8FF), label: 'J'),
                               ],
                             ),
                           ],
@@ -255,7 +252,7 @@ class _LineArtPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = Colors.white.withOpacity(0.30)
+      ..color = Colors.white.withValues(alpha: 0.30)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.2;
 
@@ -263,24 +260,29 @@ class _LineArtPainter extends CustomPainter {
     // đường cong lớn như trong hình giữa
     path.moveTo(size.width * 0.38, 10);
     path.cubicTo(
-      size.width * 0.55, 8,
-      size.width * 0.58, 26,
-      size.width * 0.48, 52,
+      size.width * 0.55,
+      8,
+      size.width * 0.58,
+      26,
+      size.width * 0.48,
+      52,
     );
     path.cubicTo(
-      size.width * 0.40, 74,
-      size.width * 0.62, 78,
-      size.width * 0.72, 62,
+      size.width * 0.40,
+      74,
+      size.width * 0.62,
+      78,
+      size.width * 0.72,
+      62,
     );
     canvas.drawPath(path, paint);
 
     // vòng tròn nhỏ mờ
     final dotPaint = Paint()
-      ..color = Colors.white.withOpacity(0.18)
+      ..color = Colors.white.withValues(alpha: 0.18)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1;
-    canvas.drawCircle(
-        Offset(size.width * 0.58, 26), 18, dotPaint);
+    canvas.drawCircle(Offset(size.width * 0.58, 26), 18, dotPaint);
   }
 
   @override
