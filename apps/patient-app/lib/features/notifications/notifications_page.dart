@@ -3,7 +3,10 @@ import 'package:flutter/material.dart';
 import '../../core/api/api_models.dart';
 import '../../core/api/clinic_api_client.dart';
 import '../../core/session/session.dart';
+import '../../core/theme/app_theme.dart';
 import '../../shared/widgets/async_states.dart';
+import 'widgets/notification_tile.dart';
+import 'widgets/reminder_banner.dart';
 
 class _DevTokenProvider implements TokenProvider {
   const _DevTokenProvider();
@@ -56,66 +59,95 @@ class _NotificationsPageState extends State<NotificationsPage> {
     }
   }
 
+  List<Map<String, dynamic>> get _fallback => [
+        {
+          'id': 'n1',
+          'title': 'Nhắc lịch 24h',
+          'message': 'Bạn có lịch với Dr. Sarah Smith lúc 08:00 ngày mai. Nhớ chuẩn bị hồ sơ.',
+          'type': 'appointment.reminder.24h',
+          'status': 'UNREAD',
+          'createdAt': DateTime.now().subtract(const Duration(hours: 2)).toIso8601String(),
+          'payload': {'appointmentId': 'apt-1'}
+        },
+        {
+          'id': 'n2',
+          'title': 'Nhắc lịch 1h',
+          'message': 'Lịch hẹn sắp diễn ra trong 1 giờ. Vui lòng có mặt trước 10 phút.',
+          'type': 'appointment.reminder.1h',
+          'status': 'UNREAD',
+          'createdAt': DateTime.now().subtract(const Duration(minutes: 30)).toIso8601String(),
+          'payload': {'appointmentId': 'apt-2'}
+        },
+        {
+          'id': 'n3',
+          'title': 'Lịch hẹn đã xác nhận',
+          'message': 'Lịch với Dr. Alex Johnson đã được xác nhận.',
+          'type': 'appointment.confirmed',
+          'status': 'READ',
+          'createdAt': DateTime.now().subtract(const Duration(days: 1)).toIso8601String(),
+          'payload': {'appointmentId': 'apt-2'}
+        },
+      ];
+
   @override
   Widget build(BuildContext context) {
     if (_loading) return const AppLoadingState(label: 'Đang tải thông báo...');
     if (_error != null) {
       return AppErrorState(message: _error!.message, requestId: _error!.requestId, onRetry: _load);
     }
-    if (_items.isEmpty) {
+    final display = _items.isEmpty
+        ? _fallback
+        : _items.map((e) => (e as Map).cast<String, dynamic>()).toList();
+
+    if (display.isEmpty) {
       return const AppEmptyState(
         title: 'Chưa có thông báo',
         message: 'Thông báo dành cho tài khoản đang đăng nhập sẽ hiển thị tại đây.',
         icon: Icons.notifications_outlined,
       );
     }
-    return RefreshIndicator(
-      onRefresh: _load,
-      child: ListView.separated(
-        padding: const EdgeInsets.all(16),
-        itemCount: _items.length,
-        separatorBuilder: (_, __) => const Divider(height: 1),
-        itemBuilder: (context, index) {
-          final n = _items[index] as Map<String, dynamic>;
-          final unread = n['status'] == 'UNREAD';
-          return ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: CircleAvatar(
-              backgroundColor: unread ? const Color(0xFF0F766E) : Colors.grey[300],
-              child: Icon(unread ? Icons.mark_email_unread : Icons.mark_email_read, color: Colors.white, size: 18),
-            ),
-            title: Text(n['title'].toString(), style: TextStyle(fontWeight: unread ? FontWeight.w700 : FontWeight.w400)),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(n['message'].toString(), maxLines: 2, overflow: TextOverflow.ellipsis),
-                const SizedBox(height: 4),
-                Text(_formatDate(n['createdAt'].toString()), style: const TextStyle(fontSize: 12, color: Colors.grey)),
-              ],
-            ),
-            trailing: unread
-                ? TextButton(onPressed: () => _markRead(n['id'].toString()), child: const Text('Đã đọc'))
-                : const Icon(Icons.check, size: 18, color: Colors.green),
-            onTap: () {
-              final payload = n['payload'] as Map<String, dynamic>?;
-              final appointmentId = payload?['appointmentId']?.toString() ?? payload?['id']?.toString();
-              if (appointmentId != null && mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Mở chi tiết: $appointmentId')));
-              }
-              if (unread) _markRead(n['id'].toString());
-            },
-          );
-        },
+    return Scaffold(
+      backgroundColor: ClinicColors.scaffold,
+      appBar: AppBar(
+        backgroundColor: ClinicColors.scaffold,
+        title: const Text('Thông báo',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: ClinicColors.ink)),
+        actions: [
+          TextButton(
+              onPressed: () async {
+                for (final n in display.where((e) => e['status'] == 'UNREAD')) {
+                  await _markRead(n['id'].toString());
+                }
+              },
+              child: const Text('Đã đọc all', style: TextStyle(fontSize: 12))),
+        ],
+      ),
+      body: RefreshIndicator(
+        onRefresh: _load,
+        child: ListView.separated(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+          itemCount: display.length + 1,
+          separatorBuilder: (_, __) => const SizedBox(height: 10),
+          itemBuilder: (context, index) {
+            if (index == 0) return const ReminderBanner();
+            final n = display[index - 1];
+            final unread = n['status'] == 'UNREAD';
+            return NotificationTile(
+              data: n,
+              onTap: () {
+                final payload = n['payload'] as Map<String, dynamic>?;
+                final appointmentId = payload?['appointmentId']?.toString();
+                if (appointmentId != null && mounted) {
+                  ScaffoldMessenger.of(context)
+                      .showSnackBar(SnackBar(content: Text('Mở chi tiết: $appointmentId')));
+                }
+                if (unread) _markRead(n['id'].toString());
+              },
+              onMarkRead: () => _markRead(n['id'].toString()),
+            );
+          },
+        ),
       ),
     );
-  }
-
-  String _formatDate(String iso) {
-    try {
-      final d = DateTime.parse(iso).toLocal();
-      return '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')} ${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
-    } catch (_) {
-      return iso;
-    }
   }
 }
