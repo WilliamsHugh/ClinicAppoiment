@@ -111,6 +111,10 @@ export class DoctorRepository {
     return this.schedules.filter((schedule) => schedule.doctorId === doctorId);
   }
 
+  findScheduleById(id: string) {
+    return this.schedules.find((schedule) => schedule.id === id);
+  }
+
   createSchedule(input: Omit<DoctorSchedule, "id" | "isActive">) {
     const schedule = { id: randomUUID(), ...input, isActive: true };
     this.schedules.push(schedule);

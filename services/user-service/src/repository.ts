@@ -1,3 +1,4 @@
+import type { Pool } from "pg";
 import type { Role } from "@clinic/shared-types";
 
 export type UserProfile = {
@@ -20,72 +21,111 @@ export type PatientProfile = {
   insuranceNumber?: string;
 };
 
+const userSelect = `id, supabase_auth_user_id AS "supabaseAuthUserId", email,
+  full_name AS "fullName", phone, role, status`;
+const patientSelect = `id, user_id AS "userId", date_of_birth AS "dateOfBirth",
+  gender, address, emergency_contact AS "emergencyContact",
+  insurance_number AS "insuranceNumber"`;
+
 export class UserRepository {
-  private readonly users: UserProfile[] = [
-    {
-      id: "user-patient-1",
-      supabaseAuthUserId: "auth-patient-1",
-      email: "patient@example.com",
-      fullName: "Nguyen Van A",
-      phone: "0900000001",
-      role: "PATIENT",
-      status: "ACTIVE"
-    },
-    {
-      id: "user-doctor-1",
-      supabaseAuthUserId: "auth-doctor-1",
-      email: "doctor@example.com",
-      fullName: "Dr. Tran Thi B",
-      role: "DOCTOR",
-      status: "ACTIVE"
-    }
-  ];
+  constructor(private readonly pool: Pool) {}
 
-  private readonly patients: PatientProfile[] = [
-    {
-      id: "patient-1",
-      userId: "user-patient-1",
-      dateOfBirth: "1998-01-01",
-      gender: "MALE",
-      address: "Ho Chi Minh City"
-    }
-  ];
-
-  findUsers() {
-    return this.users;
+  async findUsers() {
+    const result = await this.pool.query<UserProfile>(
+      `SELECT ${userSelect} FROM user_service.users ORDER BY created_at DESC`,
+    );
+    return result.rows;
   }
 
-  findUserById(id: string) {
-    return this.users.find((user) => user.id === id);
+  async findUserById(id: string) {
+    const result = await this.pool.query<UserProfile>(
+      `SELECT ${userSelect} FROM user_service.users WHERE id = $1`,
+      [id],
+    );
+    return result.rows[0] ?? null;
   }
 
-  findUserByAuthId(supabaseAuthUserId: string) {
-    return this.users.find((user) => user.supabaseAuthUserId === supabaseAuthUserId);
+  async findUserByAuthId(supabaseAuthUserId: string) {
+    const result = await this.pool.query<UserProfile>(
+      `SELECT ${userSelect} FROM user_service.users WHERE supabase_auth_user_id = $1`,
+      [supabaseAuthUserId],
+    );
+    return result.rows[0] ?? null;
   }
 
-  updateUser(id: string, input: Partial<Pick<UserProfile, "fullName" | "phone" | "status" | "role">>) {
-    const user = this.findUserById(id);
-    if (!user) return null;
-    Object.assign(user, input);
-    return user;
+  async updateUser(
+    id: string,
+    input: Partial<
+      Pick<UserProfile, "fullName" | "phone" | "status" | "role">
+    >,
+  ) {
+    const columns = {
+      fullName: "full_name",
+      phone: "phone",
+      status: "status",
+      role: "role",
+    } as const;
+    const entries = Object.entries(input) as Array<
+      [keyof typeof columns, string | undefined]
+    >;
+    if (entries.length === 0) return this.findUserById(id);
+    const assignments = entries
+      .map(([key], index) => `${columns[key]} = $${index + 1}`)
+      .join(", ");
+    const result = await this.pool.query<UserProfile>(
+      `UPDATE user_service.users SET ${assignments}, updated_at = now()
+       WHERE id = $${entries.length + 1} RETURNING ${userSelect}`,
+      [...entries.map(([, value]) => value ?? null), id],
+    );
+    return result.rows[0] ?? null;
   }
 
-  findPatients() {
-    return this.patients;
+  async findPatients() {
+    const result = await this.pool.query<PatientProfile>(
+      `SELECT ${patientSelect} FROM user_service.patient_profiles ORDER BY created_at DESC`,
+    );
+    return result.rows;
   }
 
-  findPatientById(id: string) {
-    return this.patients.find((patient) => patient.id === id);
+  async findPatientById(id: string) {
+    const result = await this.pool.query<PatientProfile>(
+      `SELECT ${patientSelect} FROM user_service.patient_profiles WHERE id = $1`,
+      [id],
+    );
+    return result.rows[0] ?? null;
   }
 
-  findPatientByUserId(userId: string) {
-    return this.patients.find((patient) => patient.userId === userId);
+  async findPatientByUserId(userId: string) {
+    const result = await this.pool.query<PatientProfile>(
+      `SELECT ${patientSelect} FROM user_service.patient_profiles WHERE user_id = $1`,
+      [userId],
+    );
+    return result.rows[0] ?? null;
   }
 
-  updatePatient(id: string, input: Partial<PatientProfile>) {
-    const patient = this.findPatientById(id);
-    if (!patient) return null;
-    Object.assign(patient, input);
-    return patient;
+  async updatePatient(
+    id: string,
+    input: Partial<Omit<PatientProfile, "id" | "userId">>,
+  ) {
+    const columns = {
+      dateOfBirth: "date_of_birth",
+      gender: "gender",
+      address: "address",
+      emergencyContact: "emergency_contact",
+      insuranceNumber: "insurance_number",
+    } as const;
+    const entries = Object.entries(input) as Array<
+      [keyof typeof columns, string | undefined]
+    >;
+    if (entries.length === 0) return this.findPatientById(id);
+    const assignments = entries
+      .map(([key], index) => `${columns[key]} = $${index + 1}`)
+      .join(", ");
+    const result = await this.pool.query<PatientProfile>(
+      `UPDATE user_service.patient_profiles SET ${assignments}, updated_at = now()
+       WHERE id = $${entries.length + 1} RETURNING ${patientSelect}`,
+      [...entries.map(([, value]) => value ?? null), id],
+    );
+    return result.rows[0] ?? null;
   }
 }

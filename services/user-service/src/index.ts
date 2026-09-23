@@ -1,19 +1,26 @@
 import cors from "cors";
 import express from "express";
+import { Pool } from "pg";
 import swaggerUi from "swagger-ui-express";
 import { z } from "zod";
 import { UserRepository } from "./repository.js";
 
-const app = express();
-const repository = new UserRepository();
+const databaseUrl = process.env.DATABASE_URL;
+if (!databaseUrl) throw new Error("DATABASE_URL is required by User Service");
+const pool = new Pool({
+  connectionString: databaseUrl,
+  ssl: process.env.DATABASE_SSL === "true"
+    ? { rejectUnauthorized: true }
+    : undefined,
+});
+export const app = express();
+const repository = new UserRepository(pool);
 const port = Number(process.env.USER_SERVICE_PORT ?? 3001);
 
-const updateUserSchema = z.object({
+const updateOwnUserSchema = z.object({
   fullName: z.string().min(2).optional(),
-  phone: z.string().optional(),
-  status: z.enum(["ACTIVE", "INACTIVE", "LOCKED"]).optional(),
-  role: z.enum(["PATIENT", "DOCTOR", "STAFF", "ADMIN"]).optional()
-});
+  phone: z.string().optional()
+}).strict();
 
 const updatePatientSchema = z.object({
   dateOfBirth: z.string().optional(),
@@ -50,91 +57,141 @@ function error(code: string, message: string, details: unknown[] = []) {
   return { success: false, error: { code, message, details } };
 }
 
-app.get("/health", (_req, res) => res.json(success({ service: "user-service", status: "ok" })));
+function actor(req: express.Request) {
+  const userId = req.header("x-user-id");
+  const role = req.header("x-role");
+  return userId && role ? { userId, role } : null;
+}
 
-app.get("/api/v1/auth/me", (req, res) => {
-  const authUserId = req.header("x-supabase-auth-user-id") ?? "auth-patient-1";
-  const user = repository.findUserByAuthId(authUserId);
+function requireRoles(...roles: string[]): express.RequestHandler {
+  return (req, res, next) => {
+    const who = actor(req);
+    if (!who) return res.status(401).json(error("AUTH_REQUIRED", "Authentication required"));
+    if (!roles.includes(who.role)) return res.status(403).json(error("ACCESS_DENIED", "Access denied"));
+    next();
+  };
+}
+
+app.get("/health", async (_req, res) => {
+  try {
+    await pool.query("SELECT 1");
+    return res.json(success({ service: "user-service", status: "ok" }));
+  } catch {
+    return res.status(503).json(error("DATABASE_UNAVAILABLE", "Database is unavailable"));
+  }
+});
+
+app.get("/api/v1/auth/me", async (req, res) => {
+  const authUserId = req.header("x-supabase-auth-user-id");
+  if (!authUserId) return res.status(401).json(error("AUTH_REQUIRED", "Authentication required"));
+  const user = await repository.findUserByAuthId(authUserId);
   if (!user) return res.status(404).json(error("USER_NOT_FOUND", "User not found"));
   return res.json(success(user));
 });
 
-app.get("/api/v1/users/me", (req, res) => {
-  const userId = req.header("x-user-id") ?? "user-patient-1";
-  const user = repository.findUserById(userId);
+app.get("/api/v1/users/me", requireRoles("PATIENT", "DOCTOR", "STAFF", "ADMIN"), async (req, res) => {
+  const userId = req.header("x-user-id");
+  if (!userId) return res.status(401).json(error("AUTH_REQUIRED", "Authentication required"));
+  const user = await repository.findUserById(userId);
   if (!user) return res.status(404).json(error("USER_NOT_FOUND", "User not found"));
   return res.json(success(user));
 });
 
-app.patch("/api/v1/users/me", (req, res) => {
-  const userId = req.header("x-user-id") ?? "user-patient-1";
-  const parsed = updateUserSchema.safeParse(req.body);
+app.patch("/api/v1/users/me", requireRoles("PATIENT", "DOCTOR", "STAFF", "ADMIN"), async (req, res) => {
+  const userId = req.header("x-user-id");
+  if (!userId) return res.status(401).json(error("AUTH_REQUIRED", "Authentication required"));
+  const parsed = updateOwnUserSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json(error("VALIDATION_ERROR", "Invalid request body", parsed.error.issues));
-  const user = repository.updateUser(userId, parsed.data);
+  const user = await repository.updateUser(userId, parsed.data);
   if (!user) return res.status(404).json(error("USER_NOT_FOUND", "User not found"));
   return res.json(success(user));
 });
 
-app.get("/api/v1/users", (req, res) => {
+app.get("/api/v1/users", requireRoles("ADMIN"), async (req, res) => {
   const page = Number(req.query.page ?? 1);
   const limit = Number(req.query.limit ?? 20);
-  const items = repository.findUsers();
+  const items = await repository.findUsers();
   return res.json(success({ items, page, limit, total: items.length }));
 });
 
-app.get("/api/v1/users/:id", (req, res) => {
-  const user = repository.findUserById(req.params.id);
+app.get("/api/v1/users/:id", requireRoles("ADMIN"), async (req, res) => {
+  const user = await repository.findUserById(String(req.params.id));
   if (!user) return res.status(404).json(error("USER_NOT_FOUND", "User not found"));
   return res.json(success(user));
 });
 
-app.patch("/api/v1/users/:id/status", (req, res) => {
+app.patch("/api/v1/users/:id/status", requireRoles("ADMIN"), async (req, res) => {
   const parsed = z.object({ status: z.enum(["ACTIVE", "INACTIVE", "LOCKED"]) }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json(error("VALIDATION_ERROR", "Invalid request body", parsed.error.issues));
-  const user = repository.updateUser(req.params.id, { status: parsed.data.status });
+  const user = await repository.updateUser(String(req.params.id), { status: parsed.data.status });
   if (!user) return res.status(404).json(error("USER_NOT_FOUND", "User not found"));
   return res.json(success(user));
 });
 
-app.patch("/api/v1/users/:id/role", (req, res) => {
+app.patch("/api/v1/users/:id/role", requireRoles("ADMIN"), async (req, res) => {
   const parsed = z.object({ role: z.enum(["PATIENT", "DOCTOR", "STAFF", "ADMIN"]) }).safeParse(req.body);
   if (!parsed.success) return res.status(400).json(error("VALIDATION_ERROR", "Invalid request body", parsed.error.issues));
-  const user = repository.updateUser(req.params.id, { role: parsed.data.role });
+  const user = await repository.updateUser(String(req.params.id), { role: parsed.data.role });
   if (!user) return res.status(404).json(error("USER_NOT_FOUND", "User not found"));
   return res.json(success(user));
 });
 
-app.get("/api/v1/patients", (_req, res) => {
-  const items = repository.findPatients();
+app.get("/api/v1/patients", requireRoles("DOCTOR", "STAFF", "ADMIN"), async (_req, res) => {
+  const items = await repository.findPatients();
   return res.json(success({ items, page: 1, limit: 20, total: items.length }));
 });
 
-app.get("/api/v1/patients/:id", (req, res) => {
-  const patient = repository.findPatientById(req.params.id);
+app.get("/api/v1/patients/:id", requireRoles("PATIENT", "DOCTOR", "STAFF", "ADMIN"), async (req, res) => {
+  const patient = await repository.findPatientById(String(req.params.id));
   if (!patient) return res.status(404).json(error("PATIENT_NOT_FOUND", "Patient not found"));
+  const who = actor(req)!;
+  if (who.role === "PATIENT" && patient.userId !== who.userId) {
+    return res.status(403).json(error("ACCESS_DENIED", "Access denied"));
+  }
   return res.json(success(patient));
 });
 
-app.get("/internal/v1/patients/by-user/:userId", (req, res) => {
-  const patient = repository.findPatientByUserId(req.params.userId);
+app.get("/internal/v1/patients/by-user/:userId", async (req, res) => {
+  const patient = await repository.findPatientByUserId(req.params.userId);
   if (!patient) return res.status(404).json(error("PATIENT_NOT_FOUND", "Patient not found"));
   return res.json(success({ id: patient.id, userId: patient.userId }));
 });
 
-app.get("/internal/v1/patients/:id", (req, res) => {
-  const patient = repository.findPatientById(req.params.id);
+app.get("/internal/v1/patients/:id", async (req, res) => {
+  const patient = await repository.findPatientById(req.params.id);
   if (!patient) return res.status(404).json(error("PATIENT_NOT_FOUND", "Patient not found"));
   return res.json(success({ id: patient.id, userId: patient.userId }));
 });
 
-app.patch("/api/v1/patients/:id", (req, res) => {
+app.patch("/api/v1/patients/:id", requireRoles("PATIENT", "ADMIN"), async (req, res) => {
+  const patientId = String(req.params.id);
+  const existing = await repository.findPatientById(patientId);
+  if (!existing) return res.status(404).json(error("PATIENT_NOT_FOUND", "Patient not found"));
+  const who = actor(req)!;
+  if (who.role === "PATIENT" && existing.userId !== who.userId) {
+    return res.status(403).json(error("ACCESS_DENIED", "Access denied"));
+  }
   const parsed = updatePatientSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json(error("VALIDATION_ERROR", "Invalid request body", parsed.error.issues));
-  const patient = repository.updatePatient(req.params.id, parsed.data);
+  const patient = await repository.updatePatient(patientId, parsed.data);
   if (!patient) return res.status(404).json(error("PATIENT_NOT_FOUND", "Patient not found"));
   return res.json(success(patient));
 });
 
-app.listen(port, () => {
-  console.log(`User Service listening on port ${port}`);
+app.use((req, res, next) => {
+  if (req.path.startsWith("/api/v1/")) {
+    return res.status(404).json(error("ROUTE_NOT_FOUND", "Route not found"));
+  }
+  next();
 });
+
+app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  console.error("User Service request failed", err instanceof Error ? err.message : "Unknown error");
+  return res.status(503).json(error("SERVICE_UNAVAILABLE", "User Service is temporarily unavailable"));
+});
+
+if (process.env.NODE_ENV !== "test") {
+  app.listen(port, () => {
+    console.log(`User Service listening on port ${port}`);
+  });
+}

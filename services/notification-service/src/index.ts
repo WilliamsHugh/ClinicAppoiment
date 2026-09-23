@@ -120,6 +120,10 @@ app.post("/internal/v1/notifications/:id/retry", async (req, res) => {
   const delivery = await repository.retryDelivery(req.params.id);
   return delivery ? res.json(ok(delivery)) : fail(res, 409, "NOTIFICATION_RETRY_UNAVAILABLE", "No failed delivery can be retried");
 });
+app.use((req, res, next) => {
+  if (req.path.startsWith("/api/v1/")) return fail(res, 404, "ROUTE_NOT_FOUND", "Route not found");
+  next();
+});
 app.use((error: unknown, _req: Request, res: express.Response, _next: express.NextFunction) => {
   console.error(JSON.stringify({ message: "Notification request failed", error: String(error) }));
   return fail(res, 503, "SERVICE_UNAVAILABLE", "Service temporarily unavailable");

@@ -173,6 +173,11 @@ app.get("/internal/v1/medical-records/by-appointment/:appointmentId", async (req
   return record ? res.json({ success: true, data: record }) : fail(res, 404, "MEDICAL_RECORD_NOT_FOUND", "Record not found");
 });
 
+app.use((req, res, next) => {
+  if (req.path.startsWith("/api/v1/")) return fail(res, 404, "ROUTE_NOT_FOUND", "Route not found");
+  next();
+});
+
 app.use((error: unknown, _req: Request, res: express.Response, _next: express.NextFunction) => {
   console.error(JSON.stringify({ message: "Medical Record request failed", error: String(error) }));
   return fail(res, 503, "SERVICE_UNAVAILABLE", "Service temporarily unavailable");
