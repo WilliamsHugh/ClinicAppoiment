@@ -7,12 +7,67 @@ Tài liệu này là hợp đồng API chuẩn cho các nhánh triển khai ti�
 - API public chỉ truy cập qua API Gateway, prefix `/api/v1`.
 - Frontend không gọi trực tiếp service nghiệp vụ hoặc truy vấn bảng Supabase.
 - API nội bộ dùng prefix `/internal/v1`, chỉ được gọi trong mạng backend và không được expose qua Gateway.
-- Mỗi service là chủ sở hữu duy nhất của dữ liệu trong schema riêng.
+- Mỗi service là chủ sở hữu duy nhất của database và schema riêng.
 - ID là chuỗi opaque đối với client. Không phụ thuộc định dạng ID nội bộ.
 - Request/response dùng JSON UTF-8. Ngày giờ truyền giữa service theo ISO 8601 UTC, ví dụ `2026-09-20T03:30:00.000Z`.
 - API v1 không hard-delete hồ sơ bệnh án.
 
 Base URL local: `http://localhost:8080`.
+
+### Chính sách định tuyến và quyền sở hữu API
+
+Luồng public bắt buộc là `Frontend -> API Gateway -> service sở hữu -> database của service`;
+response đi ngược lại qua Gateway. Frontend chỉ cấu hình Gateway URL, không giữ service URL,
+Supabase URL/key hoặc database URL. Giao tiếp nội bộ giữa các service dùng `/internal/v1`,
+địa chỉ từ biến môi trường và mạng backend không public; các lời gọi này không đi vòng qua Gateway.
+
+Gateway định tuyến theo **nhóm prefix**, không đăng ký lại từng endpoint nghiệp vụ:
+
+| Prefix public | Chủ sở hữu | Biến đích tại Gateway |
+|---|---|---|
+| `/api/v1/auth` | Gateway sở hữu login/register/refresh/logout; User Service sở hữu profile `/me` | `USER_SERVICE_URL` |
+| `/api/v1/users`, `/api/v1/patients` | User Service | `USER_SERVICE_URL` |
+| `/api/v1/doctors`, `/api/v1/specialties`, `/api/v1/schedules` | Doctor Service | `DOCTOR_SERVICE_URL` |
+| `/api/v1/appointments` | Appointment Service | `APPOINTMENT_SERVICE_URL` |
+| `/api/v1/medical-records` | Medical Record Service | `MEDICAL_RECORD_SERVICE_URL` |
+| `/api/v1/notifications` | Notification Service | `NOTIFICATION_SERVICE_URL` |
+
+Express mount path có biên segment nên `/api/v1/doctors` và mọi đường dẫn con được chuyển tới
+Doctor Service, nhưng `/api/v1/doctors-other` không match. Gateway tái tạo nguyên đường dẫn public;
+service nhận đúng path, query và method mà frontend gửi. Không có quy ước strip prefix. Request body,
+`Authorization`, `Idempotency-Key`, content headers và response phù hợp được proxy chuyển tiếp.
+Gateway luôn xóa/ghi đè `X-User-Id`, `X-Role`, `X-Supabase-Auth-User-Id` từ client trước khi thêm
+danh tính đã xác minh.
+
+Mặc định mọi nhóm nghiệp vụ yêu cầu đăng nhập. Ngoại lệ public hiện chỉ gồm `GET /health`, tài liệu
+Gateway và `POST /api/v1/auth/login|register|refresh`; logout cần access token và refresh token.
+Gateway kiểm tra JWT, CORS, rate limit, request ID và trạng thái upstream. Service kiểm tra role,
+quyền sở hữu tài nguyên, validation, state transition và chỉ truy cập database mình sở hữu.
+
+Thành viên được tự thêm endpoint dưới prefix service đã sở hữu mà **không sửa Gateway**. Trong cùng
+pull request, thành viên phải thêm route/validation/authorization trong service, cập nhật OpenAPI của
+service, cập nhật endpoint tương ứng trong tài liệu này và thêm test. Chỉ sửa Gateway khi thêm/đổi
+prefix public, đổi service đích, thêm ngoại lệ public, hoặc thay đổi chính sách chung như auth, CORS,
+rate limit, timeout, logging và error normalization. Mọi thay đổi đó cần reviewer phụ trách Gateway;
+endpoint mới nằm trong prefix cũ không cần reviewer Gateway sửa code thay.
+
+Ví dụ frontend:
+
+```http
+GET http://localhost:8080/api/v1/doctors?page=1&limit=20
+Authorization: Bearer <access_token>
+```
+
+```http
+POST http://localhost:8080/api/v1/appointments
+Authorization: Bearer <access_token>
+Content-Type: application/json
+Idempotency-Key: 4f093634-63d2-4c37-86ab-8bb592f077eb
+```
+
+Gateway trả `404 ROUTE_NOT_FOUND` khi prefix hoặc endpoint service không tồn tại,
+`502 UPSTREAM_SERVICE_UNAVAILABLE` khi không kết nối được service, và
+`504 UPSTREAM_SERVICE_TIMEOUT` khi service quá thời gian. Gateway không tự retry request ghi.
 
 ## 2. Quy Ước Request
 
@@ -23,10 +78,10 @@ Request có body JSON:
 ```http
 Content-Type: application/json
 Accept: application/json
-Authorization: Bearer <supabase_access_token>
+Authorization: Bearer <access_token>
 ```
 
-`Authorization` bắt buộc với mọi route public, trừ `GET /health`. Gateway tạo hoặc chuyển tiếp `X-Request-Id`; service ghi ID này vào log và response. Client không được dùng các header nội bộ `X-User-Id`, `X-Role` để tự xác định danh tính.
+`Authorization` bắt buộc với mọi route nghiệp vụ; các ngoại lệ auth public được liệt kê trong chính sách định tuyến ở trên. Gateway tạo hoặc chuyển tiếp `X-Request-Id`; service ghi ID này vào log và response. Client không được dùng các header nội bộ `X-User-Id`, `X-Role` để tự xác định danh tính.
 
 Tạo lịch hẹn phải có:
 
@@ -108,10 +163,11 @@ Danh sách luôn đặt trong `data.items` và có metadata phân trang:
 | `429` | Vượt rate limit |
 | `502` | Service upstream không khả dụng |
 | `503` | Service đang không sẵn sàng |
+| `504` | Service upstream quá thời gian phản hồi |
 
 ## 4. Xác Thực Và Phân Quyền
 
-- Supabase Auth chịu trách nhiệm đăng ký, đăng nhập, refresh và phát hành access token. Hai frontend dùng Supabase Auth SDK cho các thao tác này; không gửi mật khẩu qua User Service.
+- Supabase Auth chịu trách nhiệm lưu thông tin đăng nhập và phát hành token, nhưng chỉ API Gateway giao tiếp với Supabase Auth. Hai frontend gọi `/api/v1/auth/register`, `/login`, `/refresh` và `/logout` qua Gateway; không tích hợp Supabase SDK và không gửi mật khẩu tới User Service.
 - Với API nghiệp vụ, frontend gửi Supabase access token tới Gateway.
 - Gateway xác minh token, lấy `sub`, sau đó tra profile/role có thẩm quyền từ User Service. Không lấy role có thể tự sửa từ user metadata làm nguồn phân quyền.
 - Gateway truyền danh tính đã xác minh tới service nội bộ qua header do Gateway tự ghi đè: `X-User-Id`, `X-Role`, `X-Request-Id`.
@@ -146,11 +202,16 @@ Trong bảng dưới, “đã scaffold” chỉ nói route hiện có trong mã 
 |---|---|---|---|---|
 | `GET` | `/health` | Public | Health của Gateway; không lộ URL nội bộ | Có |
 | `GET` | `/api/v1/system/health` | `ADMIN` | Health tổng hợp, chỉ trả trạng thái từng service | Có, cần tránh trả URL nội bộ |
+| `POST` | `/api/v1/auth/register` | Public | Gateway đăng ký tài khoản PATIENT qua Supabase Auth | Có |
+| `POST` | `/api/v1/auth/login` | Public | Gateway xác thực email/mật khẩu và trả session | Có |
+| `POST` | `/api/v1/auth/refresh` | Public, cần refresh token | Gateway làm mới session | Có |
+| `POST` | `/api/v1/auth/logout` | Đã đăng nhập | Gateway thu hồi session | Có |
 | `GET` | `/api/v1/auth/me` | Bất kỳ role đã đăng nhập | Profile nghiệp vụ tương ứng với Supabase Auth user | Có |
 | `GET` | `/api/v1/users/me` | Bất kỳ role đã đăng nhập | Lấy profile của actor hiện tại | Có |
 | `PATCH` | `/api/v1/users/me` | Bất kỳ role đã đăng nhập | Cập nhật tên/điện thoại của actor | Có |
 
-Supabase Auth SDK là nơi thực hiện sign-up/sign-in/sign-out/refresh. Không tạo endpoint backend để nhận hoặc lưu mật khẩu trong phạm vi MVP.
+Supabase Auth vẫn là hệ thống lưu credential và phát hành token. SDK chỉ chạy trong Gateway;
+Gateway không lưu mật khẩu, còn frontend không nhận cấu hình Supabase.
 
 ### User Và Patient
 
@@ -326,7 +387,7 @@ ghi outbox cùng transaction tạo/cập nhật hồ sơ; worker gửi lại b�
 | `IDEMPOTENCY_KEY_REUSED` | 409 | Key được dùng lại với payload khác |
 | `APPOINTMENT_SLOT_INVALID` | 422 | Slot ngoài lịch hoặc bác sĩ không hoạt động |
 | `UPSTREAM_SERVICE_UNAVAILABLE` | 502 | Gateway không gọi được service |
-| `UPSTREAM_SERVICE_TIMEOUT` | 502 | Service nội bộ không phản hồi trong thời gian chờ của Gateway |
+| `UPSTREAM_SERVICE_TIMEOUT` | 504 | Service nội bộ không phản hồi trong thời gian chờ của Gateway |
 | `UPSTREAM_INVALID_RESPONSE` | 502 | Service nội bộ trả lỗi không đúng response envelope chuẩn |
 | `RATE_LIMIT_EXCEEDED` | 429 | Vượt ngưỡng request |
 | `INTERNAL_SERVER_ERROR` | 500 | Lỗi không mong đợi; response không lộ chi tiết nội bộ |
@@ -335,7 +396,8 @@ ghi outbox cùng transaction tạo/cập nhật hồ sơ; worker gửi lại b�
 
 | Public prefix | Owner service |
 |---|---|
-| `/api/v1/auth`, `/api/v1/users`, `/api/v1/patients` | User Service |
+| `/api/v1/auth` | Gateway cho session endpoint; User Service cho `/me` |
+| `/api/v1/users`, `/api/v1/patients` | User Service |
 | `/api/v1/specialties`, `/api/v1/doctors`, `/api/v1/schedules` | Doctor Service |
 | `/api/v1/appointments` | Appointment Service |
 | `/api/v1/medical-records` | Medical Record Service |
@@ -354,7 +416,7 @@ Các mục dưới đây là gap giữa scaffold hiện tại và contract; khô
 - Internal notification hiện nhận `{ type, payload }` và chưa deduplicate event; bổ sung `eventId` trước khi dựa vào retry.
 - Medical Record Service scaffold có route `/api/v1/patients/{patientId}/medical-records`, nhưng prefix `/api/v1/patients` thuộc User Service ở Gateway. Không expose route này; dùng filter `patientId` trên `/api/v1/medical-records` theo contract.
 - Một số route được liệt kê trong `system-design.md` chưa được code. Triển khai route theo bảng trong tài liệu này và bổ sung Swagger/OpenAPI.
-- Patient App hiện gửi `patientId` cố định và chưa có Supabase Auth; chuyển sang danh tính actor sau `CLIENT-003`/User Auth.
+- Patient App lấy danh tính actor từ phiên do Gateway cấp và không gửi `patientId` cố định khi bệnh nhân tự đặt lịch.
 
 ## 10. Quy Trình Thay Đổi Contract
 

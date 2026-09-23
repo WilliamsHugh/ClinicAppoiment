@@ -2,7 +2,7 @@
 
 ## 1. Tổng Quan Kiến Trúc
 
-Hệ thống đặt lịch khám được thiết kế theo kiến trúc hướng dịch vụ. Hai frontend không gọi trực tiếp các service nội bộ mà chỉ giao tiếp qua API Gateway. Mỗi backend service sở hữu một miền nghiệp vụ riêng, một schema dữ liệu riêng trong Supabase PostgreSQL, và có thể build/deploy độc lập bằng Docker.
+Hệ thống đặt lịch khám được thiết kế theo kiến trúc hướng dịch vụ. Hai frontend không gọi trực tiếp các service nội bộ mà chỉ giao tiếp qua API Gateway. Mỗi backend service sở hữu một miền nghiệp vụ và một PostgreSQL database riêng trong một Supabase project riêng, đồng thời có thể build/deploy độc lập bằng Docker.
 
 Phạm vi MVP gồm đúng 6 backend service:
 
@@ -373,7 +373,7 @@ Tất cả API public qua Gateway dùng prefix `/api/v1`.
 
 ## 8. Thiết Kế Database Theo Supabase Schema
 
-Dùng một Supabase project, nhưng mỗi service sở hữu schema riêng.
+Dùng một Supabase project/database riêng cho mỗi service nghiệp vụ. Tên schema vẫn được giữ theo service để thể hiện quyền sở hữu và tránh phụ thuộc vào `public`. Migration của mỗi service nằm tại `infrastructure/supabase/<service>/schema.sql` và chỉ được chạy trên database của service đó.
 
 ### `user_service`
 
@@ -561,7 +561,8 @@ Khi cần dữ liệu chi tiết, service phải gọi API của service sở h�
 ### Xác thực
 
 - Supabase Auth quản lý đăng ký, đăng nhập và refresh token.
-- Frontend nhận access token từ Supabase Auth.
+- Frontend gọi các endpoint `/api/v1/auth/*` của API Gateway; Gateway mới là thành phần giao tiếp với Supabase Auth.
+- Frontend nhận access token từ API Gateway và không nhận URL/key Supabase.
 - Frontend gửi request đến API Gateway với `Authorization: Bearer <token>`.
 - API Gateway verify JWT bằng Supabase JWKS hoặc Supabase JWT secret phù hợp.
 - Gateway lấy profile/role từ User Service hoặc cache ngắn hạn.
@@ -577,8 +578,8 @@ Khi cần dữ liệu chi tiết, service phải gọi API của service sở h�
 
 ### Bảo mật biến môi trường
 
-- Frontend chỉ dùng Supabase anon key nếu cần.
-- `SUPABASE_SERVICE_ROLE_KEY` chỉ nằm trong backend env.
+- Frontend chỉ có URL của API Gateway, tuyệt đối không có Supabase URL/key, service URL nội bộ hoặc database URL.
+- `SUPABASE_URL`, `SUPABASE_ANON_KEY` và `SUPABASE_SERVICE_ROLE_KEY` nếu dùng chỉ nằm trong backend env.
 - Không commit `.env`.
 - Log và response lỗi production không trả token, service key hoặc stack trace.
 
@@ -677,22 +678,21 @@ Khuyến nghị:
 
 - `USER_SERVICE_PORT`
 - `DATABASE_URL`
-- `SUPABASE_URL`
-- `SUPABASE_SERVICE_ROLE_KEY`
+- `DATABASE_SSL`
 - `LOG_LEVEL`
 
 ### Doctor Service
 
 - `DOCTOR_SERVICE_PORT`
 - `DATABASE_URL`
-- `SUPABASE_URL`
-- `SUPABASE_SERVICE_ROLE_KEY`
+- `DATABASE_SSL`
 - `LOG_LEVEL`
 
 ### Appointment Service
 
 - `APPOINTMENT_SERVICE_PORT`
 - `DATABASE_URL`
+- `DATABASE_SSL`
 - `DOCTOR_SERVICE_URL`
 - `NOTIFICATION_SERVICE_URL`
 - `LOG_LEVEL`
@@ -701,6 +701,7 @@ Khuyến nghị:
 
 - `MEDICAL_RECORD_SERVICE_PORT`
 - `DATABASE_URL`
+- `DATABASE_SSL`
 - `APPOINTMENT_SERVICE_URL`
 - `NOTIFICATION_SERVICE_URL`
 - `LOG_LEVEL`
@@ -709,6 +710,7 @@ Khuyến nghị:
 
 - `NOTIFICATION_SERVICE_PORT`
 - `DATABASE_URL`
+- `DATABASE_SSL`
 - `LOG_LEVEL`
 - `EMAIL_PROVIDER_API_KEY` tùy chọn cho phase sau
 - `SMS_PROVIDER_API_KEY` tùy chọn cho phase sau
@@ -828,7 +830,7 @@ Quy tắc `packages`:
 ## Quyết Định MVP Đề Xuất
 
 - Dùng Supabase Auth cho đăng nhập, không tự xây dựng password auth.
-- Dùng chung một Supabase PostgreSQL project, nhưng tách schema theo service.
+- Dùng một Supabase PostgreSQL project/database riêng cho từng service nghiệp vụ; không dùng chung connection string.
 - Dùng HTTP nội bộ trong MVP, thiết kế `EventPublisher` để sau này thay RabbitMQ.
 - Appointment Service dùng transaction, unique partial index và idempotency key để ngăn double booking.
 - Medical Record Service quản lý đơn thuốc cơ bản trong chính service này.
