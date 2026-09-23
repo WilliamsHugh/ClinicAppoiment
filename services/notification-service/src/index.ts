@@ -1,232 +1,132 @@
-import cors from "cors";
-import express from "express";
+import { randomUUID } from "node:crypto";
+import express, { type Request } from "express";
+import { Pool } from "pg";
 import swaggerUi from "swagger-ui-express";
-import { randomUUID } from "crypto";
 import { z } from "zod";
 import { NotificationRepository } from "./repository.js";
 
-// NOTIFY-001..004: schema notification_service, event dedup, delivery history, retry có giới hạn
-
-const app = express();
-const repository = new NotificationRepository();
+const databaseUrl = process.env.DATABASE_URL;
+if (!databaseUrl) throw new Error("DATABASE_URL is required by Notification Service");
+const pool = new Pool({ connectionString: databaseUrl, ssl: process.env.DATABASE_SSL === "true" ? { rejectUnauthorized: true } : undefined });
+const repository = new NotificationRepository(pool);
 const port = Number(process.env.NOTIFICATION_SERVICE_PORT ?? 3005);
+const appointmentUrl = process.env.APPOINTMENT_SERVICE_URL ?? "http://localhost:3003";
+const paging = z.object({ page: z.coerce.number().int().min(1).default(1), limit: z.coerce.number().int().min(1).max(100).default(20), status: z.enum(["UNREAD", "READ", "FAILED"]).optional() });
+const eventSchema = z.object({ eventId: z.string().min(1), type: z.enum(["appointment.created", "appointment.confirmed", "appointment.rescheduled", "appointment.cancelled", "appointment.checked_in", "medical-record.created", "medical-record.updated"]), payload: z.object({ recipientUserId: z.string().uuid(), patientId: z.string().uuid().optional(), appointmentId: z.string().uuid().optional(), recordId: z.string().uuid().optional(), scheduledStartAt: z.string().datetime().optional() }) });
 
-const createNotificationSchema = z.object({
-  recipientUserId: z.string().default("user-patient-1"),
-  type: z.string().min(1),
-  title: z.string().default("Thong bao phong kham"),
-  message: z.string().default("Co cap nhat moi tu he thong phong kham"),
-  payload: z.unknown().optional()
-});
-
-const internalEventSchema = z.object({
-  eventId: z.string().min(8, "eventId required for dedup"),
-  type: z.string().min(1),
-  payload: z.unknown()
-});
-
-const swaggerDocument = {
-  openapi: "3.0.3",
-  info: { title: "Notification Service API", version: "1.0.0" },
-  paths: {
-    "/health": { get: { summary: "Health check" } },
-    "/api/v1/notifications": { get: { summary: "List notifications (owner only, pagination)" } },
-    "/api/v1/notifications/{id}": { get: { summary: "Get notification by id (owner only)" } },
-    "/api/v1/notifications/{id}/read": { patch: { summary: "Mark notification as read (owner only)" } },
-    "/internal/v1/notifications": { post: { summary: "Create notification from internal event (dedup by eventId)" } }
-  }
-};
-
-app.use(cors());
-app.use(express.json());
-app.use((req, _res, next) => {
+export const app = express();
+app.disable("x-powered-by");
+app.use(express.json({ limit: "32kb" }));
+app.use((req, res, next) => {
   const requestId = req.header("x-request-id") ?? randomUUID();
-  (req as unknown as Record<string, unknown>)["requestId"] = requestId;
-  _res.setHeader("X-Request-Id", requestId);
-  // NOTIFY-003: không ghi nội dung y tế nhạy cảm vào log – chỉ log type/eventId
-  const safeBody = req.path.includes("/internal") ? `{type:${(req.body as { type?: string })?.type ?? "?"}, eventId:${(req.body as { eventId?: string })?.eventId ?? "?"}}` : req.method;
-  console.log(JSON.stringify({ requestId, method: req.method, path: req.originalUrl, body: safeBody }));
+  res.setHeader("X-Request-Id", requestId);
+  console.log(JSON.stringify({ requestId, method: req.method, path: req.path }));
   next();
 });
-app.use("/docs", swaggerUi.serve, swaggerUi.setup(swaggerDocument));
+const ok = (data: unknown) => ({ success: true, data });
+const fail = (res: express.Response, status: number, code: string, message: string) => res.status(status).json({ success: false, error: { code, message, details: [] } });
+const actor = (req: Request) => req.header("x-user-id");
 
-function success<T>(data: T, requestId?: string) {
-  return requestId ? { success: true, data, requestId } : { success: true, data };
+function message(type: string) {
+  switch (type) {
+    case "appointment.created": return ["Yêu cầu đặt lịch đã được ghi nhận", "Phòng khám sẽ xác nhận lịch hẹn của bạn."];
+    case "appointment.confirmed": return ["Lịch hẹn đã được xác nhận", "Vui lòng đến phòng khám đúng giờ."];
+    case "appointment.rescheduled": return ["Lịch hẹn đã được đổi", "Vui lòng xem thời gian khám mới."];
+    case "appointment.cancelled": return ["Lịch hẹn đã được hủy", "Lịch hẹn của bạn không còn hiệu lực."];
+    case "appointment.checked_in": return ["Đã check-in", "Vui lòng chờ bác sĩ gọi khám."];
+    case "appointment.reminder": return ["Nhắc lịch khám", "Bạn có lịch khám sắp tới."];
+    default: return ["Kết quả khám đã được cập nhật", "Bạn có thể xem kết quả trong lịch sử khám."];
+  }
 }
 
-function error(code: string, message: string, details: unknown[] = [], requestId?: string) {
-  return requestId ? { success: false, error: { code, message, details }, requestId } : { success: false, error: { code, message, details } };
+export async function dispatchReminders() {
+  for (const reminder of await repository.dueReminders()) {
+    try {
+      const response = await fetch(`${appointmentUrl}/api/v1/appointments/${encodeURIComponent(reminder.appointmentId)}`, { signal: AbortSignal.timeout(4000) });
+      if (!response.ok) throw new Error(`Appointment lookup returned ${response.status}`);
+      const body = await response.json() as { success: boolean; data: { status: string; scheduledStartAt: string; patientId: string } };
+      const appointment = body.data;
+      if (!body.success || !appointment) throw new Error("Invalid appointment response");
+      const scheduledStartAt = reminder.scheduledStartAt.toISOString();
+      if (appointment.status !== "CONFIRMED" || Date.parse(appointment.scheduledStartAt) !== reminder.scheduledStartAt.getTime() || appointment.patientId !== reminder.patientId) {
+        await repository.cancelReminder(reminder.appointmentId);
+        continue;
+      }
+      const [title, content] = message("appointment.reminder");
+      await repository.createEvent(`reminder:${reminder.appointmentId}:${scheduledStartAt}`, {
+        recipientUserId: reminder.recipientUserId, type: "appointment.reminder", title, message: content,
+        payload: { appointmentId: reminder.appointmentId }
+      });
+      await repository.markReminderSent(reminder.appointmentId);
+    } catch (error) {
+      console.warn(JSON.stringify({ appointmentId: reminder.appointmentId, error: String(error) }));
+      await repository.deferReminder(reminder.appointmentId);
+    }
+  }
 }
 
-function getRequestId(req: express.Request): string {
-  return ((req as unknown as Record<string, unknown>)["requestId"] as string) ?? randomUUID();
+app.get("/health", async (_req, res) => {
+  try { await pool.query("SELECT 1"); return res.json(ok({ service: "notification-service", status: "ok" })); }
+  catch { return fail(res, 503, "DATABASE_UNAVAILABLE", "Database is unavailable"); }
+});
+const openapi = { openapi: "3.0.3", info: { title: "Notification Service", version: "1.0.0" }, paths: {
+  "/api/v1/notifications": { get: { summary: "List own notifications" } },
+  "/api/v1/notifications/{id}": { get: { summary: "Get own notification" } },
+  "/api/v1/notifications/{id}/read": { patch: { summary: "Mark own notification read" } },
+  "/internal/v1/notifications": { post: { summary: "Receive idempotent event" } }
+} };
+app.get("/openapi.json", (_req, res) => res.json(openapi));
+app.use("/docs", swaggerUi.serve, swaggerUi.setup(openapi));
+
+app.get("/api/v1/notifications", async (req, res) => {
+  const userId = actor(req);
+  if (!userId) return fail(res, 401, "AUTH_REQUIRED", "Authentication required");
+  const parsed = paging.safeParse(req.query);
+  if (!parsed.success) return fail(res, 400, "VALIDATION_ERROR", "Invalid pagination");
+  return res.json(ok(await repository.findAll(userId, parsed.data.page, parsed.data.limit, parsed.data.status)));
+});
+app.get("/api/v1/notifications/:id", async (req, res) => {
+  const userId = actor(req);
+  if (!userId) return fail(res, 401, "AUTH_REQUIRED", "Authentication required");
+  const notification = await repository.findById(req.params.id);
+  if (!notification) return fail(res, 404, "NOTIFICATION_NOT_FOUND", "Notification not found");
+  return notification.recipientUserId === userId ? res.json(ok(notification)) : fail(res, 403, "ACCESS_DENIED", "Access denied");
+});
+app.patch("/api/v1/notifications/:id/read", async (req, res) => {
+  const userId = actor(req);
+  if (!userId) return fail(res, 401, "AUTH_REQUIRED", "Authentication required");
+  const notification = await repository.markRead(req.params.id, userId);
+  if (notification) return res.json(ok(notification));
+  return (await repository.findById(req.params.id)) ? fail(res, 403, "ACCESS_DENIED", "Access denied") : fail(res, 404, "NOTIFICATION_NOT_FOUND", "Notification not found");
+});
+
+app.post("/internal/v1/notifications", async (req, res) => {
+  const parsed = eventSchema.safeParse(req.body);
+  if (!parsed.success) return fail(res, 400, "VALIDATION_ERROR", "Invalid event");
+  const { eventId, type, payload } = parsed.data;
+  if (type === "appointment.cancelled" && payload.appointmentId) await repository.cancelReminder(payload.appointmentId);
+  if ((type === "appointment.confirmed" || type === "appointment.rescheduled") && payload.appointmentId && payload.patientId && payload.scheduledStartAt) {
+    await repository.scheduleReminder({ appointmentId: payload.appointmentId, patientId: payload.patientId, recipientUserId: payload.recipientUserId, scheduledStartAt: payload.scheduledStartAt });
+  }
+  const [title, content] = message(type);
+  const { created, notification } = await repository.createEvent(eventId, {
+    recipientUserId: payload.recipientUserId, type, title, message: content,
+    payload: { appointmentId: payload.appointmentId, recordId: payload.recordId }
+  });
+  return res.status(created ? 201 : 200).json(ok(created ? notification : { dedup: true, eventId }));
+});
+app.post("/api/v1/notifications", (_req, res) => fail(res, 403, "ACCESS_DENIED", "Notifications are created by internal events"));
+app.post("/internal/v1/notifications/:id/retry", async (req, res) => {
+  const delivery = await repository.retryDelivery(req.params.id);
+  return delivery ? res.json(ok(delivery)) : fail(res, 409, "NOTIFICATION_RETRY_UNAVAILABLE", "No failed delivery can be retried");
+});
+app.use((error: unknown, _req: Request, res: express.Response, _next: express.NextFunction) => {
+  console.error(JSON.stringify({ message: "Notification request failed", error: String(error) }));
+  return fail(res, 503, "SERVICE_UNAVAILABLE", "Service temporarily unavailable");
+});
+
+if (process.env.NODE_ENV !== "test") {
+  const timer = setInterval(() => { void dispatchReminders().catch((error) => console.error(JSON.stringify({ message: "Reminder worker failed", error: String(error) }))); }, 60_000);
+  timer.unref();
+  app.listen(port, () => console.log(`Notification Service listening on port ${port}`));
 }
-
-function currentUserId(req: express.Request) {
-  return req.header("x-user-id") ?? req.header("X-User-Id") ?? "user-patient-1";
-}
-
-function parsePagination(req: express.Request) {
-  const rawPage = Number(req.query.page ?? 1);
-  const rawLimit = Number(req.query.limit ?? 20);
-  const page = Number.isInteger(rawPage) && rawPage >= 1 ? rawPage : 1;
-  const limit = Number.isInteger(rawLimit) && rawLimit >= 1 && rawLimit <= 100 ? rawLimit : 20;
-  return { page, limit };
-}
-
-function notificationFromEvent(type: string, payload: unknown): { recipientUserId: string; type: string; title: string; message: string; payload: unknown } {
-  // NOTIFY-002: xử lý các event types tối thiểu
-  const p = payload as Record<string, unknown> | null;
-  // Try to infer recipient from payload if available
-  const recipient = (p?.["patientId"] as string) ?? (p?.["recipientUserId"] as string) ?? "user-patient-1";
-
-  if (type === "appointment.created") {
-    return {
-      recipientUserId: recipient,
-      type,
-      title: "Lich hen da duoc tao",
-      message: "Phong kham da ghi nhan yeu cau dat lich cua ban",
-      payload
-    };
-  }
-  if (type === "appointment.rescheduled") {
-    return { recipientUserId: recipient, type, title: "Lich hen da duoc doi", message: "Lich hen cua ban da duoc cap nhat gio kham", payload };
-  }
-  if (type === "appointment.cancelled") {
-    return { recipientUserId: recipient, type, title: "Lich hen da bi huy", message: "Lich hen cua ban da bi huy", payload };
-  }
-  if (type === "appointment.confirmed") {
-    return { recipientUserId: recipient, type, title: "Lich hen da duoc xac nhan", message: "Lich hen cua ban da duoc xac nhan", payload };
-  }
-  if (type === "appointment.checked_in") {
-    return { recipientUserId: recipient, type, title: "Ban da check-in", message: "Ban da check-in thanh cong, vui long cho bac si", payload };
-  }
-  if (type === "medical-record.created") {
-    return {
-      recipientUserId: recipient,
-      type,
-      title: "Ket qua kham da duoc cap nhat",
-      message: "Ban co the xem ket qua kham trong lich su kham",
-      payload
-    };
-  }
-  return {
-    recipientUserId: recipient,
-    type,
-    title: "Thong bao phong kham",
-    message: "Co cap nhat moi tu he thong phong kham",
-    payload
-  };
-}
-
-app.get("/health", (req, res) => res.json(success({ service: "notification-service", status: "ok" }, getRequestId(req))));
-
-// NOTIFY-005: danh sách thông báo, chỉ của actor, pagination, filter status
-app.get("/api/v1/notifications", (req, res) => {
-  const requestId = getRequestId(req);
-  const actorId = currentUserId(req);
-  const { page, limit } = parsePagination(req);
-  const status = req.query.status ? String(req.query.status).toUpperCase() : undefined;
-
-  // Enforce ownership: only actor's notifications
-  const all = repository.findAll({ recipientUserId: actorId, status });
-  const start = (page - 1) * limit;
-  const paged = all.slice(start, start + limit);
-  return res.json(success({ items: paged, page, limit, total: all.length }, requestId));
-});
-
-app.get("/api/v1/notifications/:id", (req, res) => {
-  const requestId = getRequestId(req);
-  const actorId = currentUserId(req);
-  const notification = repository.findById(req.params.id);
-  if (!notification) return res.status(404).json(error("NOTIFICATION_NOT_FOUND", "Notification not found", [], requestId));
-  if (notification.recipientUserId !== actorId) return res.status(403).json(error("ACCESS_DENIED", "Not notification owner", [], requestId));
-  return res.json(success(notification, requestId));
-});
-
-// NOTIFY-005: đánh dấu đã đọc, chỉ người nhận
-app.patch("/api/v1/notifications/:id/read", (req, res) => {
-  const requestId = getRequestId(req);
-  const actorId = currentUserId(req);
-  const notification = repository.markRead(req.params.id, actorId);
-  if (!notification) {
-    const exists = repository.findById(req.params.id);
-    if (!exists) return res.status(404).json(error("NOTIFICATION_NOT_FOUND", "Notification not found", [], requestId));
-    return res.status(403).json(error("ACCESS_DENIED", "Not notification owner", [], requestId));
-  }
-  return res.json(success(notification, requestId));
-});
-
-// NOTIFY-002: internal event với dedup theo eventId, NOTIFY-003: lưu lịch sử gửi, NOTIFY-004: retry có giới hạn
-app.post("/internal/v1/notifications", (req, res) => {
-  const requestId = getRequestId(req);
-  const parsed = internalEventSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json(error("VALIDATION_ERROR", "Invalid request body", parsed.error.issues, requestId));
-
-  // Dedup
-  if (repository.hasEvent(parsed.data.eventId)) {
-    // Return 200 for duplicate (idempotent)
-    return res.status(200).json(success({ dedup: true, eventId: parsed.data.eventId }, requestId));
-  }
-
-  // NOTIFY-004: kiểm tra lịch còn hiệu lực, tránh nhắc lịch đã hủy/đổi – cơ bản: nếu payload chứa status CANCELLED/NO_SHOW thì vẫn tạo nhưng đánh dấu?
-  const payload = parsed.data.payload as Record<string, unknown> | null;
-  const status = payload?.["status"] as string | undefined;
-  if (status === "CANCELLED" && parsed.data.type === "appointment.reminder") {
-    return res.status(200).json(success({ skipped: "appointment cancelled", eventId: parsed.data.eventId }, requestId));
-  }
-
-  const notification = repository.create({ ...notificationFromEvent(parsed.data.type, parsed.data.payload), eventId: parsed.data.eventId });
-  // NOTIFY-003: simulates delivery via database/log without sensitive content
-  console.log(JSON.stringify({ requestId, msg: "Simulated notification delivery", notificationId: notification.id, type: notification.type, recipient: notification.recipientUserId }));
-
-  return res.status(201).json(success(notification, requestId));
-});
-
-// Legacy internal events: map to new dedup endpoint (keep for compatibility, but generate eventId)
-app.post("/internal/v1/notifications/events/appointment-created", (req, res) => {
-  const requestId = getRequestId(req);
-  const eventId = `appointment.created:${randomUUID()}`;
-  const notification = repository.create({ ...notificationFromEvent("appointment.created", req.body), eventId });
-  return res.status(201).json(success(notification, requestId));
-});
-app.post("/internal/v1/notifications/events/appointment-updated", (req, res) => {
-  const requestId = getRequestId(req);
-  const eventId = `appointment.updated:${randomUUID()}`;
-  const notification = repository.create({ ...notificationFromEvent("appointment.updated", req.body), eventId });
-  return res.status(201).json(success(notification, requestId));
-});
-app.post("/internal/v1/notifications/events/medical-record-created", (req, res) => {
-  const requestId = getRequestId(req);
-  const eventId = `medical-record.created:${randomUUID()}`;
-  const notification = repository.create({ ...notificationFromEvent("medical-record.created", req.body), eventId });
-  return res.status(201).json(success(notification, requestId));
-});
-
-// Block direct client creation via public route per contract: should not allow POST /api/v1/notifications for normal users
-// Keep but return 403 to enforce contract (gap noted in api-contract.md)
-app.post("/api/v1/notifications", (req, res) => {
-  const requestId = getRequestId(req);
-  // Allow only ADMIN for manual creation (optional), otherwise block
-  const role = (req.header("x-role") ?? req.header("X-Role") ?? "").toUpperCase();
-  if (role !== "ADMIN") {
-    return res.status(403).json(error("ACCESS_DENIED", "Public client cannot create notifications directly. Use internal event.", [], requestId));
-  }
-  const parsed = createNotificationSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json(error("VALIDATION_ERROR", "Invalid request body", parsed.error.issues, requestId));
-  return res.status(201).json(success(repository.create(parsed.data), requestId));
-});
-
-// Retry endpoint (internal, limited retries)
-app.post("/internal/v1/notifications/:id/retry", (req, res) => {
-  const requestId = getRequestId(req);
-  const result = repository.retryDelivery(req.params.id);
-  if (!result) return res.status(404).json(error("NOTIFICATION_NOT_FOUND", "Notification not found or retry limit exceeded", [], requestId));
-  return res.json(success(result, requestId));
-});
-
-app.use((_req, res) => res.status(404).json(error("ROUTE_NOT_FOUND", "Route not found")));
-
-app.listen(port, () => {
-  console.log(`Notification Service listening on port ${port}`);
-});

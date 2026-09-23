@@ -115,6 +115,18 @@ app.get("/api/v1/patients/:id", (req, res) => {
   return res.json(success(patient));
 });
 
+app.get("/internal/v1/patients/by-user/:userId", (req, res) => {
+  const patient = repository.findPatientByUserId(req.params.userId);
+  if (!patient) return res.status(404).json(error("PATIENT_NOT_FOUND", "Patient not found"));
+  return res.json(success({ id: patient.id, userId: patient.userId }));
+});
+
+app.get("/internal/v1/patients/:id", (req, res) => {
+  const patient = repository.findPatientById(req.params.id);
+  if (!patient) return res.status(404).json(error("PATIENT_NOT_FOUND", "Patient not found"));
+  return res.json(success({ id: patient.id, userId: patient.userId }));
+});
+
 app.patch("/api/v1/patients/:id", (req, res) => {
   const parsed = updatePatientSchema.safeParse(req.body);
   if (!parsed.success) return res.status(400).json(error("VALIDATION_ERROR", "Invalid request body", parsed.error.issues));

@@ -21,6 +21,12 @@ cp .env.example .env
 docker compose -f infrastructure/compose/docker-compose.yml up -d
 ```
 
+Trước khi chạy Compose, điền `DATABASE_URL` bằng PostgreSQL connection string của Supabase
+trong `.env` (không commit file này). Chạy `infrastructure/supabase/schema.sql` bằng
+Supabase SQL Editor một lần để tạo các schema, bảng và index. Nếu kết nối yêu cầu TLS,
+đặt `DATABASE_SSL=true`. Medical Record và Notification Service cần DB để khởi động;
+hai service không còn sử dụng dữ liệu trong RAM.
+
 Flutter SDK được đặt local tại `.tools/flutter`. Nếu máy chưa nhận Flutter toàn cục, dùng trực tiếp binary này.
 
 Để dùng lệnh `flutter` trong terminal hiện tại:
@@ -78,9 +84,9 @@ npm run lint
 npm audit --omit=dev --audit-level=high
 ```
 
-Đây là scaffold nền: các service hiện có repository in-memory để kiểm tra luồng API. Việc kết nối
-Supabase thật, xác thực Supabase Auth và cơ chế chống double booking bằng transaction/constraint sẽ
-được triển khai ở các phase nghiệp vụ tiếp theo.
+User, Doctor và Appointment Service vẫn là scaffold in-memory. Các service này cần được
+chuyển sang UUID và Supabase theo task của thành viên 2–3 trước khi kiểm thử luồng khám
+end-to-end với Medical Record/Notification trên dữ liệu thật.
 
 ## Tài Liệu
 

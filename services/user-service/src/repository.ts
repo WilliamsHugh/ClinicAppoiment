@@ -78,6 +78,10 @@ export class UserRepository {
     return this.patients.find((patient) => patient.id === id);
   }
 
+  findPatientByUserId(userId: string) {
+    return this.patients.find((patient) => patient.userId === userId);
+  }
+
   updatePatient(id: string, input: Partial<PatientProfile>) {
     const patient = this.findPatientById(id);
     if (!patient) return null;
@@ -85,4 +89,3 @@ export class UserRepository {
     return patient;
   }
 }
-

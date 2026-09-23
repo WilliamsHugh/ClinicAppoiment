@@ -5,7 +5,7 @@ enum SessionStatus { loading, authenticated, unauthenticated }
 enum UserRole { patient, doctor, staff, admin }
 
 @immutable
-class AuthSession {
+class AuthSession implements TokenProvider {
   const AuthSession({
     required this.userId,
     required this.role,
@@ -15,6 +15,9 @@ class AuthSession {
   final String userId;
   final UserRole role;
   final String accessToken;
+
+  @override
+  Future<String?> getAccessToken() async => accessToken;
 }
 
 abstract interface class TokenProvider {

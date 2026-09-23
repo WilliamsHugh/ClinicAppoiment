@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 
 import { EmptyState, ErrorState, LoadingState } from "../../src/components/states";
 import { ApiClientError, createBrowserApiClient } from "../../src/lib/api/client";
@@ -15,6 +16,14 @@ type Notification = {
   createdAt: string;
   payload?: unknown;
 };
+
+function notificationTarget(payload: unknown): { href: string; label: string } | null {
+  if (!payload || typeof payload !== "object") return null;
+  const data = payload as Record<string, unknown>;
+  if (typeof data.recordId === "string") return { href: `/medical-records?recordId=${encodeURIComponent(data.recordId)}`, label: "Xem hồ sơ khám" };
+  if (typeof data.appointmentId === "string") return { href: `/appointments?appointmentId=${encodeURIComponent(data.appointmentId)}`, label: "Xem lịch hẹn" };
+  return null;
+}
 
 export default function NotificationsPage() {
   const session = useSession();
@@ -60,7 +69,6 @@ export default function NotificationsPage() {
       <header className="page-heading">
         <p className="eyebrow">Notification Service</p>
         <h1>Thông báo</h1>
-        <p>Danh sách thông báo, trạng thái chưa đọc/đã đọc và điều hướng đến nội dung được phép xem.</p>
       </header>
       <section className="panel">
         <div className="panel-heading">
@@ -72,6 +80,7 @@ export default function NotificationsPage() {
             <div>
               <strong style={{ opacity: n.status === "UNREAD" ? 1 : 0.7 }}>{n.title} {n.status === "UNREAD" && <span style={{ background: "#0F766E", color: "#fff", fontSize: 10, padding: "2px 6px", borderRadius: 10 }}>UNREAD</span>}</strong>
               <p style={{ margin: "4px 0", fontSize: 14 }}>{n.message}</p>
+              {notificationTarget(n.payload) && <Link href={notificationTarget(n.payload)!.href}>{notificationTarget(n.payload)!.label}</Link>}
               <span style={{ fontSize: 12, color: "#647083" }}>{new Date(n.createdAt).toLocaleString("vi-VN")} • {n.type}</span>
             </div>
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>

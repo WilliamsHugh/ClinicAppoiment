@@ -39,6 +39,7 @@ export default function MedicalRecordsPage() {
   const [error, setError] = useState<ApiClientError | null>(null);
 
   const [selectedAppointmentId, setSelectedAppointmentId] = useState("");
+  const [editingRecordId, setEditingRecordId] = useState<string | null>(null);
   const [symptoms, setSymptoms] = useState("");
   const [diagnosis, setDiagnosis] = useState("");
   const [notes, setNotes] = useState("");
@@ -47,6 +48,11 @@ export default function MedicalRecordsPage() {
   const [recordStatus, setRecordStatus] = useState<"DRAFT" | "FINAL">("FINAL");
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState("");
+  const [targetRecordId, setTargetRecordId] = useState("");
+
+  useEffect(() => {
+    setTargetRecordId(new URLSearchParams(window.location.search).get("recordId") ?? "");
+  }, []);
 
   const loadAppointments = useCallback(async () => {
     setLoading(true);
@@ -64,10 +70,7 @@ export default function MedicalRecordsPage() {
   const loadRecords = useCallback(async () => {
     setRecordsLoading(true);
     try {
-      const q = session.status === "authenticated" && session.identity?.role === "DOCTOR"
-        ? { doctorId: session.identity.id, page: 1, limit: 20 }
-        : { page: 1, limit: 20 };
-      const result = await client.get<{ items: MedicalRecord[] }>("/api/v1/medical-records", { query: q as Record<string, string | number> });
+      const result = await client.get<{ items: MedicalRecord[] }>("/api/v1/medical-records", { query: { page: 1, limit: 20 } });
       setRecords(result.data.items);
     } catch {
       setRecords([]);
@@ -87,16 +90,16 @@ export default function MedicalRecordsPage() {
 
   async function handleCreate(e: React.FormEvent) {
     e.preventDefault();
-    if (!selectedAppointmentId) {
+    if (!editingRecordId && !selectedAppointmentId) {
       setMessage("Vui lòng chọn lịch hẹn đã check-in");
       return;
     }
     const appt = appointments.find((a) => a.id === selectedAppointmentId);
-    if (!appt) {
+    if (!editingRecordId && !appt) {
       setMessage("Không tìm thấy lịch hẹn");
       return;
     }
-    if (appt.status !== "CHECKED_IN" && appt.status !== "COMPLETED") {
+    if (!editingRecordId && appt && appt.status !== "CHECKED_IN" && appt.status !== "COMPLETED") {
       setMessage("Chỉ tạo hồ sơ cho lịch đã CHECKED_IN");
       return;
     }
@@ -106,20 +109,29 @@ export default function MedicalRecordsPage() {
       if (filteredPres.some((p) => !p.dosage || !p.frequency || !p.duration)) {
         throw new Error("Vui lòng điền đầy đủ liều dùng/tần suất/thời gian cho mỗi thuốc");
       }
-      await client.post("/api/v1/medical-records", {
-        body: {
+      const clinicalBody = {
+        symptoms: symptoms || undefined,
+        diagnosis: diagnosis || undefined,
+        notes: notes || undefined,
+        treatmentPlan: treatmentPlan || undefined,
+        prescription: filteredPres,
+        status: recordStatus
+      };
+      if (editingRecordId) {
+        await client.patch(`/api/v1/medical-records/${editingRecordId}`, { body: clinicalBody });
+      } else if (appt) {
+        await client.post("/api/v1/medical-records", {
+          body: {
           appointmentId: selectedAppointmentId,
           patientId: appt.patientId,
           doctorId: appt.doctorId,
-          symptoms: symptoms || undefined,
-          diagnosis: diagnosis || undefined,
-          notes: notes || undefined,
-          treatmentPlan: treatmentPlan || undefined,
-          prescription: filteredPres,
-          status: recordStatus
-        }
-      });
+          ...clinicalBody
+          }
+        });
+      }
       setMessage("Đã lưu hồ sơ khám thành công");
+      setEditingRecordId(null);
+      setSelectedAppointmentId("");
       setSymptoms("");
       setDiagnosis("");
       setNotes("");
@@ -131,6 +143,17 @@ export default function MedicalRecordsPage() {
     } finally {
       setSubmitting(false);
     }
+  }
+
+  function editRecord(record: MedicalRecord) {
+    setEditingRecordId(record.id);
+    setSelectedAppointmentId(record.appointmentId);
+    setSymptoms(record.symptoms ?? "");
+    setDiagnosis(record.diagnosis ?? "");
+    setNotes(record.notes ?? "");
+    setTreatmentPlan(record.treatmentPlan ?? "");
+    setPrescription(record.prescription.length ? record.prescription : [{ medicineName: "", dosage: "", frequency: "", duration: "" }]);
+    setRecordStatus(record.status);
   }
 
   if (session.status === "loading") return <LoadingState message="Đang kiểm tra phiên..." />;
@@ -145,7 +168,6 @@ export default function MedicalRecordsPage() {
       <header className="page-heading">
         <p className="eyebrow">Medical Record Service</p>
         <h1>Hồ sơ khám</h1>
-        <p>Chỉ tạo hồ sơ cho lịch hẹn đã CHECKED_IN. Sau khi lưu FINAL, hệ thống sẽ thử hoàn thành buổi khám (RECORD-007).</p>
       </header>
 
       <section className="panel">
@@ -156,7 +178,7 @@ export default function MedicalRecordsPage() {
         <form onSubmit={handleCreate} style={{ display: "grid", gap: 12, marginTop: 16 }}>
           <label className="role-picker">
             Lịch hẹn (CHECKED_IN)
-            <select value={selectedAppointmentId} onChange={(e) => setSelectedAppointmentId(e.target.value)}>
+            <select value={selectedAppointmentId} disabled={editingRecordId !== null} onChange={(e) => setSelectedAppointmentId(e.target.value)}>
               <option value="">-- Chọn lịch hẹn --</option>
               {checkedInAppointments.map((a) => (
                 <option key={a.id} value={a.id}>{a.patientId} — {new Date(a.scheduledStartAt).toLocaleString("vi-VN")} ({a.status})</option>
@@ -187,7 +209,7 @@ export default function MedicalRecordsPage() {
               <option value="DRAFT">DRAFT</option>
             </select>
           </label>
-          <button type="submit" disabled={submitting} style={{ background: "#0F766E", color: "#fff", opacity: submitting ? 0.6 : 1 }}>{submitting ? "Đang lưu..." : "Lưu hồ sơ khám"}</button>
+          <button type="submit" disabled={submitting} style={{ background: "#0F766E", color: "#fff", opacity: submitting ? 0.6 : 1 }}>{submitting ? "Đang lưu..." : editingRecordId ? "Cập nhật hồ sơ" : "Lưu hồ sơ khám"}</button>
         </form>
         {message && <p className="message" role="status">{message}</p>}
       </section>
@@ -200,6 +222,14 @@ export default function MedicalRecordsPage() {
             <strong>{r.diagnosis || "Chưa có chẩn đoán"} </strong> <span style={{ color: "#647083", fontSize: 12 }}>({r.status})</span>
             <div style={{ fontSize: 13, color: "#334155" }}>BN: {r.patientId} • {new Date(r.createdAt).toLocaleString("vi-VN")}</div>
             {r.prescription.length > 0 && <div style={{ fontSize: 13 }}>Đơn: {r.prescription.map((p) => p.medicineName).join(", ")}</div>}
+            <details key={`${r.id}:${targetRecordId}`} open={targetRecordId === r.id}>
+              <summary>Chi tiết</summary>
+              {r.symptoms && <p>Triệu chứng: {r.symptoms}</p>}
+              {r.notes && <p>Ghi chú: {r.notes}</p>}
+              {r.treatmentPlan && <p>Điều trị: {r.treatmentPlan}</p>}
+              {r.prescription.map((item, index) => <p key={`${item.medicineName}:${index}`}>{item.medicineName}: {item.dosage}, {item.frequency}, {item.duration}</p>)}
+            </details>
+            <button type="button" onClick={() => editRecord(r)}>Cập nhật hồ sơ</button>
           </article>
         ))}
       </section>

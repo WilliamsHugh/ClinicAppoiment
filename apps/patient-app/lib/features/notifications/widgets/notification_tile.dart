@@ -11,7 +11,7 @@ class NotificationTile extends StatelessWidget {
   });
   final Map<String, dynamic> data;
   final VoidCallback onTap;
-  final VoidCallback onMarkRead;
+  final VoidCallback? onMarkRead;
 
   bool get unread => data['status'] == 'UNREAD';
 

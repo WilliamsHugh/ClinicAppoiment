@@ -88,6 +88,7 @@ services:
       APPOINTMENT_SERVICE_PORT: 3003
       DOCTOR_SERVICE_URL: http://doctor-service:3002
       NOTIFICATION_SERVICE_URL: http://notification-service:3005
+      USER_SERVICE_URL: http://user-service:3001
     expose:
       - "3003"
     depends_on:
@@ -111,7 +112,11 @@ services:
         APP_PATH: services/medical-record-service
     environment:
       MEDICAL_RECORD_SERVICE_PORT: 3004
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required for Medical Record Service}
+      DATABASE_SSL: ${DATABASE_SSL:-false}
       APPOINTMENT_SERVICE_URL: http://appointment-service:3003
+      USER_SERVICE_URL: http://user-service:3001
+      DOCTOR_SERVICE_URL: http://doctor-service:3002
       NOTIFICATION_SERVICE_URL: http://notification-service:3005
     expose:
       - "3004"
@@ -136,6 +141,9 @@ services:
         APP_PATH: services/notification-service
     environment:
       NOTIFICATION_SERVICE_PORT: 3005
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required for Notification Service}
+      DATABASE_SSL: ${DATABASE_SSL:-false}
+      APPOINTMENT_SERVICE_URL: http://appointment-service:3003
     expose:
       - "3005"
     healthcheck:

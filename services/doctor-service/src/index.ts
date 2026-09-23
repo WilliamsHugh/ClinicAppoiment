@@ -84,6 +84,12 @@ app.get("/api/v1/doctors/:id", (req, res) => {
   if (!doctor) return res.status(404).json(error("DOCTOR_NOT_FOUND", "Doctor not found"));
   return res.json(success(doctor));
 });
+
+app.get("/internal/v1/doctors/by-user/:userId", (req, res) => {
+  const doctor = repository.findDoctorByUserId(req.params.userId);
+  if (!doctor) return res.status(404).json(error("DOCTOR_NOT_FOUND", "Doctor not found"));
+  return res.json(success({ id: doctor.id, userId: doctor.userId, isActive: doctor.isActive }));
+});
 app.patch("/api/v1/doctors/:id", (req, res) => {
   const doctor = repository.updateDoctor(req.params.id, req.body);
   if (!doctor) return res.status(404).json(error("DOCTOR_NOT_FOUND", "Doctor not found"));

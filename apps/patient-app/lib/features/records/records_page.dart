@@ -8,14 +8,11 @@ import '../../shared/widgets/async_states.dart';
 import 'widgets/record_card.dart';
 import 'widgets/record_detail_sheet.dart';
 
-class _DevTokenProvider implements TokenProvider {
-  const _DevTokenProvider();
-  @override
-  Future<String?> getAccessToken() async => 'dev-token';
-}
-
 class RecordsPage extends StatefulWidget {
-  const RecordsPage({super.key});
+  const RecordsPage({required this.tokenProvider, this.api, super.key});
+
+  final TokenProvider tokenProvider;
+  final ClinicApiClient? api;
 
   @override
   State<RecordsPage> createState() => _RecordsPageState();
@@ -32,35 +29,30 @@ class _RecordsPageState extends State<RecordsPage> {
   @override
   void initState() {
     super.initState();
-    _api = ClinicApiClient(tokenProvider: const _DevTokenProvider());
+    _api = widget.api ?? ClinicApiClient(tokenProvider: widget.tokenProvider);
     _load();
   }
 
   Future<void> _load({bool refresh = false}) async {
-    if (refresh) {
-      setState(() => _page = 1);
-    }
+    if (refresh) _page = 1;
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      // RECORD-006: patient history via Gateway, patient only sees own records
       final response = await _api.get(
         '/api/v1/medical-records',
-        query: {'patientId': 'patient-1', 'page': _page, 'limit': 20},
+        query: {'page': _page, 'limit': 20},
       );
       final data = response.data as Map<String, dynamic>;
       final items = (data['items'] as List).cast<dynamic>();
+      if (!mounted) return;
       setState(() {
-        _records = refresh ? items : (refresh ? items : [..._records, ...items]);
-        if (refresh) _records = items;
-        // Actually for pagination, replace or append: if page 1 replace, else append
-        // Simplified: if refresh or page==1 replace
+        _records = refresh || _page == 1 ? items : [..._records, ...items];
         _pagination = response.pagination;
       });
-    } on ApiException catch (e) {
-      setState(() => _error = e);
+    } on ApiException catch (error) {
+      if (mounted) setState(() => _error = error);
     } finally {
       if (mounted) setState(() => _loading = false);
     }
@@ -81,7 +73,7 @@ class _RecordsPageState extends State<RecordsPage> {
     if (_records.isEmpty) {
       return const AppEmptyState(
         title: 'Chưa có lịch sử khám',
-        message: 'Lịch sử khám được giới hạn theo phiên người bệnh sẽ hiển thị tại đây.',
+        message: 'Kết quả khám của bạn sẽ hiển thị tại đây.',
         icon: Icons.description_outlined,
       );
     }
@@ -89,8 +81,14 @@ class _RecordsPageState extends State<RecordsPage> {
       backgroundColor: ClinicColors.scaffold,
       appBar: AppBar(
         backgroundColor: ClinicColors.scaffold,
-        title: const Text('Lịch sử khám',
-            style: TextStyle(fontSize: 16, fontWeight: FontWeight.w800, color: ClinicColors.ink)),
+        title: const Text(
+          'Lịch sử khám',
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w800,
+            color: ClinicColors.ink,
+          ),
+        ),
       ),
       body: RefreshIndicator(
         onRefresh: () => _load(refresh: true),
@@ -100,23 +98,29 @@ class _RecordsPageState extends State<RecordsPage> {
           separatorBuilder: (_, __) => const SizedBox(height: 12),
           itemBuilder: (context, index) {
             if (index >= _records.length) {
-              final canLoadMore = _pagination != null && _records.length < (_pagination!.total);
+              final canLoadMore =
+                  _pagination != null && _records.length < _pagination!.total;
               if (!canLoadMore) return const SizedBox(height: 16);
               return Padding(
                 padding: const EdgeInsets.symmetric(vertical: 12),
                 child: Center(
                   child: TextButton(
-                    onPressed: () {
-                      setState(() => _page += 1);
-                      _load();
-                    },
+                    onPressed: _loading
+                        ? null
+                        : () {
+                            setState(() => _page += 1);
+                            _load();
+                          },
                     child: const Text('Tải thêm'),
                   ),
                 ),
               );
             }
-            final r = _records[index] as Map<String, dynamic>;
-            return RecordCard(data: r, onTap: () => _openDetail(r));
+            final record = _records[index] as Map<String, dynamic>;
+            return RecordCard(
+              data: record,
+              onTap: () => _openDetail(record),
+            );
           },
         ),
       ),

@@ -124,13 +124,26 @@ CREATE TABLE IF NOT EXISTS medical_record_service.medical_records (
   notes TEXT,
   treatment_plan TEXT,
   prescription JSONB,
-  status TEXT NOT NULL DEFAULT 'FINAL',
+  status TEXT NOT NULL DEFAULT 'DRAFT' CHECK (status IN ('DRAFT', 'FINAL')),
   created_by UUID NOT NULL,
   updated_by UUID,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   deleted_at TIMESTAMPTZ
 );
+
+ALTER TABLE medical_record_service.medical_records ALTER COLUMN status SET DEFAULT 'DRAFT';
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint
+    WHERE conname = 'medical_records_status_check'
+      AND conrelid = 'medical_record_service.medical_records'::regclass
+  ) THEN
+    ALTER TABLE medical_record_service.medical_records
+    ADD CONSTRAINT medical_records_status_check CHECK (status IN ('DRAFT', 'FINAL'));
+  END IF;
+END $$;
 
 CREATE UNIQUE INDEX IF NOT EXISTS unique_medical_record_appointment
 ON medical_record_service.medical_records (appointment_id)
@@ -142,6 +155,17 @@ CREATE TABLE IF NOT EXISTS medical_record_service.medical_record_audit_logs (
   actor_id UUID NOT NULL,
   action TEXT NOT NULL,
   changes JSONB,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS medical_record_service.outbox_events (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  event_type TEXT NOT NULL,
+  aggregate_id UUID NOT NULL,
+  payload JSONB NOT NULL,
+  status TEXT NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'SENT')),
+  retry_count INT NOT NULL DEFAULT 0,
+  next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT now(),
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -157,6 +181,10 @@ CREATE TABLE IF NOT EXISTS notification_service.notifications (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+ALTER TABLE notification_service.notifications ADD COLUMN IF NOT EXISTS event_id TEXT;
+CREATE UNIQUE INDEX IF NOT EXISTS unique_notification_event_id
+ON notification_service.notifications (event_id) WHERE event_id IS NOT NULL;
+
 CREATE TABLE IF NOT EXISTS notification_service.notification_deliveries (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   notification_id UUID NOT NULL,
@@ -167,3 +195,19 @@ CREATE TABLE IF NOT EXISTS notification_service.notification_deliveries (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+ALTER TABLE notification_service.notification_deliveries ADD COLUMN IF NOT EXISTS retry_count INT NOT NULL DEFAULT 0;
+
+CREATE TABLE IF NOT EXISTS notification_service.appointment_reminders (
+  appointment_id UUID PRIMARY KEY,
+  patient_id UUID NOT NULL,
+  recipient_user_id UUID NOT NULL,
+  scheduled_start_at TIMESTAMPTZ NOT NULL,
+  remind_at TIMESTAMPTZ NOT NULL,
+  status TEXT NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'SENT', 'CANCELLED', 'FAILED')),
+  retry_count INT NOT NULL DEFAULT 0,
+  next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+ALTER TABLE notification_service.appointment_reminders ADD COLUMN IF NOT EXISTS retry_count INT NOT NULL DEFAULT 0;
+ALTER TABLE notification_service.appointment_reminders ADD COLUMN IF NOT EXISTS next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT now();

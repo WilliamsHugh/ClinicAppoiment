@@ -1,343 +1,185 @@
-import cors from "cors";
-import express from "express";
+import { randomUUID } from "node:crypto";
+import express, { type Request } from "express";
+import { Pool } from "pg";
 import swaggerUi from "swagger-ui-express";
-import { randomUUID } from "crypto";
 import { z } from "zod";
 import { MedicalRecordRepository } from "./repository.js";
 
-// RECORD-001: schema medical_record_service, migration trong infrastructure/supabase/schema.sql
-// Repository chỉ truy cập schema của mình, tham chiếu logic qua appointmentId/patientId/doctorId
-
-const app = express();
-const repository = new MedicalRecordRepository();
 const port = Number(process.env.MEDICAL_RECORD_SERVICE_PORT ?? 3004);
-const appointmentServiceUrl = process.env.APPOINTMENT_SERVICE_URL ?? "http://localhost:3003";
-const notificationServiceUrl = process.env.NOTIFICATION_SERVICE_URL ?? "http://localhost:3005";
+const databaseUrl = process.env.DATABASE_URL;
+if (!databaseUrl) throw new Error("DATABASE_URL is required by Medical Record Service");
+const pool = new Pool({ connectionString: databaseUrl, ssl: process.env.DATABASE_SSL === "true" ? { rejectUnauthorized: true } : undefined });
+const repository = new MedicalRecordRepository(pool);
+const appointmentUrl = process.env.APPOINTMENT_SERVICE_URL ?? "http://localhost:3003";
+const doctorUrl = process.env.DOCTOR_SERVICE_URL ?? "http://localhost:3002";
+const userUrl = process.env.USER_SERVICE_URL ?? "http://localhost:3001";
+const notificationUrl = process.env.NOTIFICATION_SERVICE_URL ?? "http://localhost:3005";
 
-const prescriptionSchema = z.object({
-  medicineName: z.string().min(1, "medicineName is required"),
-  dosage: z.string().min(1, "dosage is required"),
-  frequency: z.string().min(1, "frequency is required"),
-  duration: z.string().min(1, "duration is required")
-});
+const prescription = z.object({ medicineName: z.string().min(1), dosage: z.string().min(1), frequency: z.string().min(1), duration: z.string().min(1) });
+const createSchema = z.object({ appointmentId: z.string().uuid(), patientId: z.string().uuid(), doctorId: z.string().uuid(), symptoms: z.string().optional(), diagnosis: z.string().optional(), notes: z.string().optional(), treatmentPlan: z.string().optional(), prescription: z.array(prescription).default([]), status: z.enum(["DRAFT", "FINAL"]).default("DRAFT") });
+const updateSchema = createSchema.pick({ symptoms: true, diagnosis: true, notes: true, treatmentPlan: true, prescription: true, status: true }).partial().strict();
+const pagingSchema = z.object({ page: z.coerce.number().int().min(1).default(1), limit: z.coerce.number().int().min(1).max(100).default(20) });
 
-const createRecordSchema = z.object({
-  appointmentId: z.string().min(1),
-  patientId: z.string().min(1),
-  doctorId: z.string().min(1),
-  symptoms: z.string().optional(),
-  diagnosis: z.string().optional(),
-  notes: z.string().optional(),
-  treatmentPlan: z.string().optional(),
-  prescription: z.array(prescriptionSchema).default([]),
-  status: z.enum(["DRAFT", "FINAL"]).default("FINAL")
-});
-
-const updateRecordSchema = z.object({
-  symptoms: z.string().optional(),
-  diagnosis: z.string().optional(),
-  notes: z.string().optional(),
-  treatmentPlan: z.string().optional(),
-  prescription: z.array(prescriptionSchema).optional(),
-  status: z.enum(["DRAFT", "FINAL"]).optional()
-});
-
-const swaggerDocument = {
-  openapi: "3.0.3",
-  info: { title: "Medical Record Service API", version: "1.0.0" },
-  paths: {
-    "/health": { get: { summary: "Health check" } },
-    "/api/v1/medical-records": {
-      get: { summary: "List medical records (pagination, filters)", parameters: [{ name: "page" }, { name: "limit" }, { name: "patientId" }, { name: "doctorId" }, { name: "appointmentId" }] },
-      post: { summary: "Create medical record (DOCTOR only, verify appointment)" }
-    },
-    "/api/v1/medical-records/{id}": {
-      get: { summary: "Get medical record by id (ownership check)" },
-      patch: { summary: "Update medical record (DOCTOR only, audit log)" }
-    },
-    "/internal/v1/medical-records/by-appointment/{appointmentId}": { get: { summary: "Internal: get record by appointment" } }
-  }
-};
-
-app.use(cors());
-app.use(express.json());
-
-// Request ID + sanitized logging (GW-003: không ghi token/bệnh án)
-app.use((req, _res, next) => {
+type Actor = { userId: string; role: "PATIENT" | "DOCTOR" | "STAFF" | "ADMIN" };
+type Appointment = { id: string; patientId: string; doctorId: string; status: string };
+export const app = express();
+app.disable("x-powered-by");
+app.use(express.json({ limit: "64kb" }));
+app.use((req, res, next) => {
   const requestId = req.header("x-request-id") ?? randomUUID();
-  (req as unknown as Record<string, unknown>)["requestId"] = requestId;
-  // Append requestId to response header
-  _res.setHeader("X-Request-Id", requestId);
-  console.log(JSON.stringify({ requestId, method: req.method, path: req.originalUrl }));
+  res.setHeader("X-Request-Id", requestId);
+  console.log(JSON.stringify({ requestId, method: req.method, path: req.path }));
   next();
 });
-app.use("/docs", swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 
-function success<T>(data: T, requestId?: string) {
-  return requestId ? { success: true, data, requestId } : { success: true, data };
+function fail(res: express.Response, status: number, code: string, message: string) {
+  return res.status(status).json({ success: false, error: { code, message, details: [] } });
+}
+function actor(req: Request): Actor | null {
+  const userId = req.header("x-user-id");
+  const role = req.header("x-role");
+  return userId && (role === "PATIENT" || role === "DOCTOR" || role === "STAFF" || role === "ADMIN") ? { userId, role } : null;
+}
+async function internalGet<T>(url: string): Promise<T | null> {
+  const response = await fetch(url, { signal: AbortSignal.timeout(4000) });
+  if (response.status === 404) return null;
+  if (!response.ok) throw new Error(`Internal lookup failed: ${response.status}`);
+  const body = await response.json() as { success: boolean; data: T };
+  if (!body.success || !body.data) throw new Error("Invalid internal response");
+  return body.data;
+}
+const patientByUser = (id: string) => internalGet<{ id: string; userId: string }>(`${userUrl}/internal/v1/patients/by-user/${encodeURIComponent(id)}`);
+const patientById = (id: string) => internalGet<{ id: string; userId: string }>(`${userUrl}/internal/v1/patients/${encodeURIComponent(id)}`);
+const doctorByUser = (id: string) => internalGet<{ id: string; userId: string; isActive: boolean }>(`${doctorUrl}/internal/v1/doctors/by-user/${encodeURIComponent(id)}`);
+async function appointment(id: string) {
+  const result = await internalGet<{ valid: boolean; appointment: Appointment }>(`${appointmentUrl}/internal/v1/appointments/${encodeURIComponent(id)}/verify-for-medical-record`);
+  return result?.valid ? result.appointment : null;
+}
+async function allowedDoctor(userId: string, doctorId: string) {
+  const doctor = await doctorByUser(userId);
+  return doctor?.isActive && doctor.id === doctorId;
 }
 
-function error(code: string, message: string, details: unknown[] = [], requestId?: string) {
-  return requestId
-    ? { success: false, error: { code, message, details }, requestId }
-    : { success: false, error: { code, message, details } };
-}
-
-function getRequestId(req: express.Request): string {
-  return ((req as unknown as Record<string, unknown>)["requestId"] as string) ?? randomUUID();
-}
-
-function currentUserId(req: express.Request) {
-  return req.header("x-user-id") ?? req.header("X-User-Id") ?? "user-doctor-1";
-}
-
-function currentRole(req: express.Request) {
-  return (req.header("x-role") ?? req.header("X-Role") ?? "DOCTOR").toUpperCase();
-}
-
-function parsePagination(req: express.Request) {
-  const rawPage = Number(req.query.page ?? 1);
-  const rawLimit = Number(req.query.limit ?? 20);
-  const page = Number.isInteger(rawPage) && rawPage >= 1 ? rawPage : 1;
-  const limit = Number.isInteger(rawLimit) && rawLimit >= 1 && rawLimit <= 100 ? rawLimit : 20;
-  return { page, limit };
-}
-
-type VerifyResult = {
-  valid: boolean;
-  appointment?: {
-    id: string;
-    patientId: string;
-    doctorId: string;
-    status: string;
-  };
-  reason?: string;
-};
-
-async function verifyAppointment(appointmentId: string): Promise<VerifyResult> {
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 4000);
-    const response = await fetch(`${appointmentServiceUrl}/internal/v1/appointments/${appointmentId}/verify-for-medical-record`, {
-      signal: controller.signal
-    });
-    clearTimeout(timeout);
-    if (!response.ok) return { valid: false, reason: `appointment verify failed: ${response.status}` };
-    const body = (await response.json()) as { success: boolean; data: VerifyResult };
-    if (!body.success) return { valid: false };
-    return body.data;
-  } catch (e) {
-    console.warn(JSON.stringify({ msg: "verifyAppointment failed", appointmentId, error: String(e) }));
-    return { valid: false, reason: "UPSTREAM_UNAVAILABLE" };
-  }
-}
-
-async function publishNotificationEvent(payload: unknown, retries = 3) {
-  const eventId = `medical-record.created:${(payload as { id?: string })?.id ?? randomUUID()}`;
-  for (let attempt = 0; attempt < retries; attempt++) {
+export async function sendOutbox() {
+  const events = await repository.pendingOutbox();
+  for (const event of events) {
     try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 4000);
-      const res = await fetch(`${notificationServiceUrl}/internal/v1/notifications`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", "X-Request-Id": randomUUID() },
-        body: JSON.stringify({ eventId, type: "medical-record.created", payload }),
-        signal: controller.signal
-      });
-      clearTimeout(timeout);
-      if (res.ok) return;
-      console.warn(JSON.stringify({ msg: "notification publish failed", status: res.status, attempt }));
-    } catch (e) {
-      console.warn(JSON.stringify({ msg: "notification publish error", attempt, error: String(e) }));
+      if (event.eventType === "medical-record.created" || event.eventType === "medical-record.updated") {
+        const response = await fetch(`${notificationUrl}/internal/v1/notifications`, {
+          method: "POST", headers: { "Content-Type": "application/json", "X-Request-Id": event.id },
+          body: JSON.stringify({ eventId: event.id, type: event.eventType, payload: event.payload }),
+          signal: AbortSignal.timeout(4000)
+        });
+        if (!response.ok) throw new Error(`Notification returned ${response.status}`);
+      } else if (event.eventType === "appointment.complete") {
+        const id = String(event.payload.appointmentId);
+        const response = await fetch(`${appointmentUrl}/api/v1/appointments/${encodeURIComponent(id)}/complete`, {
+          method: "PATCH", headers: { "Content-Type": "application/json", "X-User-Id": String(event.payload.doctorUserId), "X-Role": "DOCTOR" },
+          body: "{}", signal: AbortSignal.timeout(4000)
+        });
+        if (!response.ok && !(response.status === 409 && (await appointment(id))?.status === "COMPLETED")) throw new Error(`Appointment returned ${response.status}`);
+      }
+      await repository.markOutboxSent(event.id);
+    } catch (error) {
+      console.warn(JSON.stringify({ eventId: event.id, type: event.eventType, error: String(error) }));
+      await repository.deferOutbox(event.id, event.retryCount);
     }
-    await new Promise((r) => setTimeout(r, 300 * (attempt + 1)));
-  }
-  console.warn(JSON.stringify({ msg: "Medical record notification queued for retry (outbox fallback)", eventId }));
-}
-
-async function tryCompleteAppointment(appointmentId: string, requestId: string) {
-  // RECORD-007: phối hợp hoàn thành buổi khám sau khi lưu kết quả, không dùng distributed transaction
-  // Chỉ thử complete nếu appointment đang CHECKED_IN; lỗi không rollback record đã lưu
-  try {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 4000);
-    await fetch(`${appointmentServiceUrl}/internal/v1/appointments/${appointmentId}/verify-for-medical-record`, { signal: controller.signal });
-    clearTimeout(timeout);
-    // Use public Appointment complete endpoint via internal? Appointment Service exposes PATCH /api/v1/appointments/:id/complete
-    // We attempt via service-to-service with doctor identity
-    const res = await fetch(`${appointmentServiceUrl}/api/v1/appointments/${appointmentId}/complete`, {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json", "X-Request-Id": requestId, "X-User-Id": "system-medical-record", "X-Role": "DOCTOR" },
-      body: JSON.stringify({ reason: "Auto complete after medical record FINAL" })
-    });
-    if (!res.ok) {
-      console.warn(JSON.stringify({ msg: "auto complete appointment failed", appointmentId, status: res.status }));
-    }
-  } catch (e) {
-    console.warn(JSON.stringify({ msg: "auto complete error", appointmentId, error: String(e) }));
   }
 }
 
-app.get("/health", (req, res) => res.json(success({ service: "medical-record-service", status: "ok" }, getRequestId(req))));
+app.get("/health", async (_req, res) => {
+  try { await pool.query("SELECT 1"); return res.json({ success: true, data: { service: "medical-record-service", status: "ok" } }); }
+  catch { return fail(res, 503, "DATABASE_UNAVAILABLE", "Database is unavailable"); }
+});
+const openapi = { openapi: "3.0.3", info: { title: "Medical Record Service", version: "1.0.0" }, paths: {
+  "/api/v1/medical-records": { get: { summary: "List own records" }, post: { summary: "Create appointment record" } },
+  "/api/v1/medical-records/{id}": { get: { summary: "Get owned record" }, patch: { summary: "Update draft record" } }
+} };
+app.get("/openapi.json", (_req, res) => res.json(openapi));
+app.use("/docs", swaggerUi.serve, swaggerUi.setup(openapi));
 
-// RECORD-002, RECORD-003, RECORD-004, RECORD-007
-app.get("/api/v1/medical-records", (req, res) => {
-  const requestId = getRequestId(req);
-  const role = currentRole(req);
-  const userId = currentUserId(req);
-  const { page, limit } = parsePagination(req);
-  const patientId = req.query.patientId ? String(req.query.patientId) : undefined;
-  const doctorId = req.query.doctorId ? String(req.query.doctorId) : undefined;
-  const appointmentId = req.query.appointmentId ? String(req.query.appointmentId) : undefined;
-
-  // RECORD-003: bệnh nhân chỉ đọc hồ sơ của mình
-  if (role === "PATIENT") {
-    // Patient can only query own records: enforce patientId = userId
-    // In real system patientId maps to patient_profiles.id via userId; in scaffold we treat userId as patientId
-    if (patientId && patientId !== userId && patientId !== "patient-1") {
-      return res.status(403).json(error("ACCESS_DENIED", "Patient can only view own medical records", [], requestId));
-    }
-    const effectivePatientId = patientId ?? userId;
-    const items = repository.findAll({ patientId: effectivePatientId, appointmentId });
-    // Pagination
-    const start = (page - 1) * limit;
-    const paged = items.slice(start, start + limit);
-    return res.json(success({ items: paged, page, limit, total: items.length }, requestId));
+app.get("/api/v1/medical-records", async (req, res) => {
+  const who = actor(req);
+  if (!who) return fail(res, 401, "AUTH_REQUIRED", "Authentication required");
+  if (who.role !== "PATIENT" && who.role !== "DOCTOR") return fail(res, 403, "ACCESS_DENIED", "Access denied");
+  const parsed = pagingSchema.safeParse(req.query);
+  if (!parsed.success) return fail(res, 400, "VALIDATION_ERROR", "Invalid pagination");
+  let patientId = typeof req.query.patientId === "string" ? req.query.patientId : undefined;
+  let doctorId = typeof req.query.doctorId === "string" ? req.query.doctorId : undefined;
+  if (who.role === "PATIENT") {
+    const patient = await patientByUser(who.userId);
+    if (!patient || (patientId && patientId !== patient.id)) return fail(res, 403, "ACCESS_DENIED", "Patient record access denied");
+    patientId = patient.id;
+  } else if (who.role === "DOCTOR") {
+    const doctor = await doctorByUser(who.userId);
+    if (!doctor || !doctor.isActive || (doctorId && doctorId !== doctor.id)) return fail(res, 403, "ACCESS_DENIED", "Doctor record access denied");
+    doctorId = doctor.id;
   }
-
-  // STAFF không được đọc nội dung lâm sàng chi tiết? Theo contract: STAFF không đọc clinical; ở đây list trả về nhưng sẽ lọc ở gateway/service policy
-  // DOCTOR, ADMIN, STAFF có thể filter
-  if (role === "STAFF") {
-    // STAFF không được xem chi tiết lâm sàng, nhưng list vẫn trả về metadata không nhạy cảm? Theo RECORD-003: STAFF không sửa chẩn đoán, hạn chế đọc
-    // Ở MVP, chặn STAFF đọc nội dung clinical chi tiết: trả 403 nếu STAFF cố xem
-    // Tuy nhiên list endpoint cho STAFF trả rỗng hoặc limited – ở đây trả 403 để rõ policy
-    return res.status(403).json(error("ACCESS_DENIED", "Staff cannot read clinical content", [], requestId));
-  }
-
-  const items = repository.findAll({ patientId, doctorId, appointmentId });
-  const start = (page - 1) * limit;
-  const paged = items.slice(start, start + limit);
-  return res.json(success({ items: paged, page, limit, total: items.length }, requestId));
+  const result = await repository.findAll({ patientId, doctorId, appointmentId: typeof req.query.appointmentId === "string" ? req.query.appointmentId : undefined, status: who.role === "PATIENT" ? "FINAL" : undefined }, parsed.data.page, parsed.data.limit);
+  return res.json({ success: true, data: result });
 });
 
 app.post("/api/v1/medical-records", async (req, res) => {
-  const requestId = getRequestId(req);
-  const role = currentRole(req);
-  const userId = currentUserId(req);
-
-  if (!["DOCTOR", "ADMIN"].includes(role)) {
-    return res.status(403).json(error("ACCESS_DENIED", "Only doctor or admin can create medical record", [], requestId));
+  const who = actor(req);
+  if (!who) return fail(res, 401, "AUTH_REQUIRED", "Authentication required");
+  if (who.role !== "DOCTOR") return fail(res, 403, "ACCESS_DENIED", "Doctor access required");
+  const parsed = createSchema.safeParse(req.body);
+  if (!parsed.success) return fail(res, 400, "VALIDATION_ERROR", "Invalid medical record");
+  const booking = await appointment(parsed.data.appointmentId);
+  if (!booking || !["CHECKED_IN", "COMPLETED"].includes(booking.status)) return fail(res, 422, "APPOINTMENT_NOT_ELIGIBLE", "Appointment is not eligible");
+  if (booking.patientId !== parsed.data.patientId || booking.doctorId !== parsed.data.doctorId || !(await allowedDoctor(who.userId, booking.doctorId))) return fail(res, 403, "ACCESS_DENIED", "Doctor or patient does not match appointment");
+  const patient = await patientById(booking.patientId);
+  if (!patient) return fail(res, 422, "PATIENT_NOT_FOUND", "Patient profile does not exist");
+  try {
+    const record = await repository.create({ ...parsed.data, createdBy: who.userId }, patient.userId);
+    return res.status(201).json({ success: true, data: record });
+  } catch (error) {
+    if (typeof error === "object" && error !== null && "code" in error && error.code === "23505") return fail(res, 409, "MEDICAL_RECORD_ALREADY_EXISTS", "Record already exists for appointment");
+    throw error;
   }
-
-  const parsed = createRecordSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json(error("VALIDATION_ERROR", "Invalid request body", parsed.error.issues, requestId));
-
-  if (repository.findByAppointmentId(parsed.data.appointmentId)) {
-    return res.status(409).json(error("MEDICAL_RECORD_ALREADY_EXISTS", "Medical record already exists for appointment", [], requestId));
-  }
-
-  // RECORD-003: xác minh appointment qua API, bác sĩ phụ trách và trạng thái hợp lệ
-  const verified = await verifyAppointment(parsed.data.appointmentId);
-  if (!verified.valid || !verified.appointment) {
-    return res.status(422).json(error("APPOINTMENT_NOT_ELIGIBLE", "Appointment is not eligible for medical record", [], requestId));
-  }
-
-  // Status must be CHECKED_IN or COMPLETED
-  if (!["CHECKED_IN", "COMPLETED"].includes(verified.appointment.status)) {
-    return res.status(422).json(error("APPOINTMENT_NOT_ELIGIBLE", "Appointment status must be CHECKED_IN or COMPLETED", [], requestId));
-  }
-
-  // Doctor must match appointment's doctorId when role is DOCTOR
-  if (role === "DOCTOR" && verified.appointment.doctorId !== parsed.data.doctorId) {
-    return res.status(403).json(error("ACCESS_DENIED", "Doctor does not match appointment assignment", [], requestId));
-  }
-
-  // Ensure payload doctor/patient match verified appointment
-  if (verified.appointment.patientId !== parsed.data.patientId || verified.appointment.doctorId !== parsed.data.doctorId) {
-    return res.status(422).json(error("VALIDATION_ERROR", "patientId/doctorId mismatch with appointment", [], requestId));
-  }
-
-  // Optional: if DOCTOR role, ensure creator is the doctorId owner
-  // In scaffold, userId maps to doctor-1; we allow ADMIN to create for any doctor
-  const record = repository.create({ ...parsed.data, createdBy: userId });
-  await publishNotificationEvent(record);
-
-  // RECORD-007: try to complete appointment asynchronously without blocking rollback
-  if (parsed.data.status === "FINAL" && verified.appointment.status === "CHECKED_IN") {
-    // fire-and-forget, non-blocking
-    void tryCompleteAppointment(parsed.data.appointmentId, requestId);
-  }
-
-  return res.status(201).json(success(record, requestId));
 });
 
-app.get("/api/v1/medical-records/:id", (req, res) => {
-  const requestId = getRequestId(req);
-  const role = currentRole(req);
-  const userId = currentUserId(req);
-  const record = repository.findById(req.params.id);
-  if (!record) return res.status(404).json(error("MEDICAL_RECORD_NOT_FOUND", "Medical record not found", [], requestId));
-
-  // RECORD-003: ownership checks
-  if (role === "PATIENT" && record.patientId !== userId && record.patientId !== "patient-1") {
-    // In scaffold patientId is opaque; check strict equality, else deny
-    // Also allow patient-1 alias
-    return res.status(403).json(error("ACCESS_DENIED", "Patient can only view own records", [], requestId));
-  }
-  if (role === "DOCTOR" && record.doctorId !== userId) {
-    const isOwner = record.doctorId === userId || record.createdBy === userId;
-    if (!isOwner) return res.status(403).json(error("ACCESS_DENIED", "Doctor not assigned to this record", [], requestId));
-  }
-  if (role === "STAFF") {
-    return res.status(403).json(error("ACCESS_DENIED", "Staff cannot read clinical content", [], requestId));
-  }
-
-  return res.json(success(record, requestId));
+app.get("/api/v1/medical-records/:id", async (req, res) => {
+  const who = actor(req);
+  if (!who) return fail(res, 401, "AUTH_REQUIRED", "Authentication required");
+  if (who.role !== "PATIENT" && who.role !== "DOCTOR") return fail(res, 403, "ACCESS_DENIED", "Access denied");
+  const record = await repository.findById(req.params.id);
+  if (!record) return fail(res, 404, "MEDICAL_RECORD_NOT_FOUND", "Record not found");
+  if (who.role === "PATIENT" && record.status !== "FINAL") return fail(res, 404, "MEDICAL_RECORD_NOT_FOUND", "Record not found");
+  if (who.role === "PATIENT" && (await patientByUser(who.userId))?.id !== record.patientId) return fail(res, 403, "ACCESS_DENIED", "Access denied");
+  if (who.role === "DOCTOR" && !(await allowedDoctor(who.userId, record.doctorId))) return fail(res, 403, "ACCESS_DENIED", "Access denied");
+  return res.json({ success: true, data: record });
 });
 
-app.patch("/api/v1/medical-records/:id", (req, res) => {
-  const requestId = getRequestId(req);
-  const role = currentRole(req);
-  const userId = currentUserId(req);
-
-  // RECORD-003: STAFF không sửa chẩn đoán, PATIENT không được sửa
-  if (role === "STAFF") return res.status(403).json(error("ACCESS_DENIED", "Staff cannot update diagnosis", [], requestId));
-  if (role === "PATIENT") return res.status(403).json(error("ACCESS_DENIED", "Patient cannot update medical records", [], requestId));
-  if (!["DOCTOR", "ADMIN"].includes(role)) return res.status(403).json(error("ACCESS_DENIED", "Insufficient role", [], requestId));
-
-  const existing = repository.findById(req.params.id);
-  if (!existing) return res.status(404).json(error("MEDICAL_RECORD_NOT_FOUND", "Medical record not found", [], requestId));
-
-  // Doctor must be creator/assignee
-  if (role === "DOCTOR" && existing.createdBy !== userId && existing.doctorId !== userId) {
-    return res.status(403).json(error("ACCESS_DENIED", "Doctor not assigned to this record", [], requestId));
-  }
-
-  const parsed = updateRecordSchema.safeParse(req.body);
-  if (!parsed.success) return res.status(400).json(error("VALIDATION_ERROR", "Invalid request body", parsed.error.issues, requestId));
-
-  const updated = repository.update(req.params.id, { ...parsed.data, updatedBy: userId });
-  if (!updated) return res.status(404).json(error("MEDICAL_RECORD_NOT_FOUND", "Medical record not found", [], requestId));
-
-  // RECORD-004: audit log is handled inside repository, return with updatedAt
-  return res.json(success(updated, requestId));
+app.patch("/api/v1/medical-records/:id", async (req, res) => {
+  const who = actor(req);
+  if (!who) return fail(res, 401, "AUTH_REQUIRED", "Authentication required");
+  if (who.role !== "DOCTOR") return fail(res, 403, "ACCESS_DENIED", "Doctor access required");
+  const parsed = updateSchema.safeParse(req.body);
+  if (!parsed.success) return fail(res, 400, "VALIDATION_ERROR", "Invalid update");
+  const existing = await repository.findById(req.params.id);
+  if (!existing) return fail(res, 404, "MEDICAL_RECORD_NOT_FOUND", "Record not found");
+  if (!(await allowedDoctor(who.userId, existing.doctorId))) return fail(res, 403, "ACCESS_DENIED", "Access denied");
+  const patient = await patientById(existing.patientId);
+  if (!patient) return fail(res, 422, "PATIENT_NOT_FOUND", "Patient profile does not exist");
+  const result = await repository.update(existing.id, parsed.data, who.userId, patient.userId);
+  if (result && "conflict" in result) return fail(res, 409, "MEDICAL_RECORD_FINAL", "Final record cannot return to draft");
+  if (!result || !("record" in result)) return fail(res, 404, "MEDICAL_RECORD_NOT_FOUND", "Record not found");
+  return res.json({ success: true, data: result.record });
 });
 
-// Internal route for service-to-service
-app.get("/internal/v1/medical-records/by-appointment/:appointmentId", (req, res) => {
-  const requestId = getRequestId(req);
-  const record = repository.findByAppointmentId(req.params.appointmentId);
-  if (!record) return res.status(404).json(error("MEDICAL_RECORD_NOT_FOUND", "Medical record not found", [], requestId));
-  return res.json(success(record, requestId));
+app.get("/internal/v1/medical-records/by-appointment/:appointmentId", async (req, res) => {
+  const record = await repository.findByAppointmentId(req.params.appointmentId);
+  return record ? res.json({ success: true, data: record }) : fail(res, 404, "MEDICAL_RECORD_NOT_FOUND", "Record not found");
 });
 
-// Remove non-contract legacy route: /api/v1/patients/:patientId/medical-records -> return 404 with guidance
-app.get("/api/v1/patients/:patientId/medical-records", (_req, res) => {
-  return res.status(404).json(error("ROUTE_NOT_FOUND", "Use GET /api/v1/medical-records?patientId=... instead", []));
+app.use((error: unknown, _req: Request, res: express.Response, _next: express.NextFunction) => {
+  console.error(JSON.stringify({ message: "Medical Record request failed", error: String(error) }));
+  return fail(res, 503, "SERVICE_UNAVAILABLE", "Service temporarily unavailable");
 });
 
-app.use((_req, res) => res.status(404).json(error("ROUTE_NOT_FOUND", "Route not found")));
-
-app.listen(port, () => {
-  console.log(`Medical Record Service listening on port ${port}`);
-});
+if (process.env.NODE_ENV !== "test") {
+  const timer = setInterval(() => { void sendOutbox().catch((error) => console.error(JSON.stringify({ message: "Outbox dispatch failed", error: String(error) }))); }, 5000);
+  timer.unref();
+  app.listen(port, () => console.log(`Medical Record Service listening on port ${port}`));
+}

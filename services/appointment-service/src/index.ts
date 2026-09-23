@@ -10,6 +10,7 @@ const repository = new AppointmentRepository();
 const port = Number(process.env.APPOINTMENT_SERVICE_PORT ?? 3003);
 const doctorServiceUrl = process.env.DOCTOR_SERVICE_URL ?? "http://localhost:3002";
 const notificationServiceUrl = process.env.NOTIFICATION_SERVICE_URL ?? "http://localhost:3005";
+const userServiceUrl = process.env.USER_SERVICE_URL ?? "http://localhost:3001";
 
 const allowedTransitions: Record<AppointmentStatus, AppointmentStatus[]> = {
   PENDING: ["CONFIRMED", "CANCELLED"],
@@ -67,15 +68,28 @@ async function verifyDoctorSlot(doctorId: string, startAt: string, endAt: string
   return body.success && body.data.valid;
 }
 
-async function publishNotificationEvent(eventType: string, payload: unknown) {
+async function publishNotificationEvent(eventType: string, appointment: { id: string; patientId: string; scheduledStartAt: string }, eventId: string) {
   try {
-    await fetch(`${notificationServiceUrl}/internal/v1/notifications`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ type: eventType, payload })
-    });
-  } catch {
-    console.warn(`Notification event queued for retry: ${eventType}`);
+    const patientResponse = await fetch(`${userServiceUrl}/internal/v1/patients/${encodeURIComponent(appointment.patientId)}`, { signal: AbortSignal.timeout(4000) });
+    if (!patientResponse.ok) throw new Error(`Patient lookup returned ${patientResponse.status}`);
+    const patientBody = await patientResponse.json() as { success: boolean; data: { userId: string } };
+    if (!patientBody.success || !patientBody.data?.userId) throw new Error("Invalid patient response");
+    const payload = { appointmentId: appointment.id, patientId: appointment.patientId, recipientUserId: patientBody.data.userId, scheduledStartAt: appointment.scheduledStartAt };
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const response = await fetch(`${notificationServiceUrl}/internal/v1/notifications`, {
+          method: "POST", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ eventId, type: eventType, payload }), signal: AbortSignal.timeout(4000)
+        });
+        if (response.ok) return;
+        throw new Error(`Notification returned ${response.status}`);
+      } catch (error) {
+        if (attempt === 2) throw error;
+        await new Promise((resolve) => setTimeout(resolve, 200 * (attempt + 1)));
+      }
+    }
+  } catch (error) {
+    console.warn(JSON.stringify({ eventId, eventType, error: String(error) }));
   }
 }
 
@@ -84,7 +98,7 @@ function currentUserId(req: express.Request) {
 }
 
 function transition(toStatus: AppointmentStatus) {
-  return (req: express.Request, res: express.Response) => {
+  return async (req: express.Request, res: express.Response) => {
     const id = String(req.params.id);
     const appointment = repository.findById(id);
     if (!appointment) return res.status(404).json(error("APPOINTMENT_NOT_FOUND", "Appointment not found"));
@@ -92,6 +106,9 @@ function transition(toStatus: AppointmentStatus) {
       return res.status(409).json(error("APPOINTMENT_INVALID_STATUS_TRANSITION", "Invalid appointment status transition"));
     }
     const updated = repository.transition(id, toStatus, currentUserId(req), req.body?.reason);
+    if (updated && ["CONFIRMED", "CANCELLED", "CHECKED_IN"].includes(toStatus)) {
+      await publishNotificationEvent(`appointment.${toStatus.toLowerCase()}`, updated, `appointment.${toStatus.toLowerCase()}:${updated.id}`);
+    }
     return res.json(success(updated));
   };
 }
@@ -125,7 +142,7 @@ app.post("/api/v1/appointments", async (req, res) => {
     createdBy: currentUserId(req),
     status: "PENDING"
   });
-  await publishNotificationEvent("appointment.created", appointment);
+  await publishNotificationEvent("appointment.created", appointment, `appointment.created:${appointment.id}`);
   return res.status(201).json(success(appointment));
 });
 app.get("/api/v1/appointments/:id", (req, res) => {
@@ -145,7 +162,7 @@ app.patch("/api/v1/appointments/:id/reschedule", async (req, res) => {
   }
   appointment.scheduledStartAt = parsed.data.scheduledStartAt;
   appointment.scheduledEndAt = parsed.data.scheduledEndAt;
-  await publishNotificationEvent("appointment.rescheduled", appointment);
+  await publishNotificationEvent("appointment.rescheduled", appointment, `appointment.rescheduled:${appointment.id}:${appointment.scheduledStartAt}`);
   return res.json(success(appointment));
 });
 app.patch("/api/v1/appointments/:id/cancel", transition("CANCELLED"));

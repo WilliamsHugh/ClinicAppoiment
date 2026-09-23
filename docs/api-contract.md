@@ -291,9 +291,17 @@ Các route này không được mount vào Gateway public router. Trong MVP gọ
 |---|---|---|---|
 | Appointment -> Doctor | `POST /internal/v1/doctors/verify-slot` | `{ "doctorId": string, "startAt": ISODateTime, "endAt": ISODateTime }` | `{ "valid": boolean, "reason"?: string }` |
 | Medical Record -> Appointment | `GET /internal/v1/appointments/{appointmentId}/verify-for-medical-record` | Không có | `{ "valid": boolean, "appointment"?: { "id", "patientId", "doctorId", "status" } }` |
+| Medical Record/Appointment -> User | `GET /internal/v1/patients/{patientId}` | Không có | `{ "id": string, "userId": string }` |
+| Medical Record -> User | `GET /internal/v1/patients/by-user/{userId}` | Không có | `{ "id": string, "userId": string }` |
+| Medical Record -> Doctor | `GET /internal/v1/doctors/by-user/{userId}` | Không có | `{ "id": string, "userId": string, "isActive": boolean }` |
 | Appointment/Medical Record -> Notification | `POST /internal/v1/notifications` | `{ "eventId": string, "type": string, "payload": object }` | `201` khi nhận lần đầu; `200` khi event đã nhận trước đó |
 
-Notification tối thiểu xử lý event types `appointment.created`, `appointment.rescheduled`, `appointment.cancelled`, `appointment.confirmed`, `medical-record.created`. `eventId` dùng để deduplicate retry. Gửi HTTP đồng bộ không phải durable queue; caller cần timeout, retry có giới hạn và idempotency. Lỗi notification không được rollback appointment/medical record đã commit.
+Notification tối thiểu xử lý event types `appointment.created`, `appointment.rescheduled`, `appointment.cancelled`, `appointment.confirmed`, `medical-record.created`, `medical-record.updated`. `eventId` dùng để deduplicate retry. Gửi HTTP đồng bộ không phải durable queue; caller cần timeout, retry có giới hạn và idempotency. Lỗi notification không được rollback appointment/medical record đã commit.
+
+Payload Notification chỉ gồm ID logic và thời gian cần cho điều hướng/nhắc lịch:
+`recipientUserId`, `patientId?`, `appointmentId?`, `recordId?`, `scheduledStartAt?`.
+Không đưa chẩn đoán, triệu chứng, ghi chú hoặc đơn thuốc vào event. Medical Record
+ghi outbox cùng transaction tạo/cập nhật hồ sơ; worker gửi lại bằng `eventId` cố định.
 
 ## 7. Error Code Tối Thiểu
 

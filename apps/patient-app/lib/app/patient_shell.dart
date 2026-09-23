@@ -52,7 +52,10 @@ class _PatientShellState extends State<PatientShell> {
             ),
       body: IndexedStack(
         index: _selectedIndex,
-        children: routes.map((route) => route.builder(context)).toList(),
+        children: routes
+            .map((route) => route.builder(
+                context, widget.session, (path) => _selectPath(routes, path)))
+            .toList(),
       ),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
