@@ -122,6 +122,7 @@ export function createAuthRouter(provider: AuthProvider | null, repository: User
       const tokens = await provider.signIn(parsed.data.email, parsed.data.password);
       const profile = await profileWithRetry(repository, tokens.authUserId);
       if (!profile) return fail(res, 403, "USER_PROFILE_NOT_FOUND", "No application profile is linked to this account");
+      if (profile.status === "LOCKED") return fail(res, 403, "ACCOUNT_LOCKED", "Tài khoản của bạn đã bị khóa");
       if (profile.status !== "ACTIVE") return fail(res, 403, "ACCOUNT_INACTIVE", "User account is not active");
       return res.json(ok(session(tokens, profile)));
     } catch (error) {
@@ -136,7 +137,21 @@ export function createAuthRouter(provider: AuthProvider | null, repository: User
     try {
       const result = await provider.signUp(parsed.data.fullName, parsed.data.email, parsed.data.password);
       if (!result.tokens) return res.status(201).json(ok({ requiresEmailConfirmation: true }));
-      const profile = await profileWithRetry(repository, result.authUserId);
+      let profile = await profileWithRetry(repository, result.authUserId);
+      if (!profile && typeof repository.createUser === "function") {
+        try {
+          profile = await repository.createUser({
+            supabaseAuthUserId: result.authUserId,
+            email: parsed.data.email,
+            fullName: parsed.data.fullName,
+            role: "PATIENT",
+            status: "ACTIVE",
+          });
+        } catch {
+          // Provisioning might have raced with trigger
+          profile = await repository.findUserByAuthId(result.authUserId);
+        }
+      }
       if (!profile) return fail(res, 503, "USER_PROFILE_PROVISIONING_PENDING", "User profile is still being provisioned");
       return res.status(201).json(ok({ ...session(result.tokens, profile), requiresEmailConfirmation: false }));
     } catch (error) {
@@ -152,6 +167,7 @@ export function createAuthRouter(provider: AuthProvider | null, repository: User
       const tokens = await provider.refresh(parsed.data.refreshToken);
       const profile = await profileWithRetry(repository, tokens.authUserId);
       if (!profile) return fail(res, 403, "USER_PROFILE_NOT_FOUND", "No application profile is linked to this account");
+      if (profile.status === "LOCKED") return fail(res, 403, "ACCOUNT_LOCKED", "Tài khoản của bạn đã bị khóa");
       if (profile.status !== "ACTIVE") return fail(res, 403, "ACCOUNT_INACTIVE", "User account is not active");
       return res.json(ok(session(tokens, profile)));
     } catch (error) {

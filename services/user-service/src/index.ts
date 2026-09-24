@@ -17,8 +17,8 @@ const pool = new Pool({
     : undefined,
 });
 export const app = express();
-const repository = new UserRepository(pool);
-const authProvider = createSupabaseAuthProvider(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
+export const repository = new UserRepository(pool);
+export const authProvider = createSupabaseAuthProvider(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
 const port = Number(process.env.USER_SERVICE_PORT ?? 3001);
 
 const updateOwnUserSchema = z.object({
@@ -32,21 +32,48 @@ const updatePatientSchema = z.object({
   address: z.string().optional(),
   emergencyContact: z.string().optional(),
   insuranceNumber: z.string().optional()
+}).strict();
+
+const listUsersQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  role: z.enum(["PATIENT", "DOCTOR", "STAFF", "ADMIN"]).optional(),
+  status: z.enum(["ACTIVE", "INACTIVE", "LOCKED"]).optional(),
+  q: z.string().trim().optional(),
+});
+
+const listPatientsQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  q: z.string().trim().optional(),
 });
 
 const swaggerDocument = {
   openapi: "3.0.3",
-  info: { title: "User Service API", version: "0.1.0" },
+  info: { title: "User Service API", version: "0.1.0", description: "Quản lý xác thực, người dùng và hồ sơ bệnh nhân" },
   paths: {
-    "/health": { get: { summary: "Health check" } },
-    "/api/v1/auth/register": { post: { summary: "Register a patient account" } },
-    "/api/v1/auth/login": { post: { summary: "Sign in" } },
-    "/api/v1/auth/refresh": { post: { summary: "Refresh a session" } },
-    "/api/v1/auth/logout": { post: { summary: "Revoke a session" } },
-    "/api/v1/auth/me": { get: { summary: "Get current authenticated profile" } },
-    "/api/v1/users": { get: { summary: "List users" } },
-    "/api/v1/users/me": { get: { summary: "Get current user" }, patch: { summary: "Update current user" } },
-    "/api/v1/patients": { get: { summary: "List patients" } }
+    "/health": { get: { summary: "Kiểm tra tình trạng service" } },
+    "/api/v1/auth/register": { post: { summary: "Đăng ký tài khoản bệnh nhân (PATIENT)" } },
+    "/api/v1/auth/login": { post: { summary: "Đăng nhập hệ thống" } },
+    "/api/v1/auth/refresh": { post: { summary: "Làm mới access token bằng refresh token" } },
+    "/api/v1/auth/logout": { post: { summary: "Đăng xuất và hủy phiên" } },
+    "/api/v1/auth/me": { get: { summary: "Lấy thông tin tài khoản hiện tại" } },
+    "/api/v1/users": { get: { summary: "Danh sách người dùng (ADMIN)" } },
+    "/api/v1/users/{id}": { get: { summary: "Xem chi tiết người dùng (ADMIN)" } },
+    "/api/v1/users/{id}/status": { patch: { summary: "Cập nhật trạng thái người dùng (ADMIN)" } },
+    "/api/v1/users/{id}/role": { patch: { summary: "Cập nhật vai trò người dùng (ADMIN)" } },
+    "/api/v1/users/me": {
+      get: { summary: "Xem hồ sơ cá nhân của người dùng hiện tại" },
+      patch: { summary: "Cập nhật hồ sơ cá nhân của người dùng hiện tại" }
+    },
+    "/api/v1/patients": { get: { summary: "Tìm kiếm danh sách bệnh nhân (DOCTOR, STAFF, ADMIN)" } },
+    "/api/v1/patients/{id}": {
+      get: { summary: "Xem chi tiết hồ sơ bệnh nhân" },
+      patch: { summary: "Cập nhật hồ sơ bệnh nhân (Bệnh nhân chính mình hoặc ADMIN)" }
+    },
+    "/internal/v1/auth/verify": { get: { summary: "Xác minh token nội bộ cho API Gateway" } },
+    "/internal/v1/patients/by-user/{userId}": { get: { summary: "Lấy thông tin bệnh nhân qua User ID (Nội bộ)" } },
+    "/internal/v1/patients/{id}": { get: { summary: "Lấy thông tin bệnh nhân qua Patient ID (Nội bộ)" } }
   }
 };
 
@@ -106,7 +133,11 @@ app.get("/api/v1/users/me", requireRoles("PATIENT", "DOCTOR", "STAFF", "ADMIN"),
   if (!userId) return res.status(401).json(error("AUTH_REQUIRED", "Authentication required"));
   const user = await repository.findUserById(userId);
   if (!user) return res.status(404).json(error("USER_NOT_FOUND", "User not found"));
-  return res.json(success(user));
+  let patientProfile = null;
+  if (user.role === "PATIENT") {
+    patientProfile = await repository.findPatientByUserId(user.id);
+  }
+  return res.json(success({ ...user, patientProfile }));
 });
 
 app.patch("/api/v1/users/me", requireRoles("PATIENT", "DOCTOR", "STAFF", "ADMIN"), async (req, res) => {
@@ -120,10 +151,12 @@ app.patch("/api/v1/users/me", requireRoles("PATIENT", "DOCTOR", "STAFF", "ADMIN"
 });
 
 app.get("/api/v1/users", requireRoles("ADMIN"), async (req, res) => {
-  const page = Number(req.query.page ?? 1);
-  const limit = Number(req.query.limit ?? 20);
-  const items = await repository.findUsers();
-  return res.json(success({ items, page, limit, total: items.length }));
+  const parsed = listUsersQuerySchema.safeParse(req.query);
+  if (!parsed.success) {
+    return res.status(400).json(error("VALIDATION_ERROR", "Invalid query parameters", parsed.error.issues));
+  }
+  const result = await repository.findUsers(parsed.data);
+  return res.json(success(result));
 });
 
 app.get("/api/v1/users/:id", requireRoles("ADMIN"), async (req, res) => {
@@ -133,7 +166,7 @@ app.get("/api/v1/users/:id", requireRoles("ADMIN"), async (req, res) => {
 });
 
 app.patch("/api/v1/users/:id/status", requireRoles("ADMIN"), async (req, res) => {
-  const parsed = z.object({ status: z.enum(["ACTIVE", "INACTIVE", "LOCKED"]) }).safeParse(req.body);
+  const parsed = z.object({ status: z.enum(["ACTIVE", "INACTIVE", "LOCKED"]) }).strict().safeParse(req.body);
   if (!parsed.success) return res.status(400).json(error("VALIDATION_ERROR", "Invalid request body", parsed.error.issues));
   const user = await repository.updateUser(String(req.params.id), { status: parsed.data.status });
   if (!user) return res.status(404).json(error("USER_NOT_FOUND", "User not found"));
@@ -141,16 +174,20 @@ app.patch("/api/v1/users/:id/status", requireRoles("ADMIN"), async (req, res) =>
 });
 
 app.patch("/api/v1/users/:id/role", requireRoles("ADMIN"), async (req, res) => {
-  const parsed = z.object({ role: z.enum(["PATIENT", "DOCTOR", "STAFF", "ADMIN"]) }).safeParse(req.body);
+  const parsed = z.object({ role: z.enum(["PATIENT", "DOCTOR", "STAFF", "ADMIN"]) }).strict().safeParse(req.body);
   if (!parsed.success) return res.status(400).json(error("VALIDATION_ERROR", "Invalid request body", parsed.error.issues));
   const user = await repository.updateUser(String(req.params.id), { role: parsed.data.role });
   if (!user) return res.status(404).json(error("USER_NOT_FOUND", "User not found"));
   return res.json(success(user));
 });
 
-app.get("/api/v1/patients", requireRoles("DOCTOR", "STAFF", "ADMIN"), async (_req, res) => {
-  const items = await repository.findPatients();
-  return res.json(success({ items, page: 1, limit: 20, total: items.length }));
+app.get("/api/v1/patients", requireRoles("DOCTOR", "STAFF", "ADMIN"), async (req, res) => {
+  const parsed = listPatientsQuerySchema.safeParse(req.query);
+  if (!parsed.success) {
+    return res.status(400).json(error("VALIDATION_ERROR", "Invalid query parameters", parsed.error.issues));
+  }
+  const result = await repository.findPatients(parsed.data);
+  return res.json(success(result));
 });
 
 app.get("/api/v1/patients/:id", requireRoles("PATIENT", "DOCTOR", "STAFF", "ADMIN"), async (req, res) => {
