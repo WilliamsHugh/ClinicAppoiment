@@ -5,7 +5,7 @@ enum SessionStatus { loading, authenticated, unauthenticated }
 enum UserRole { patient, doctor, staff, admin }
 
 @immutable
-class AuthSession {
+class AuthSession implements TokenProvider {
   const AuthSession({
     required this.userId,
     required this.role,
@@ -15,6 +15,9 @@ class AuthSession {
   final String userId;
   final UserRole role;
   final String accessToken;
+
+  @override
+  Future<String?> getAccessToken() async => accessToken;
 }
 
 abstract interface class TokenProvider {
@@ -23,6 +26,21 @@ abstract interface class TokenProvider {
 
 abstract interface class SessionProvider implements TokenProvider {
   Future<AuthSession?> restoreSession();
+}
+
+abstract interface class CredentialSessionProvider {
+  Future<AuthSession> signIn(String email, String password);
+  Future<AuthSession?> signUp(String fullName, String email, String password);
+  Future<void> signOut();
+}
+
+class SessionException implements Exception {
+  const SessionException(this.message);
+
+  final String message;
+
+  @override
+  String toString() => message;
 }
 
 class UnauthenticatedSessionProvider implements SessionProvider {
@@ -56,6 +74,62 @@ class SessionController extends ChangeNotifier implements TokenProvider {
       _status = SessionStatus.unauthenticated;
     }
     notifyListeners();
+  }
+
+  Future<void> signIn(String email, String password) async {
+    final provider = _credentialProvider();
+    _status = SessionStatus.loading;
+    notifyListeners();
+    try {
+      _session = await provider.signIn(email, password);
+      _status = SessionStatus.authenticated;
+    } catch (_) {
+      _session = null;
+      _status = SessionStatus.unauthenticated;
+      rethrow;
+    } finally {
+      notifyListeners();
+    }
+  }
+
+  Future<bool> signUp(String fullName, String email, String password) async {
+    final provider = _credentialProvider();
+    _status = SessionStatus.loading;
+    notifyListeners();
+    try {
+      _session = await provider.signUp(fullName, email, password);
+      _status = _session == null
+          ? SessionStatus.unauthenticated
+          : SessionStatus.authenticated;
+      return _session != null;
+    } catch (_) {
+      _session = null;
+      _status = SessionStatus.unauthenticated;
+      rethrow;
+    } finally {
+      notifyListeners();
+    }
+  }
+
+  Future<void> signOut() async {
+    final provider = _credentialProvider();
+    try {
+      await provider.signOut();
+    } finally {
+      _session = null;
+      _status = SessionStatus.unauthenticated;
+      notifyListeners();
+    }
+  }
+
+  CredentialSessionProvider _credentialProvider() {
+    final provider = _provider;
+    if (provider is! CredentialSessionProvider) {
+      throw const SessionException(
+        'Đăng nhập qua API Gateway chưa được cấu hình.',
+      );
+    }
+    return provider as CredentialSessionProvider;
   }
 
   @override

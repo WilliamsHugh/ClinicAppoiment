@@ -9,15 +9,15 @@
     "packages/*"
   ],
   "scripts": {
-    "dev:gateway": "npm run dev -w @clinic/api-gateway",
+    "dev:gateway": "CLINIC_ENV_FILE=gateway/api-gateway/.env scripts/with-env.sh npm run dev -w @clinic/api-gateway",
     "dev:patient": "scripts/with-env.sh scripts/flutter-patient.sh run",
     "build:patient": "scripts/with-env.sh scripts/flutter-patient.sh build",
     "dev:clinic": "npm run dev -w @clinic/clinic-management-web",
-    "dev:user": "npm run dev -w @clinic/user-service",
+    "dev:user": "CLINIC_ENV_FILE=services/user-service/.env scripts/with-env.sh npm run dev -w @clinic/user-service",
     "dev:doctor": "npm run dev -w @clinic/doctor-service",
     "dev:appointment": "npm run dev -w @clinic/appointment-service",
     "dev:medical-record": "npm run dev -w @clinic/medical-record-service",
-    "dev:notification": "npm run dev -w @clinic/notification-service",
+    "dev:notification": "CLINIC_ENV_FILE=services/notification-service/.env scripts/with-env.sh npm run dev -w @clinic/notification-service",
     "build": "npm run build --workspaces --if-present",
     "lint": "npm run lint --workspaces --if-present"
   },

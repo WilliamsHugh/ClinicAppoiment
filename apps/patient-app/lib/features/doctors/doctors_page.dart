@@ -1,17 +1,26 @@
 import 'package:flutter/material.dart';
 
-import '../../shared/widgets/feature_placeholder.dart';
+import '../../core/session/session.dart';
+import '../home/home_page.dart';
 
+/// Route /doctors hiện hiển thị HomePage bám sát mobile_ui.png (màn trái).
+/// Navigation tới DoctorDetailPage được xử lý ngay trong HomePage qua
+/// push MaterialPageRoute.
 class DoctorsPage extends StatelessWidget {
-  const DoctorsPage({super.key});
+  const DoctorsPage({
+    required this.tokenProvider,
+    required this.onOpenNotifications,
+    super.key,
+  });
+
+  final TokenProvider tokenProvider;
+  final VoidCallback onOpenNotifications;
 
   @override
   Widget build(BuildContext context) {
-    return const FeaturePlaceholder(
-      title: 'Bác sĩ',
-      message:
-          'Danh sách chuyên khoa, bác sĩ và khung giờ khám sẽ hiển thị tại đây.',
-      icon: Icons.medical_services_outlined,
+    return HomePage(
+      tokenProvider: tokenProvider,
+      onOpenNotifications: onOpenNotifications,
     );
   }
 }

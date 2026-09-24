@@ -31,10 +31,16 @@ export class AppointmentRepository {
   private readonly appointments: Appointment[] = [];
   private readonly history: StatusHistory[] = [];
 
-  findAll(filters: { patientId?: string; doctorId?: string }) {
+  clear() {
+    this.appointments.length = 0;
+    this.history.length = 0;
+  }
+
+  findAll(filters: { patientId?: string; doctorId?: string; status?: AppointmentStatus }) {
     return this.appointments.filter((appointment) => {
       if (filters.patientId && appointment.patientId !== filters.patientId) return false;
       if (filters.doctorId && appointment.doctorId !== filters.doctorId) return false;
+      if (filters.status && appointment.status !== filters.status) return false;
       return true;
     });
   }

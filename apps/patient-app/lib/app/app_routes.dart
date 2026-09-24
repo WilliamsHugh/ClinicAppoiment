@@ -28,7 +28,8 @@ class PatientRoute {
   final String path;
   final String label;
   final IconData icon;
-  final WidgetBuilder builder;
+  final Widget Function(BuildContext, AuthSession, void Function(String))
+      builder;
   final Set<UserRole> roles;
 }
 
@@ -37,30 +38,34 @@ final patientRoutes = <PatientRoute>[
     path: AppRoutes.doctors,
     label: 'Bác sĩ',
     icon: Icons.medical_services_outlined,
-    builder: (_) => const DoctorsPage(),
+    builder: (_, session, navigate) => DoctorsPage(
+      tokenProvider: session,
+      onOpenNotifications: () => navigate(AppRoutes.notifications),
+    ),
   ),
   PatientRoute(
     path: AppRoutes.appointments,
     label: 'Lịch hẹn',
     icon: Icons.calendar_month_outlined,
-    builder: (_) => const AppointmentsPage(),
+    builder: (_, session, __) => AppointmentsPage(tokenProvider: session),
   ),
   PatientRoute(
     path: AppRoutes.records,
     label: 'Hồ sơ khám',
     icon: Icons.description_outlined,
-    builder: (_) => const RecordsPage(),
+    builder: (_, session, __) => RecordsPage(tokenProvider: session),
   ),
   PatientRoute(
     path: AppRoutes.notifications,
     label: 'Thông báo',
     icon: Icons.notifications_outlined,
-    builder: (_) => const NotificationsPage(),
+    builder: (_, session, navigate) =>
+        NotificationsPage(tokenProvider: session, onOpenRoute: navigate),
   ),
   PatientRoute(
     path: AppRoutes.profile,
     label: 'Cá nhân',
     icon: Icons.person_outline,
-    builder: (_) => const ProfilePage(),
+    builder: (_, __, ___) => const ProfilePage(),
   ),
 ];

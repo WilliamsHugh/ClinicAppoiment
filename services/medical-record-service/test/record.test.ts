@@ -1,39 +1,73 @@
-import { describe, it, expect } from "vitest";
-import { MedicalRecordRepository } from "../src/repository.js";
+import { describe, expect, it, vi } from "vitest";
+import type { Pool } from "pg";
+import { MedicalRecordRepository, type MedicalRecord } from "../src/repository.js";
 
-describe("MedicalRecordRepository - RECORD-008", () => {
-  it("prevents duplicate record per appointment (unique constraint)", () => {
-    const repo = new MedicalRecordRepository();
-    repo.create({ appointmentId: "appt-1", patientId: "patient-1", doctorId: "doctor-1", prescription: [], status: "FINAL", createdBy: "doctor-1" });
-    expect(repo.findByAppointmentId("appt-1")).toBeDefined();
-    // Second create should be blocked at API layer (409) - repository allows but API checks
-    expect(repo.findByAppointmentId("appt-1")?.appointmentId).toBe("appt-1");
+const record: MedicalRecord = {
+  id: "00000000-0000-4000-8000-000000000001",
+  appointmentId: "00000000-0000-4000-8000-000000000002",
+  patientId: "00000000-0000-4000-8000-000000000003",
+  doctorId: "00000000-0000-4000-8000-000000000004",
+  prescription: [], status: "FINAL", createdBy: "00000000-0000-4000-8000-000000000005",
+  createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z"
+};
+
+function database(failAudit = false) {
+  const queries: Array<{ sql: string; values?: unknown[] }> = [];
+  const query = vi.fn(async (sql: string, values?: unknown[]) => {
+    queries.push({ sql, values });
+    if (failAudit && sql.includes("medical_record_audit_logs")) throw new Error("audit failed");
+    if (sql.includes("INSERT INTO medical_record_service.medical_records")) return { rows: [record] };
+    if (sql.includes("UPDATE medical_record_service.medical_records")) return { rows: [record] };
+    if (sql.includes("count(*)")) return { rows: [{ count: "1" }] };
+    if (sql.includes("SELECT") && sql.includes("medical_records")) return { rows: [record] };
+    return { rows: [] };
+  });
+  const client = { query, release: vi.fn() };
+  const pool = { query, connect: vi.fn(async () => client) } as unknown as Pool;
+  return { repo: new MedicalRecordRepository(pool), queries, client };
+}
+
+describe("Medical Record PostgreSQL repository", () => {
+  it("commits record, audit and minimal outbox payload atomically", async () => {
+    const db = database();
+    await db.repo.create({ appointmentId: record.appointmentId, patientId: record.patientId, doctorId: record.doctorId, prescription: [], status: "FINAL", createdBy: record.createdBy }, "00000000-0000-4000-8000-000000000006");
+    expect(db.queries.map((item) => item.sql)).toEqual(expect.arrayContaining(["BEGIN", "COMMIT"]));
+    const outbox = db.queries.find((item) => item.sql.includes("outbox_events"));
+    expect(outbox).toBeDefined();
+    expect(outbox?.values?.[2]).toContain("recipientUserId");
+    expect(outbox?.values?.[2]).not.toContain("diagnosis");
+    expect(db.client.release).toHaveBeenCalledOnce();
   });
 
-  it("enforces soft delete - deleted record not found", () => {
-    const repo = new MedicalRecordRepository();
-    const rec = repo.create({ appointmentId: "appt-2", patientId: "patient-1", doctorId: "doctor-1", prescription: [], status: "FINAL", createdBy: "doctor-1" });
-    repo.softDelete(rec.id, "doctor-1");
-    expect(repo.findById(rec.id)).toBeUndefined();
-    expect(repo.findByAppointmentId("appt-2")).toBeUndefined();
+  it("rolls back if audit insert fails", async () => {
+    const db = database(true);
+    await expect(db.repo.create({ appointmentId: record.appointmentId, patientId: record.patientId, doctorId: record.doctorId, prescription: [], status: "DRAFT", createdBy: record.createdBy }, "recipient")).rejects.toThrow("audit failed");
+    expect(db.queries.some((item) => item.sql === "ROLLBACK")).toBe(true);
+    expect(db.queries.some((item) => item.sql === "COMMIT")).toBe(false);
   });
 
-  it("keeps audit logs for create and update", () => {
-    const repo = new MedicalRecordRepository();
-    const rec = repo.create({ appointmentId: "appt-3", patientId: "patient-1", doctorId: "doctor-1", prescription: [], status: "DRAFT", createdBy: "doctor-1" });
-    repo.update(rec.id, { diagnosis: "Viêm họng", updatedBy: "doctor-1" });
-    const logs = repo.findAuditLogs(rec.id);
-    expect(logs.length).toBe(2);
-    expect(logs[0].action).toBe("CREATE");
-    expect(logs[1].action).toBe("UPDATE");
-    expect(logs[1].changes).toHaveProperty("diagnosis");
+  it("scopes the list query to patient and applies pagination", async () => {
+    const db = database();
+    const page = await db.repo.findAll({ patientId: record.patientId }, 2, 10);
+    expect(page.total).toBe(1);
+    const list = db.queries.find((item) => item.sql.includes("ORDER BY created_at"));
+    expect(list?.sql).toContain("patient_id = $1");
+    expect(list?.values).toEqual([record.patientId, 10, 10]);
   });
 
-  it("filters by patientId correctly (ownership)", () => {
-    const repo = new MedicalRecordRepository();
-    repo.create({ appointmentId: "a1", patientId: "patient-1", doctorId: "doctor-1", prescription: [], status: "FINAL", createdBy: "doctor-1" });
-    repo.create({ appointmentId: "a2", patientId: "patient-2", doctorId: "doctor-1", prescription: [], status: "FINAL", createdBy: "doctor-1" });
-    expect(repo.findAll({ patientId: "patient-1" }).length).toBe(1);
-    expect(repo.findAll({ patientId: "patient-2" }).length).toBe(1);
+  it("does not reopen a finalized record as draft", async () => {
+    const db = database();
+    const result = await db.repo.update(record.id, { status: "DRAFT" }, record.createdBy, "recipient");
+    expect(result).toEqual({ conflict: true });
+    expect(db.queries.some((item) => item.sql.includes("UPDATE medical_record_service.medical_records"))).toBe(false);
+  });
+
+  it("audits corrections to a final result and emits an update event", async () => {
+    const db = database();
+    await db.repo.update(record.id, { diagnosis: "changed" }, record.createdBy, "recipient");
+    const audit = db.queries.find((item) => item.sql.includes("medical_record_audit_logs"));
+    expect(audit?.values?.[2]).toContain('"before"');
+    expect(audit?.values?.[2]).toContain('"after"');
+    expect(db.queries.find((item) => item.sql.includes("outbox_events"))?.values?.[0]).toBe("medical-record.updated");
   });
 });

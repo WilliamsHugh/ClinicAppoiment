@@ -21,6 +21,21 @@ cp .env.example .env
 docker compose -f infrastructure/compose/docker-compose.yml up -d
 ```
 
+Mỗi service nghiệp vụ sở hữu một PostgreSQL database riêng. Điền các biến
+`USER_DATABASE_URL`, `DOCTOR_DATABASE_URL`, `APPOINTMENT_DATABASE_URL`,
+`MEDICAL_RECORD_DATABASE_URL` và `NOTIFICATION_DATABASE_URL` trong `.env` theo
+project Supabase tương ứng. Chạy file `infrastructure/supabase/<service>/schema.sql`
+trên đúng database của service đó. Không chạy migration của service này trên database
+của service khác.
+
+Supabase Auth thuộc project của User Service. Chỉ User Service nhận `SUPABASE_URL` và
+`SUPABASE_ANON_KEY` ở môi trường backend để đăng ký, đăng nhập, refresh và xác minh token.
+API Gateway proxy `/api/v1/auth/*` tới User Service và dùng API nội bộ của User Service để
+xác minh danh tính trước khi chuyển tiếp request nghiệp vụ.
+Flutter và Next.js chỉ nhận URL của API Gateway; hai frontend không nhận Supabase key,
+database URL và không gọi trực tiếp service nội bộ. User, Medical Record và Notification
+Service cần database để khởi động; Doctor và Appointment hiện vẫn là scaffold in-memory.
+
 Flutter SDK được đặt local tại `.tools/flutter`. Nếu máy chưa nhận Flutter toàn cục, dùng trực tiếp binary này.
 
 Để dùng lệnh `flutter` trong terminal hiện tại:
@@ -66,8 +81,9 @@ Mặc định:
 - Notification Service: http://localhost:3005
 
 API Gateway cung cấp OpenAPI JSON tại `http://localhost:8080/openapi.json` và Swagger UI tại
-`http://localhost:8080/docs`. `AUTH_DEV_MODE=true` chỉ dành cho local scaffold; khi triển khai thật
-phải đặt `AUTH_DEV_MODE=false` và cấu hình Supabase Auth.
+`http://localhost:8080/docs`. OpenAPI nghiệp vụ Auth nằm tại User Service. `AUTH_DEV_MODE=true`
+chỉ dành cho local scaffold; khi triển khai thật phải đặt `AUTH_DEV_MODE=false` và cấu hình
+Supabase Auth trong User Service.
 
 ## Kiểm Tra
 
@@ -78,12 +94,12 @@ npm run lint
 npm audit --omit=dev --audit-level=high
 ```
 
-Đây là scaffold nền: các service hiện có repository in-memory để kiểm tra luồng API. Việc kết nối
-Supabase thật, xác thực Supabase Auth và cơ chế chống double booking bằng transaction/constraint sẽ
-được triển khai ở các phase nghiệp vụ tiếp theo.
+Doctor và Appointment Service vẫn là scaffold in-memory. Các service này cần được
+chuyển sang Supabase theo task của thành viên 2–3 trước khi kiểm thử luồng khám
+end-to-end với Medical Record/Notification trên dữ liệu thật.
 
 ## Tài Liệu
 
 - Thiết kế hệ thống: `docs/system-design.md`
 - Hợp đồng API v1: `docs/api-contract.md`
-- Supabase schema: `infrastructure/supabase/schema.sql`
+- Supabase migrations riêng từng service: `infrastructure/supabase/<service>/schema.sql`

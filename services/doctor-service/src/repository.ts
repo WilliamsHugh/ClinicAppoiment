@@ -90,6 +90,10 @@ export class DoctorRepository {
     return this.doctors.find((doctor) => doctor.id === id);
   }
 
+  findDoctorByUserId(userId: string) {
+    return this.doctors.find((doctor) => doctor.userId === userId);
+  }
+
   createDoctor(input: Omit<Doctor, "id" | "isActive">) {
     const doctor = { id: randomUUID(), ...input, isActive: true };
     this.doctors.push(doctor);
@@ -105,6 +109,10 @@ export class DoctorRepository {
 
   findSchedulesByDoctor(doctorId: string) {
     return this.schedules.filter((schedule) => schedule.doctorId === doctorId);
+  }
+
+  findScheduleById(id: string) {
+    return this.schedules.find((schedule) => schedule.id === id);
   }
 
   createSchedule(input: Omit<DoctorSchedule, "id" | "isActive">) {

@@ -37,7 +37,7 @@ class _PatientAppState extends State<PatientApp> {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'Clinic Patient',
+      title: 'Health&Human',
       debugShowCheckedModeBanner: false,
       theme: buildPatientTheme(),
       home: ListenableBuilder(
@@ -48,8 +48,12 @@ class _PatientAppState extends State<PatientApp> {
             ),
           SessionStatus.authenticated => PatientShell(
               session: _sessionController.session!,
+              onSignOut: _sessionController.signOut,
             ),
-          SessionStatus.unauthenticated => const AuthPage(),
+          SessionStatus.unauthenticated => AuthPage(
+              onLogin: _sessionController.signIn,
+              onRegister: _sessionController.signUp,
+            ),
         },
       ),
     );

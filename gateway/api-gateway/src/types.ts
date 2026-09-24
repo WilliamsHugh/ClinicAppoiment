@@ -12,11 +12,11 @@ export type GatewayRequest = Request & {
   user?: AuthenticatedUser;
 };
 
-export type UserProfile = {
+export type VerifiedIdentity = {
   id: string;
+  authUserId: string;
   role: Role;
   status: "ACTIVE" | "INACTIVE" | "LOCKED";
 };
 
-export type AccessTokenVerifier = (token: string) => Promise<{ authUserId: string } | null>;
-export type UserProfileResolver = (authUserId: string, requestId: string) => Promise<UserProfile | null>;
+export type AccessTokenVerifier = (token: string, requestId: string) => Promise<VerifiedIdentity | null>;

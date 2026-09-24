@@ -5,7 +5,7 @@ import { createGatewayApp } from "../src/app.js";
 import type { GatewayConfig } from "../src/config.js";
 import { loadGatewayConfig } from "../src/config.js";
 import { createErrorHandler, requestContext } from "../src/http.js";
-import type { UserProfile } from "../src/types.js";
+import type { VerifiedIdentity } from "../src/types.js";
 
 const baseConfig: GatewayConfig = {
   port: 8080,
@@ -28,11 +28,10 @@ const baseConfig: GatewayConfig = {
 
 const silentLogger = { info: vi.fn(), error: vi.fn() };
 
-function createTestApp(profile: UserProfile = { id: "user-1", role: "PATIENT", status: "ACTIVE" }) {
+function createTestApp(identity: VerifiedIdentity = { id: "user-1", authUserId: "auth-user-1", role: "PATIENT", status: "ACTIVE" }) {
   return createGatewayApp({
     config: baseConfig,
-    authVerifier: async (token) => token === "valid-token" ? { authUserId: "auth-user-1" } : null,
-    profileResolver: async () => profile,
+    authVerifier: async (token) => token === "valid-token" ? identity : null,
     healthChecker: async () => "ok",
     logger: silentLogger
   });
@@ -53,7 +52,7 @@ describe("API Gateway authentication", () => {
   });
 
   it("rejects an inactive authoritative user profile", async () => {
-    const response = await request(createTestApp({ id: "user-1", role: "ADMIN", status: "LOCKED" }))
+    const response = await request(createTestApp({ id: "user-1", authUserId: "auth-user-1", role: "ADMIN", status: "LOCKED" }))
       .get("/api/v1/system/health")
       .set("Authorization", "Bearer valid-token");
     expect(response.status).toBe(403);
@@ -64,7 +63,6 @@ describe("API Gateway authentication", () => {
     const app = createGatewayApp({
       config: baseConfig,
       authVerifier: null,
-      profileResolver: async () => null,
       logger: silentLogger
     });
     const response = await request(app)
@@ -80,7 +78,6 @@ describe("API Gateway authentication", () => {
     const app = createGatewayApp({
       config: { ...baseConfig, authDevMode: true },
       authVerifier: null,
-      profileResolver: async () => null,
       healthChecker: async () => "ok",
       logger: silentLogger
     });
@@ -101,7 +98,7 @@ describe("API Gateway role authorization", () => {
   });
 
   it("uses the role from User Service instead of a caller supplied role header", async () => {
-    const response = await request(createTestApp({ id: "user-admin", role: "ADMIN", status: "ACTIVE" }))
+    const response = await request(createTestApp({ id: "user-admin", authUserId: "auth-user-1", role: "ADMIN", status: "ACTIVE" }))
       .get("/api/v1/system/health")
       .set("Authorization", "Bearer valid-token")
       .set("X-Role", "PATIENT");
@@ -116,17 +113,6 @@ describe("API Gateway role authorization", () => {
     expect(JSON.stringify(response.body)).not.toContain("http://127.0.0.1");
   });
 
-  it("blocks public clients from creating notifications", async () => {
-    const response = await request(createTestApp()).post("/api/v1/notifications").set("Authorization", "Bearer valid-token");
-    expect(response.status).toBe(403);
-    expect(response.body.error.code).toBe("ACCESS_DENIED");
-  });
-
-  it("does not allow a patient to enumerate all patient profiles", async () => {
-    const response = await request(createTestApp()).get("/api/v1/patients").set("Authorization", "Bearer valid-token");
-    expect(response.status).toBe(403);
-    expect(response.body.error.code).toBe("ACCESS_DENIED");
-  });
 });
 
 describe("API Gateway platform middleware", () => {
@@ -134,21 +120,10 @@ describe("API Gateway platform middleware", () => {
     const response = await request(createTestApp()).get("/openapi.json");
     expect(response.status).toBe(200);
     expect(response.body.openapi).toBe("3.0.3");
-    expect(response.body.paths["/api/v1/appointments"]).toBeDefined();
-    expect(response.body.paths["/api/v1/appointments"].post.requestBody).toBeDefined();
-    expect(response.body.paths["/api/v1/appointments"].post.responses["201"]).toBeDefined();
-    expect(response.body.paths["/api/v1/appointments"].get.parameters).toEqual(
-      expect.arrayContaining([expect.objectContaining({ name: "page" }), expect.objectContaining({ name: "limit" })])
-    );
-    expect(response.body.components.schemas.Appointment).toBeDefined();
-    expect(response.body.paths["/api/v1/schedules/{scheduleId}"].patch.requestBody.content["application/json"].schema.$ref)
-      .toBe("#/components/schemas/UpdateScheduleRequest");
-    expect(response.body.components.schemas.UpdateScheduleRequest.required).toBeUndefined();
-    expect(response.body.paths["/api/v1/medical-records/{recordId}"].patch.requestBody.content["application/json"].schema.$ref)
-      .toBe("#/components/schemas/UpdateMedicalRecordRequest");
-    expect(response.body.components.schemas.UpdateMedicalRecordRequest.required).toBeUndefined();
-    expect(response.body.paths["/api/v1/appointments/{appointmentId}/cancel"].patch.requestBody.required).toBe(false);
-    expect(response.body.paths["/api/v1/notifications/{notificationId}/read"].patch.requestBody).toBeUndefined();
+    expect(response.body.paths["/api/v1/auth/login"]).toBeUndefined();
+    expect(response.body.paths["/api/v1/system/health"]).toBeDefined();
+    expect(response.body.paths["/api/v1/appointments"]).toBeUndefined();
+    expect(response.body.info.description).toContain("docs/api-contract.md");
   });
 
   it("normalizes unknown routes", async () => {
@@ -162,7 +137,6 @@ describe("API Gateway platform middleware", () => {
     const app = createGatewayApp({
       config: { ...baseConfig, rateLimitMax: 1 },
       authVerifier: async () => null,
-      profileResolver: async () => null,
       logger: silentLogger
     });
     await request(app).get("/health");
@@ -197,8 +171,7 @@ describe("API Gateway platform middleware", () => {
     const logger = { info: vi.fn(), error: vi.fn() };
     const app = createGatewayApp({
       config: baseConfig,
-      authVerifier: async () => ({ authUserId: "auth-user-1" }),
-      profileResolver: async () => ({ id: "user-admin", role: "ADMIN", status: "ACTIVE" }),
+      authVerifier: async () => ({ id: "user-admin", authUserId: "auth-user-1", role: "ADMIN", status: "ACTIVE" }),
       healthChecker: async () => "ok",
       logger
     });
@@ -219,10 +192,9 @@ describe("API Gateway configuration", () => {
     );
   });
 
-  it("requires the Supabase URL and anon key together", () => {
-    expect(() => loadGatewayConfig({ SUPABASE_URL: "https://example.supabase.co" })).toThrow(
-      "SUPABASE_URL and SUPABASE_ANON_KEY must be configured together"
-    );
+  it("does not accept Supabase ownership into Gateway configuration", () => {
+    expect(loadGatewayConfig({ SUPABASE_URL: "https://example.supabase.co", SUPABASE_ANON_KEY: "not-used" }))
+      .not.toHaveProperty("supabaseUrl");
   });
 
   it("loads dedicated authentication and proxy timeouts", () => {

@@ -1,107 +1,111 @@
-import { randomUUID } from "crypto";
+import type { Pool } from "pg";
 
 export type Notification = {
-  id: string;
-  recipientUserId: string;
-  type: string;
-  title: string;
-  message: string;
-  payload?: unknown;
-  status: "UNREAD" | "READ" | "FAILED";
-  readAt?: string;
-  createdAt: string;
-  eventId?: string;
+  id: string; recipientUserId: string; type: string; title: string; message: string;
+  payload: Record<string, unknown>; status: "UNREAD" | "READ" | "FAILED";
+  readAt?: string; createdAt: string; eventId?: string;
 };
-
-export type NotificationDelivery = {
-  id: string;
-  notificationId: string;
-  channel: "IN_APP" | "EMAIL" | "SMS";
-  status: "PENDING" | "SENT" | "FAILED";
-  errorMessage?: string;
-  sentAt?: string;
-  createdAt: string;
-  retryCount: number;
-};
+export type NotificationInput = Pick<Notification, "recipientUserId" | "type" | "title" | "message" | "payload">;
+export type Reminder = { appointmentId: string; patientId: string; recipientUserId: string; scheduledStartAt: Date };
+const select = `id, recipient_user_id AS "recipientUserId", type, title, message, payload, status,
+  read_at AS "readAt", created_at AS "createdAt", event_id AS "eventId"`;
 
 export class NotificationRepository {
-  private readonly notifications: Notification[] = [];
-  private readonly deliveries: NotificationDelivery[] = [];
-  private readonly eventIds = new Set<string>();
+  constructor(private readonly pool: Pool) {}
 
-  // NOTIFY-001: schema notification_service, migration riêng
-  // NOTIFY-002: dedup theo eventId
-
-  findAll(filters: { recipientUserId?: string; status?: string }) {
-    return this.notifications.filter((notification) => {
-      if (filters.recipientUserId && notification.recipientUserId !== filters.recipientUserId) return false;
-      if (filters.status && notification.status !== filters.status) return false;
-      return true;
-    });
+  async findAll(recipientUserId: string, page: number, limit: number, status?: string) {
+    const values: unknown[] = [recipientUserId];
+    const where = status ? "recipient_user_id = $1 AND status = $2" : "recipient_user_id = $1";
+    if (status) values.push(status);
+    const total = await this.pool.query<{ count: string }>(`SELECT count(*) FROM notification_service.notifications WHERE ${where}`, values);
+    const rows = await this.pool.query<Notification>(
+      `SELECT ${select} FROM notification_service.notifications WHERE ${where} ORDER BY created_at DESC LIMIT $${values.length + 1} OFFSET $${values.length + 2}`,
+      [...values, limit, (page - 1) * limit]
+    );
+    return { items: rows.rows, page, limit, total: Number(total.rows[0].count) };
   }
 
-  findById(id: string) {
-    return this.notifications.find((notification) => notification.id === id);
+  async findById(id: string) {
+    const result = await this.pool.query<Notification>(`SELECT ${select} FROM notification_service.notifications WHERE id = $1`, [id]);
+    return result.rows[0] ?? null;
   }
 
-  hasEvent(eventId: string) {
-    return this.eventIds.has(eventId);
+  async createEvent(eventId: string, input: NotificationInput) {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const result = await client.query<Notification>(
+        `INSERT INTO notification_service.notifications (recipient_user_id, type, title, message, payload, event_id)
+         VALUES ($1,$2,$3,$4,$5,$6) ON CONFLICT (event_id) WHERE event_id IS NOT NULL DO NOTHING RETURNING ${select}`,
+        [input.recipientUserId, input.type, input.title, input.message, JSON.stringify(input.payload), eventId]
+      );
+      if (!result.rows[0]) { await client.query("COMMIT"); return { created: false as const, notification: null }; }
+      const notification = result.rows[0];
+      await client.query(
+        "INSERT INTO notification_service.notification_deliveries (notification_id, channel, status, sent_at) VALUES ($1,'IN_APP','SENT',now())",
+        [notification.id]
+      );
+      await client.query("COMMIT");
+      return { created: true as const, notification };
+    } catch (error) { await client.query("ROLLBACK"); throw error; }
+    finally { client.release(); }
   }
 
-  create(input: Omit<Notification, "id" | "status" | "createdAt"> & { eventId?: string }) {
-    const notification: Notification = {
-      id: randomUUID(),
-      ...input,
-      status: "UNREAD",
-      createdAt: new Date().toISOString()
-    };
-    if (input.eventId) {
-      this.eventIds.add(input.eventId);
-      notification.eventId = input.eventId;
-    }
-    this.notifications.unshift(notification);
-    this.deliveries.push({
-      id: randomUUID(),
-      notificationId: notification.id,
-      channel: "IN_APP",
-      status: "SENT",
-      sentAt: new Date().toISOString(),
-      createdAt: new Date().toISOString(),
-      retryCount: 0
-    });
-    return notification;
+  async markRead(id: string, actorId: string) {
+    const result = await this.pool.query<Notification>(
+      `UPDATE notification_service.notifications SET status = 'READ', read_at = COALESCE(read_at, now())
+       WHERE id = $1 AND recipient_user_id = $2 RETURNING ${select}`, [id, actorId]
+    );
+    return result.rows[0] ?? null;
   }
 
-  markRead(id: string, actorId: string) {
-    const notification = this.findById(id);
-    if (!notification) return null;
-    if (notification.recipientUserId !== actorId) return null;
-    notification.status = "READ";
-    notification.readAt = new Date().toISOString();
-    return notification;
+  async retryDelivery(id: string) {
+    const result = await this.pool.query(
+      `UPDATE notification_service.notification_deliveries
+       SET retry_count = retry_count + 1, status = 'SENT', error_message = NULL, sent_at = now()
+       WHERE notification_id = $1 AND status = 'FAILED' AND retry_count < 3
+       RETURNING id, retry_count AS "retryCount"`, [id]
+    );
+    return result.rows[0] ?? null;
   }
 
-  markFailed(notificationId: string, errorMessage: string) {
-    const d = this.deliveries.find((x) => x.notificationId === notificationId);
-    if (d) {
-      d.status = "FAILED";
-      d.errorMessage = errorMessage;
-    }
-    const n = this.findById(notificationId);
-    if (n) n.status = "FAILED";
+  async scheduleReminder(reminder: Omit<Reminder, "scheduledStartAt"> & { scheduledStartAt: string }) {
+    await this.pool.query(
+      `INSERT INTO notification_service.appointment_reminders
+       (appointment_id, patient_id, recipient_user_id, scheduled_start_at, remind_at)
+       VALUES ($1,$2,$3,$4,$4::timestamptz - interval '24 hours')
+       ON CONFLICT (appointment_id) DO UPDATE SET patient_id = EXCLUDED.patient_id,
+       recipient_user_id = EXCLUDED.recipient_user_id, scheduled_start_at = EXCLUDED.scheduled_start_at,
+       remind_at = EXCLUDED.remind_at, status = 'PENDING', retry_count = 0, next_attempt_at = now()`,
+      [reminder.appointmentId, reminder.patientId, reminder.recipientUserId, reminder.scheduledStartAt]
+    );
   }
 
-  retryDelivery(notificationId: string) {
-    const d = this.deliveries.find((x) => x.notificationId === notificationId);
-    if (!d) return null;
-    if (d.retryCount >= 3) return null;
-    d.retryCount += 1;
-    d.status = "SENT";
-    d.sentAt = new Date().toISOString();
-    return d;
+  async cancelReminder(appointmentId: string) {
+    await this.pool.query("UPDATE notification_service.appointment_reminders SET status = 'CANCELLED' WHERE appointment_id = $1", [appointmentId]);
   }
 
-  getDeliveries(notificationId: string) {
-    return this.deliveries.filter((d) => d.notificationId === notificationId);
+  async dueReminders() {
+    const result = await this.pool.query<Reminder>(
+      `SELECT appointment_id AS "appointmentId", patient_id AS "patientId", recipient_user_id AS "recipientUserId",
+       scheduled_start_at AS "scheduledStartAt" FROM notification_service.appointment_reminders
+       WHERE status = 'PENDING' AND remind_at <= now() AND next_attempt_at <= now()
+       AND scheduled_start_at > now() ORDER BY remind_at LIMIT 20`
+    );
+    return result.rows;
+  }
+
+  async markReminderSent(appointmentId: string) {
+    await this.pool.query("UPDATE notification_service.appointment_reminders SET status = 'SENT' WHERE appointment_id = $1 AND status = 'PENDING'", [appointmentId]);
+  }
+
+  async deferReminder(appointmentId: string) {
+    await this.pool.query(
+      `UPDATE notification_service.appointment_reminders
+       SET retry_count = retry_count + 1,
+       status = CASE WHEN retry_count + 1 >= 3 THEN 'FAILED' ELSE 'PENDING' END,
+       next_attempt_at = now() + (LEAST(3600, power(2, retry_count + 1)) * interval '1 second')
+       WHERE appointment_id = $1 AND status = 'PENDING'`, [appointmentId]
+    );
   }
 }

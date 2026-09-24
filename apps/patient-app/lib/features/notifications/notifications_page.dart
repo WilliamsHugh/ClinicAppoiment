@@ -3,16 +3,22 @@ import 'package:flutter/material.dart';
 import '../../core/api/api_models.dart';
 import '../../core/api/clinic_api_client.dart';
 import '../../core/session/session.dart';
+import '../../core/theme/app_theme.dart';
 import '../../shared/widgets/async_states.dart';
-
-class _DevTokenProvider implements TokenProvider {
-  const _DevTokenProvider();
-  @override
-  Future<String?> getAccessToken() async => 'dev-token';
-}
+import 'widgets/notification_tile.dart';
+import 'widgets/reminder_banner.dart';
 
 class NotificationsPage extends StatefulWidget {
-  const NotificationsPage({super.key});
+  const NotificationsPage({
+    required this.tokenProvider,
+    required this.onOpenRoute,
+    this.api,
+    super.key,
+  });
+
+  final TokenProvider tokenProvider;
+  final void Function(String) onOpenRoute;
+  final ClinicApiClient? api;
 
   @override
   State<NotificationsPage> createState() => _NotificationsPageState();
@@ -27,7 +33,7 @@ class _NotificationsPageState extends State<NotificationsPage> {
   @override
   void initState() {
     super.initState();
-    _api = ClinicApiClient(tokenProvider: const _DevTokenProvider());
+    _api = widget.api ?? ClinicApiClient(tokenProvider: widget.tokenProvider);
     _load();
   }
 
@@ -37,85 +43,114 @@ class _NotificationsPageState extends State<NotificationsPage> {
       _error = null;
     });
     try {
-      final response = await _api.get('/api/v1/notifications', query: {'page': 1, 'limit': 20});
+      final response = await _api.get(
+        '/api/v1/notifications',
+        query: {'page': 1, 'limit': 20},
+      );
       final data = response.data as Map<String, dynamic>;
-      setState(() => _items = (data['items'] as List).cast<dynamic>());
-    } on ApiException catch (e) {
-      setState(() => _error = e);
+      if (mounted) {
+        setState(() => _items = (data['items'] as List).cast<dynamic>());
+      }
+    } on ApiException catch (error) {
+      if (mounted) setState(() => _error = error);
     } finally {
       if (mounted) setState(() => _loading = false);
     }
   }
 
-  Future<void> _markRead(String id) async {
+  Future<void> _markRead(String id, {bool reload = true}) async {
     try {
       await _api.patch('/api/v1/notifications/$id/read', body: {});
-      await _load();
-    } on ApiException catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(e.message)));
+      if (reload) await _load();
+    } on ApiException catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(error.message)));
+      }
     }
+  }
+
+  Future<void> _markAllRead() async {
+    final unreadIds = _items
+        .where((item) => (item as Map<String, dynamic>)['status'] == 'UNREAD')
+        .map((item) => (item as Map<String, dynamic>)['id'].toString())
+        .toList(growable: false);
+    for (final id in unreadIds) {
+      await _markRead(id, reload: false);
+    }
+    await _load();
   }
 
   @override
   Widget build(BuildContext context) {
     if (_loading) return const AppLoadingState(label: 'Đang tải thông báo...');
     if (_error != null) {
-      return AppErrorState(message: _error!.message, requestId: _error!.requestId, onRetry: _load);
+      return AppErrorState(
+        message: _error!.message,
+        requestId: _error!.requestId,
+        onRetry: _load,
+      );
     }
     if (_items.isEmpty) {
       return const AppEmptyState(
         title: 'Chưa có thông báo',
-        message: 'Thông báo dành cho tài khoản đang đăng nhập sẽ hiển thị tại đây.',
+        message: 'Thông báo dành cho bạn sẽ hiển thị tại đây.',
         icon: Icons.notifications_outlined,
       );
     }
-    return RefreshIndicator(
-      onRefresh: _load,
-      child: ListView.separated(
-        padding: const EdgeInsets.all(16),
-        itemCount: _items.length,
-        separatorBuilder: (_, __) => const Divider(height: 1),
-        itemBuilder: (context, index) {
-          final n = _items[index] as Map<String, dynamic>;
-          final unread = n['status'] == 'UNREAD';
-          return ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: CircleAvatar(
-              backgroundColor: unread ? const Color(0xFF0F766E) : Colors.grey[300],
-              child: Icon(unread ? Icons.mark_email_unread : Icons.mark_email_read, color: Colors.white, size: 18),
-            ),
-            title: Text(n['title'].toString(), style: TextStyle(fontWeight: unread ? FontWeight.w700 : FontWeight.w400)),
-            subtitle: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(n['message'].toString(), maxLines: 2, overflow: TextOverflow.ellipsis),
-                const SizedBox(height: 4),
-                Text(_formatDate(n['createdAt'].toString()), style: const TextStyle(fontSize: 12, color: Colors.grey)),
-              ],
-            ),
-            trailing: unread
-                ? TextButton(onPressed: () => _markRead(n['id'].toString()), child: const Text('Đã đọc'))
-                : const Icon(Icons.check, size: 18, color: Colors.green),
-            onTap: () {
-              final payload = n['payload'] as Map<String, dynamic>?;
-              final appointmentId = payload?['appointmentId']?.toString() ?? payload?['id']?.toString();
-              if (appointmentId != null && mounted) {
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Mở chi tiết: $appointmentId')));
-              }
-              if (unread) _markRead(n['id'].toString());
-            },
-          );
-        },
+
+    final display = _items
+        .map((item) => (item as Map).cast<String, dynamic>())
+        .toList(growable: false);
+    final hasUnread = display.any((item) => item['status'] == 'UNREAD');
+    return Scaffold(
+      backgroundColor: ClinicColors.scaffold,
+      appBar: AppBar(
+        backgroundColor: ClinicColors.scaffold,
+        title: const Text(
+          'Thông báo',
+          style: TextStyle(
+            fontSize: 16,
+            fontWeight: FontWeight.w800,
+            color: ClinicColors.ink,
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: hasUnread ? _markAllRead : null,
+            child: const Text('Đọc tất cả', style: TextStyle(fontSize: 12)),
+          ),
+        ],
+      ),
+      body: RefreshIndicator(
+        onRefresh: _load,
+        child: ListView.separated(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+          itemCount: display.length + 1,
+          separatorBuilder: (_, __) => const SizedBox(height: 10),
+          itemBuilder: (context, index) {
+            if (index == 0) return const ReminderBanner();
+            final notification = display[index - 1];
+            final unread = notification['status'] == 'UNREAD';
+            return NotificationTile(
+              data: notification,
+              onTap: () {
+                final payload =
+                    notification['payload'] as Map<String, dynamic>?;
+                if (payload?['recordId'] != null) {
+                  widget.onOpenRoute('/records');
+                } else if (payload?['appointmentId'] != null) {
+                  widget.onOpenRoute('/appointments');
+                }
+                if (unread) _markRead(notification['id'].toString());
+              },
+              onMarkRead: unread
+                  ? () => _markRead(notification['id'].toString())
+                  : null,
+            );
+          },
+        ),
       ),
     );
-  }
-
-  String _formatDate(String iso) {
-    try {
-      final d = DateTime.parse(iso).toLocal();
-      return '${d.day.toString().padLeft(2, '0')}/${d.month.toString().padLeft(2, '0')} ${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
-    } catch (_) {
-      return iso;
-    }
   }
 }
