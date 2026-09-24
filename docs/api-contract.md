@@ -25,7 +25,7 @@ Gateway định tuyến theo **nhóm prefix**, không đăng ký lại từng en
 
 | Prefix public | Chủ sở hữu | Biến đích tại Gateway |
 |---|---|---|
-| `/api/v1/auth` | Gateway sở hữu login/register/refresh/logout; User Service sở hữu profile `/me` | `USER_SERVICE_URL` |
+| `/api/v1/auth` | User Service sở hữu toàn bộ login/register/refresh/logout/profile | `USER_SERVICE_URL` |
 | `/api/v1/users`, `/api/v1/patients` | User Service | `USER_SERVICE_URL` |
 | `/api/v1/doctors`, `/api/v1/specialties`, `/api/v1/schedules` | Doctor Service | `DOCTOR_SERVICE_URL` |
 | `/api/v1/appointments` | Appointment Service | `APPOINTMENT_SERVICE_URL` |
@@ -41,7 +41,8 @@ danh tính đã xác minh.
 
 Mặc định mọi nhóm nghiệp vụ yêu cầu đăng nhập. Ngoại lệ public hiện chỉ gồm `GET /health`, tài liệu
 Gateway và `POST /api/v1/auth/login|register|refresh`; logout cần access token và refresh token.
-Gateway kiểm tra JWT, CORS, rate limit, request ID và trạng thái upstream. Service kiểm tra role,
+Gateway yêu cầu User Service xác minh token, đồng thời áp dụng CORS, rate limit, request ID và
+kiểm tra trạng thái upstream. Service kiểm tra role,
 quyền sở hữu tài nguyên, validation, state transition và chỉ truy cập database mình sở hữu.
 
 Thành viên được tự thêm endpoint dưới prefix service đã sở hữu mà **không sửa Gateway**. Trong cùng
@@ -167,9 +168,9 @@ Danh sách luôn đặt trong `data.items` và có metadata phân trang:
 
 ## 4. Xác Thực Và Phân Quyền
 
-- Supabase Auth chịu trách nhiệm lưu thông tin đăng nhập và phát hành token, nhưng chỉ API Gateway giao tiếp với Supabase Auth. Hai frontend gọi `/api/v1/auth/register`, `/login`, `/refresh` và `/logout` qua Gateway; không tích hợp Supabase SDK và không gửi mật khẩu tới User Service.
+- Supabase Auth chịu trách nhiệm lưu thông tin đăng nhập và phát hành token, nhưng chỉ User Service giao tiếp với Supabase Auth. Hai frontend gọi `/api/v1/auth/register`, `/login`, `/refresh` và `/logout` qua Gateway; Gateway proxy request nguyên vẹn tới User Service.
 - Với API nghiệp vụ, frontend gửi Supabase access token tới Gateway.
-- Gateway xác minh token, lấy `sub`, sau đó tra profile/role có thẩm quyền từ User Service. Không lấy role có thể tự sửa từ user metadata làm nguồn phân quyền.
+- Gateway gọi `User Service /internal/v1/auth/verify`; User Service xác minh token với Supabase Auth và trả profile/role có thẩm quyền. Không lấy role có thể tự sửa từ user metadata làm nguồn phân quyền.
 - Gateway truyền danh tính đã xác minh tới service nội bộ qua header do Gateway tự ghi đè: `X-User-Id`, `X-Role`, `X-Request-Id`.
 - Các service vẫn kiểm tra quyền nghiệp vụ nhạy cảm, đặc biệt quyền sở hữu patient, doctor phụ trách và trạng thái appointment.
 - Trong development chỉ được phép có auth giả lập bằng header khi bật chế độ dev rõ ràng. Tuyệt đối không bật fallback này trong production.
@@ -202,16 +203,16 @@ Trong bảng dưới, “đã scaffold” chỉ nói route hiện có trong mã 
 |---|---|---|---|---|
 | `GET` | `/health` | Public | Health của Gateway; không lộ URL nội bộ | Có |
 | `GET` | `/api/v1/system/health` | `ADMIN` | Health tổng hợp, chỉ trả trạng thái từng service | Có, cần tránh trả URL nội bộ |
-| `POST` | `/api/v1/auth/register` | Public | Gateway đăng ký tài khoản PATIENT qua Supabase Auth | Có |
-| `POST` | `/api/v1/auth/login` | Public | Gateway xác thực email/mật khẩu và trả session | Có |
-| `POST` | `/api/v1/auth/refresh` | Public, cần refresh token | Gateway làm mới session | Có |
-| `POST` | `/api/v1/auth/logout` | Đã đăng nhập | Gateway thu hồi session | Có |
+| `POST` | `/api/v1/auth/register` | Public | Gateway proxy; User Service đăng ký PATIENT qua Supabase Auth | Có |
+| `POST` | `/api/v1/auth/login` | Public | Gateway proxy; User Service xác thực và trả session | Có |
+| `POST` | `/api/v1/auth/refresh` | Public, cần refresh token | Gateway proxy; User Service làm mới session | Có |
+| `POST` | `/api/v1/auth/logout` | Đã đăng nhập | Gateway proxy; User Service thu hồi session | Có |
 | `GET` | `/api/v1/auth/me` | Bất kỳ role đã đăng nhập | Profile nghiệp vụ tương ứng với Supabase Auth user | Có |
 | `GET` | `/api/v1/users/me` | Bất kỳ role đã đăng nhập | Lấy profile của actor hiện tại | Có |
 | `PATCH` | `/api/v1/users/me` | Bất kỳ role đã đăng nhập | Cập nhật tên/điện thoại của actor | Có |
 
-Supabase Auth vẫn là hệ thống lưu credential và phát hành token. SDK chỉ chạy trong Gateway;
-Gateway không lưu mật khẩu, còn frontend không nhận cấu hình Supabase.
+Supabase Auth vẫn là hệ thống lưu credential và phát hành token. SDK chỉ chạy trong User Service;
+Gateway không xử lý credential, còn frontend không nhận cấu hình Supabase.
 
 ### User Và Patient
 
@@ -373,7 +374,7 @@ ghi outbox cùng transaction tạo/cập nhật hồ sơ; worker gửi lại b�
 | `USER_PROFILE_NOT_FOUND` | 403 | Token hợp lệ nhưng chưa có profile nghiệp vụ |
 | `ACCOUNT_INACTIVE` | 403 | Profile bị khóa hoặc không hoạt động |
 | `ACCESS_DENIED` | 403 | Không đủ quyền |
-| `AUTH_NOT_CONFIGURED` | 503 | Gateway chưa có cấu hình Supabase và dev auth không được bật |
+| `AUTH_NOT_CONFIGURED` | 503 | User Service chưa có cấu hình Supabase Auth; hoặc Gateway không có verifier khi dev auth tắt |
 | `AUTH_SERVICE_UNAVAILABLE` | 503 | Supabase Auth hoặc User Service không khả dụng khi xác thực |
 | `VALIDATION_ERROR` | 400 | Field/query sai cấu trúc |
 | `ROUTE_NOT_FOUND` | 404 | Không tồn tại route |

@@ -241,7 +241,7 @@ Trong MVP, việc gửi email hoặc SMS được mô phỏng bằng cách lưu 
 ```text
 1. Bệnh nhân đăng nhập bằng Supabase Auth.
 2. Flutter Patient App gửi request qua API Gateway kèm access token.
-3. Gateway xác minh JWT và role PATIENT.
+3. Gateway yêu cầu User Service xác minh token và trả role PATIENT đáng tin cậy.
 4. Bệnh nhân chọn chuyên khoa.
 5. Gateway gọi Doctor Service để lấy danh sách bác sĩ.
 6. Bệnh nhân chọn bác sĩ và ngày khám.
@@ -561,11 +561,11 @@ Khi cần dữ liệu chi tiết, service phải gọi API của service sở h�
 ### Xác thực
 
 - Supabase Auth quản lý đăng ký, đăng nhập và refresh token.
-- Frontend gọi các endpoint `/api/v1/auth/*` của API Gateway; Gateway mới là thành phần giao tiếp với Supabase Auth.
+- Frontend gọi các endpoint `/api/v1/auth/*` qua API Gateway; Gateway proxy tới User Service và chỉ User Service giao tiếp với Supabase Auth.
 - Frontend nhận access token từ API Gateway và không nhận URL/key Supabase.
 - Frontend gửi request đến API Gateway với `Authorization: Bearer <token>`.
-- API Gateway verify JWT bằng Supabase JWKS hoặc Supabase JWT secret phù hợp.
-- Gateway lấy profile/role từ User Service hoặc cache ngắn hạn.
+- API Gateway gọi endpoint nội bộ của User Service để xác minh token và lấy profile/role đáng tin cậy.
+- User Service xác minh token bằng Supabase Auth; có thể tối ưu bằng JWKS nội bộ ở giai đoạn sau mà không đưa Supabase credential sang Gateway.
 
 ### Phân quyền
 
@@ -579,7 +579,7 @@ Khi cần dữ liệu chi tiết, service phải gọi API của service sở h�
 ### Bảo mật biến môi trường
 
 - Frontend chỉ có URL của API Gateway, tuyệt đối không có Supabase URL/key, service URL nội bộ hoặc database URL.
-- `SUPABASE_URL`, `SUPABASE_ANON_KEY` và `SUPABASE_SERVICE_ROLE_KEY` nếu dùng chỉ nằm trong backend env.
+- `SUPABASE_URL`, `SUPABASE_ANON_KEY` và `SUPABASE_SERVICE_ROLE_KEY` nếu dùng chỉ nằm trong env của User Service.
 - Không commit `.env`.
 - Log và response lỗi production không trả token, service key hoặc stack trace.
 
@@ -660,9 +660,6 @@ Khuyến nghị:
 - `NODE_ENV`
 - `AUTH_DEV_MODE` chỉ bật cho local, bắt buộc tắt trong production
 - `CORS_ORIGINS`
-- `SUPABASE_URL`
-- `SUPABASE_ANON_KEY`
-- `SUPABASE_JWT_SECRET` hoặc `SUPABASE_JWKS_URL`
 - `USER_SERVICE_URL`
 - `DOCTOR_SERVICE_URL`
 - `APPOINTMENT_SERVICE_URL`
@@ -679,6 +676,9 @@ Khuyến nghị:
 - `USER_SERVICE_PORT`
 - `DATABASE_URL`
 - `DATABASE_SSL`
+- `DATABASE_SSL_REJECT_UNAUTHORIZED`
+- `SUPABASE_URL`
+- `SUPABASE_ANON_KEY`
 - `LOG_LEVEL`
 
 ### Doctor Service
@@ -711,6 +711,7 @@ Khuyến nghị:
 - `NOTIFICATION_SERVICE_PORT`
 - `DATABASE_URL`
 - `DATABASE_SSL`
+- `DATABASE_SSL_REJECT_UNAUTHORIZED`
 - `LOG_LEVEL`
 - `EMAIL_PROVIDER_API_KEY` tùy chọn cho phase sau
 - `SMS_PROVIDER_API_KEY` tùy chọn cho phase sau
@@ -778,7 +779,7 @@ Quy tắc `packages`:
 
 - Tích hợp Supabase Auth.
 - User Service quản lý profile/role.
-- Gateway verify JWT và role.
+- Gateway áp dụng auth policy bằng kết quả xác minh token/role từ User Service.
 - Patient App đăng ký/đăng nhập.
 
 ### Phase 4: Doctor Service

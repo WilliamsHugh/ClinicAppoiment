@@ -28,8 +28,10 @@ project Supabase tương ứng. Chạy file `infrastructure/supabase/<service>/s
 trên đúng database của service đó. Không chạy migration của service này trên database
 của service khác.
 
-Supabase Auth thuộc project của User Service. Chỉ API Gateway nhận `SUPABASE_URL` và
-`SUPABASE_ANON_KEY` ở môi trường backend để đăng ký, đăng nhập, refresh và xác minh JWT.
+Supabase Auth thuộc project của User Service. Chỉ User Service nhận `SUPABASE_URL` và
+`SUPABASE_ANON_KEY` ở môi trường backend để đăng ký, đăng nhập, refresh và xác minh token.
+API Gateway proxy `/api/v1/auth/*` tới User Service và dùng API nội bộ của User Service để
+xác minh danh tính trước khi chuyển tiếp request nghiệp vụ.
 Flutter và Next.js chỉ nhận URL của API Gateway; hai frontend không nhận Supabase key,
 database URL và không gọi trực tiếp service nội bộ. User, Medical Record và Notification
 Service cần database để khởi động; Doctor và Appointment hiện vẫn là scaffold in-memory.
@@ -79,8 +81,9 @@ Mặc định:
 - Notification Service: http://localhost:3005
 
 API Gateway cung cấp OpenAPI JSON tại `http://localhost:8080/openapi.json` và Swagger UI tại
-`http://localhost:8080/docs`. `AUTH_DEV_MODE=true` chỉ dành cho local scaffold; khi triển khai thật
-phải đặt `AUTH_DEV_MODE=false` và cấu hình Supabase Auth.
+`http://localhost:8080/docs`. OpenAPI nghiệp vụ Auth nằm tại User Service. `AUTH_DEV_MODE=true`
+chỉ dành cho local scaffold; khi triển khai thật phải đặt `AUTH_DEV_MODE=false` và cấu hình
+Supabase Auth trong User Service.
 
 ## Kiểm Tra
 
