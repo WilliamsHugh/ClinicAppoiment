@@ -7,8 +7,6 @@ export type GatewayConfig = {
   port: number;
   nodeEnv: string;
   authDevMode: boolean;
-  supabaseUrl?: string;
-  supabaseAnonKey?: string;
   corsOrigins: string[];
   rateLimitWindowMs: number;
   rateLimitMax: number;
@@ -22,8 +20,6 @@ const envSchema = z.object({
   NODE_ENV: z.string().default("development"),
   GATEWAY_PORT: z.coerce.number().int().positive().default(8080),
   AUTH_DEV_MODE: z.enum(["true", "false"]).default("false"),
-  SUPABASE_URL: z.string().url().optional(),
-  SUPABASE_ANON_KEY: z.string().min(1).optional(),
   CLINIC_MANAGEMENT_WEB_URL: z.string().url().default("http://localhost:5174"),
   CORS_ORIGINS: z.string().optional(),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
@@ -42,9 +38,6 @@ export function loadGatewayConfig(environment: NodeJS.ProcessEnv = process.env):
   const env = envSchema.parse(environment);
   const extraOrigins = env.CORS_ORIGINS?.split(",").map((origin) => origin.trim()).filter(Boolean) ?? [];
 
-  if ((env.SUPABASE_URL && !env.SUPABASE_ANON_KEY) || (!env.SUPABASE_URL && env.SUPABASE_ANON_KEY)) {
-    throw new Error("SUPABASE_URL and SUPABASE_ANON_KEY must be configured together");
-  }
   if (env.NODE_ENV === "production" && env.AUTH_DEV_MODE === "true") {
     throw new Error("AUTH_DEV_MODE must be disabled in production");
   }
@@ -53,8 +46,6 @@ export function loadGatewayConfig(environment: NodeJS.ProcessEnv = process.env):
     port: env.GATEWAY_PORT,
     nodeEnv: env.NODE_ENV,
     authDevMode: env.AUTH_DEV_MODE === "true",
-    supabaseUrl: env.SUPABASE_URL,
-    supabaseAnonKey: env.SUPABASE_ANON_KEY,
     corsOrigins: [...new Set([env.CLINIC_MANAGEMENT_WEB_URL, ...extraOrigins])],
     rateLimitWindowMs: env.RATE_LIMIT_WINDOW_MS,
     rateLimitMax: env.RATE_LIMIT_MAX,

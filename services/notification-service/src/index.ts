@@ -7,7 +7,12 @@ import { NotificationRepository } from "./repository.js";
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) throw new Error("DATABASE_URL is required by Notification Service");
-const pool = new Pool({ connectionString: databaseUrl, ssl: process.env.DATABASE_SSL === "true" ? { rejectUnauthorized: true } : undefined });
+const databaseSsl = process.env.DATABASE_SSL === "true";
+const rejectUnauthorized = process.env.DATABASE_SSL_REJECT_UNAUTHORIZED !== "false";
+const pool = new Pool({
+  connectionString: databaseUrl,
+  ssl: databaseSsl ? { rejectUnauthorized } : undefined
+});
 const repository = new NotificationRepository(pool);
 const port = Number(process.env.NOTIFICATION_SERVICE_PORT ?? 3005);
 const appointmentUrl = process.env.APPOINTMENT_SERVICE_URL ?? "http://localhost:3003";

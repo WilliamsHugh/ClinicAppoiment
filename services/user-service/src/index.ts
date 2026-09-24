@@ -3,18 +3,22 @@ import express from "express";
 import { Pool } from "pg";
 import swaggerUi from "swagger-ui-express";
 import { z } from "zod";
+import { createAuthRouter, createInternalVerifyHandler, createSupabaseAuthProvider } from "./auth.js";
 import { UserRepository } from "./repository.js";
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) throw new Error("DATABASE_URL is required by User Service");
+const databaseSsl = process.env.DATABASE_SSL === "true";
+const rejectUnauthorized = process.env.DATABASE_SSL_REJECT_UNAUTHORIZED !== "false";
 const pool = new Pool({
   connectionString: databaseUrl,
-  ssl: process.env.DATABASE_SSL === "true"
-    ? { rejectUnauthorized: true }
+  ssl: databaseSsl
+    ? { rejectUnauthorized }
     : undefined,
 });
 export const app = express();
 const repository = new UserRepository(pool);
+const authProvider = createSupabaseAuthProvider(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
 const port = Number(process.env.USER_SERVICE_PORT ?? 3001);
 
 const updateOwnUserSchema = z.object({
@@ -35,6 +39,11 @@ const swaggerDocument = {
   info: { title: "User Service API", version: "0.1.0" },
   paths: {
     "/health": { get: { summary: "Health check" } },
+    "/api/v1/auth/register": { post: { summary: "Register a patient account" } },
+    "/api/v1/auth/login": { post: { summary: "Sign in" } },
+    "/api/v1/auth/refresh": { post: { summary: "Refresh a session" } },
+    "/api/v1/auth/logout": { post: { summary: "Revoke a session" } },
+    "/api/v1/auth/me": { get: { summary: "Get current authenticated profile" } },
     "/api/v1/users": { get: { summary: "List users" } },
     "/api/v1/users/me": { get: { summary: "Get current user" }, patch: { summary: "Update current user" } },
     "/api/v1/patients": { get: { summary: "List patients" } }
@@ -47,7 +56,10 @@ app.use((req, _res, next) => {
   console.log(`${req.method} ${req.originalUrl}`);
   next();
 });
+app.get("/openapi.json", (_req, res) => res.json(swaggerDocument));
 app.use("/docs", swaggerUi.serve, swaggerUi.setup(swaggerDocument));
+app.use("/api/v1/auth", createAuthRouter(authProvider, repository));
+app.get("/internal/v1/auth/verify", createInternalVerifyHandler(authProvider, repository));
 
 function success<T>(data: T) {
   return { success: true, data };
@@ -82,9 +94,9 @@ app.get("/health", async (_req, res) => {
 });
 
 app.get("/api/v1/auth/me", async (req, res) => {
-  const authUserId = req.header("x-supabase-auth-user-id");
-  if (!authUserId) return res.status(401).json(error("AUTH_REQUIRED", "Authentication required"));
-  const user = await repository.findUserByAuthId(authUserId);
+  const userId = req.header("x-user-id");
+  if (!userId) return res.status(401).json(error("AUTH_REQUIRED", "Authentication required"));
+  const user = await repository.findUserById(userId);
   if (!user) return res.status(404).json(error("USER_NOT_FOUND", "User not found"));
   return res.json(success(user));
 });

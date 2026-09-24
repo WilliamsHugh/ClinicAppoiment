@@ -55,8 +55,7 @@ function configFor(target: string, overrides: Partial<GatewayConfig> = {}): Gate
 function appFor(target: string, role: Role = "PATIENT", overrides: Partial<GatewayConfig> = {}) {
   return createGatewayApp({
     config: configFor(target, overrides),
-    authVerifier: async () => ({ authUserId: "verified-auth-user" }),
-    profileResolver: async () => ({ id: "verified-user", role, status: "ACTIVE" }),
+    authVerifier: async () => ({ id: "verified-user", authUserId: "verified-auth-user", role, status: "ACTIVE" }),
     logger: { info: vi.fn(), error: vi.fn() }
   });
 }
@@ -71,7 +70,6 @@ describe("Gateway authentication dependency handling", () => {
     const app = createGatewayApp({
       config: configFor("http://127.0.0.1:1", { authTimeoutMs: 15 }),
       authVerifier: () => new Promise(() => undefined),
-      profileResolver: async () => ({ id: "never", role: "ADMIN", status: "ACTIVE" }),
       logger: { info: vi.fn(), error: vi.fn() }
     });
 
@@ -83,11 +81,10 @@ describe("Gateway authentication dependency handling", () => {
     expect(response.body.error.code).toBe("AUTH_SERVICE_UNAVAILABLE");
   });
 
-  it("normalizes profile resolver failures", async () => {
+  it("normalizes User Service verification failures", async () => {
     const app = createGatewayApp({
       config: configFor("http://127.0.0.1:1"),
-      authVerifier: async () => ({ authUserId: "auth-user" }),
-      profileResolver: async () => { throw new Error("private upstream URL"); },
+      authVerifier: async () => { throw new Error("private upstream URL"); },
       logger: { info: vi.fn(), error: vi.fn() }
     });
     const response = await request(app)
@@ -97,22 +94,76 @@ describe("Gateway authentication dependency handling", () => {
     expect(JSON.stringify(response.body)).not.toContain("private upstream URL");
   });
 
-  it("times out profile resolution with a controlled 503 response", async () => {
+  it("returns inactive identities as a controlled 403 response", async () => {
     const app = createGatewayApp({
-      config: configFor("http://127.0.0.1:1", { authTimeoutMs: 15 }),
-      authVerifier: async () => ({ authUserId: "auth-user" }),
-      profileResolver: () => new Promise(() => undefined),
+      config: configFor("http://127.0.0.1:1"),
+      authVerifier: async () => ({ id: "user-1", authUserId: "auth-user", role: "PATIENT", status: "LOCKED" }),
       logger: { info: vi.fn(), error: vi.fn() }
     });
     const response = await request(app)
       .get("/api/v1/system/health")
       .set("Authorization", "Bearer valid-token");
-    expect(response.status).toBe(503);
-    expect(response.body.error.code).toBe("AUTH_SERVICE_UNAVAILABLE");
+    expect(response.status).toBe(403);
+    expect(response.body.error.code).toBe("ACCOUNT_INACTIVE");
   });
 });
 
 describe("Gateway prefix routing", () => {
+  it("proxies public auth endpoints to User Service without handling credentials", async () => {
+    const upstream = await startUpstream((req, res) => {
+      let body = "";
+      req.setEncoding("utf8");
+      req.on("data", (chunk) => { body += chunk; });
+      req.on("end", () => sendJson(res, 201, {
+        success: true,
+        data: { method: req.method, url: req.url, body: JSON.parse(body) }
+      }));
+    });
+    const app = createGatewayApp({
+      config: configFor(upstream.url),
+      authVerifier: null,
+      logger: { info: vi.fn(), error: vi.fn() }
+    });
+
+    const response = await request(app)
+      .post("/api/v1/auth/register")
+      .send({ fullName: "Patient One", email: "patient@example.com", password: "secret12" });
+
+    expect(response.status).toBe(201);
+    expect(response.body.data).toMatchObject({ method: "POST", url: "/api/v1/auth/register" });
+    expect(response.body.data.body.email).toBe("patient@example.com");
+  });
+
+  it("uses User Service internal verification before proxying protected routes", async () => {
+    const paths: string[] = [];
+    const upstream = await startUpstream((req, res) => {
+      paths.push(req.url ?? "");
+      if (req.url === "/internal/v1/auth/verify") {
+        expect(req.headers.authorization).toBe("Bearer valid-token");
+        return sendJson(res, 200, {
+          success: true,
+          data: { id: "verified-user", authUserId: "auth-user", role: "PATIENT", status: "ACTIVE" }
+        });
+      }
+      return sendJson(res, 200, {
+        success: true,
+        data: { userId: req.headers["x-user-id"], role: req.headers["x-role"] }
+      });
+    });
+    const app = createGatewayApp({
+      config: configFor(upstream.url),
+      logger: { info: vi.fn(), error: vi.fn() }
+    });
+
+    const response = await request(app)
+      .get("/api/v1/users/me")
+      .set("Authorization", "Bearer valid-token");
+
+    expect(response.status).toBe(200);
+    expect(response.body.data).toEqual({ userId: "verified-user", role: "PATIENT" });
+    expect(paths).toEqual(["/internal/v1/auth/verify", "/api/v1/users/me"]);
+  });
+
   it("forwards roots and arbitrary descendants without matching similar prefixes", async () => {
     const upstream = await startUpstream((_req, res) => sendJson(res, 200, { success: true, data: {} }));
     const cases = [
@@ -187,8 +238,7 @@ describe("Gateway proxy boundary", () => {
     const logger = { info: vi.fn(), error: vi.fn() };
     const app = createGatewayApp({
       config: configFor(upstream.url),
-      authVerifier: async () => ({ authUserId: "verified-auth-user" }),
-      profileResolver: async () => ({ id: "verified-user", role: "PATIENT", status: "ACTIVE" }),
+      authVerifier: async () => ({ id: "verified-user", authUserId: "verified-auth-user", role: "PATIENT", status: "ACTIVE" }),
       logger
     });
     await request(app)

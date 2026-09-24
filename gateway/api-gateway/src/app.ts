@@ -3,13 +3,12 @@ import express from "express";
 import rateLimit from "express-rate-limit";
 import { createProxyMiddleware, responseInterceptor } from "http-proxy-middleware";
 import swaggerUi from "swagger-ui-express";
-import { createAuthenticate, createSupabaseAuthBroker, createSupabaseVerifier, createUserProfileResolver, requireRoles } from "./auth.js";
-import { createAuthRouter } from "./auth-routes.js";
+import { createAuthenticate, createUserServiceVerifier, requireRoles } from "./auth.js";
 import type { GatewayConfig, ServiceName } from "./config.js";
 import { serviceNames } from "./config.js";
 import { createErrorHandler, notFoundHandler, requestContext, sendError, type GatewayLogger } from "./http.js";
 import { gatewayOpenApiDocument } from "./openapi.js";
-import type { AccessTokenVerifier, AuthBroker, GatewayRequest, UserProfileResolver } from "./types.js";
+import type { AccessTokenVerifier, GatewayRequest } from "./types.js";
 
 type HealthState = "ok" | "unavailable";
 type HealthChecker = (service: ServiceName, target: string) => Promise<HealthState>;
@@ -17,8 +16,6 @@ type HealthChecker = (service: ServiceName, target: string) => Promise<HealthSta
 type CreateGatewayAppOptions = {
   config: GatewayConfig;
   authVerifier?: AccessTokenVerifier | null;
-  authBroker?: AuthBroker | null;
-  profileResolver?: UserProfileResolver;
   healthChecker?: HealthChecker;
   logger?: GatewayLogger;
 };
@@ -134,10 +131,8 @@ function proxyTo(target: string, upstreamPrefix: string, timeoutMs: number, cors
 export function createGatewayApp(options: CreateGatewayAppOptions) {
   const { config } = options;
   const logger = options.logger ?? console;
-  const verifier = options.authVerifier === undefined ? createSupabaseVerifier(config) : options.authVerifier;
-  const resolveProfile = options.profileResolver ?? createUserProfileResolver(config);
-  const authBroker = options.authBroker === undefined ? createSupabaseAuthBroker(config) : options.authBroker;
-  const authenticate = createAuthenticate(config, verifier, resolveProfile);
+  const verifier = options.authVerifier === undefined ? createUserServiceVerifier(config) : options.authVerifier;
+  const authenticate = createAuthenticate(config, verifier);
   const checkHealth = options.healthChecker ?? defaultHealthChecker(config.healthTimeoutMs);
   const app = express();
 
@@ -160,8 +155,6 @@ export function createGatewayApp(options: CreateGatewayAppOptions) {
   app.get("/health", (_req, res) => res.json({ success: true, data: { service: "api-gateway", status: "ok" } }));
   app.get("/openapi.json", (_req, res) => res.json(gatewayOpenApiDocument));
   app.use("/docs", swaggerUi.serve, swaggerUi.setup(gatewayOpenApiDocument));
-  app.use("/api/v1/auth", createAuthRouter(authBroker, resolveProfile));
-
   app.get("/api/v1/system/health", authenticate, requireRoles("ADMIN"), async (req: GatewayRequest, res) => {
     const entries = await Promise.all(serviceNames.map(async (service) => [service, await checkHealth(service, config.serviceTargets[service])] as const));
     const services = Object.fromEntries(entries) as Record<ServiceName, HealthState>;
@@ -170,7 +163,6 @@ export function createGatewayApp(options: CreateGatewayAppOptions) {
   });
 
   const routeGroups: Array<{ prefix: string; service: ServiceName }> = [
-    { prefix: "/api/v1/auth", service: "users" },
     { prefix: "/api/v1/users", service: "users" },
     { prefix: "/api/v1/patients", service: "users" },
     { prefix: "/api/v1/specialties", service: "doctors" },
@@ -180,6 +172,14 @@ export function createGatewayApp(options: CreateGatewayAppOptions) {
     { prefix: "/api/v1/medical-records", service: "medicalRecords" },
     { prefix: "/api/v1/notifications", service: "notifications" }
   ];
+  const publicAuthPaths = new Set(["/login", "/register", "/refresh"]);
+  app.use(
+    "/api/v1/auth",
+    (req, res, next) => req.method === "POST" && publicAuthPaths.has(req.path)
+      ? next()
+      : authenticate(req as GatewayRequest, res, next),
+    proxyTo(config.serviceTargets.users, "/api/v1/auth", config.proxyTimeoutMs, config.corsOrigins)
+  );
   for (const route of routeGroups) {
     app.use(
       route.prefix,
