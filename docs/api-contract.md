@@ -373,6 +373,7 @@ ghi outbox cùng transaction tạo/cập nhật hồ sơ; worker gửi lại b�
 | `AUTH_TOKEN_INVALID` | 401 | Token sai/hết hạn |
 | `AUTH_INVALID_CREDENTIALS` | 401 | Email hoặc mật khẩu không đúng |
 | `AUTH_EMAIL_NOT_CONFIRMED` | 403 | Email chưa được xác nhận |
+| `AUTH_EMAIL_PROVIDER_DISABLED` | 503 | Email provider đang bị tắt trong Supabase Auth |
 | `AUTH_EMAIL_INVALID` | 400 | Supabase từ chối địa chỉ email đăng ký |
 | `AUTH_RATE_LIMITED` | 429 | Supabase giới hạn tần suất gửi email hoặc request xác thực |
 | `USER_PROFILE_NOT_FOUND` | 403 | Token hợp lệ nhưng chưa có profile nghiệp vụ |

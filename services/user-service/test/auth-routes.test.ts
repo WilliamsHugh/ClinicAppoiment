@@ -106,6 +106,21 @@ describe("User Service authentication ownership", () => {
     expect(response.body.error.code).toBe("AUTH_RATE_LIMITED");
   });
 
+  it("reports when the Supabase email provider is disabled", async () => {
+    const { app, provider } = dependencies();
+    vi.mocked(provider.signUp).mockRejectedValue(
+      new AuthProviderError("AUTH_REGISTRATION_FAILED", "email_provider_disabled", 400)
+    );
+
+    const response = await request(app)
+      .post("/api/v1/auth/register")
+      .send({ fullName: "Patient One", email: "patient@example.com", password: "secret12" });
+
+    expect(response.status).toBe(503);
+    expect(response.body.error.code).toBe("AUTH_EMAIL_PROVIDER_DISABLED");
+    expect(response.body.error.message).toBe("Đăng ký và đăng nhập bằng email đang bị tắt");
+  });
+
   it("verifies access tokens internally and resolves the trusted role", async () => {
     const { app } = dependencies();
     const response = await request(app)

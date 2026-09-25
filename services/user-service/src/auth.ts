@@ -140,6 +140,9 @@ function authFailure(res: express.Response, cause: unknown) {
 
   if (providerCode === "invalid_credentials") return fail(res, 401, "AUTH_INVALID_CREDENTIALS", "Email hoặc mật khẩu không đúng");
   if (providerCode === "email_not_confirmed") return fail(res, 403, "AUTH_EMAIL_NOT_CONFIRMED", "Email chưa được xác nhận");
+  if (providerCode === "email_provider_disabled") {
+    return fail(res, 503, "AUTH_EMAIL_PROVIDER_DISABLED", "Đăng ký và đăng nhập bằng email đang bị tắt");
+  }
   if (providerCode === "email_address_invalid") return fail(res, 400, "AUTH_EMAIL_INVALID", "Địa chỉ email không hợp lệ");
   if (providerCode === "over_email_send_rate_limit" || status === 429) {
     return fail(res, 429, "AUTH_RATE_LIMITED", "Quá nhiều yêu cầu xác thực, vui lòng thử lại sau");
