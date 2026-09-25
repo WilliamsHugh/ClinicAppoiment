@@ -1,3 +1,4 @@
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:clinic_patient_app/app/patient_app.dart';
@@ -15,6 +16,28 @@ class _AuthenticatedProvider implements SessionProvider {
         role: UserRole.patient,
         accessToken: 'test-token',
       );
+}
+
+class _RejectedLoginProvider
+    implements SessionProvider, CredentialSessionProvider {
+  @override
+  Future<String?> getAccessToken() async => null;
+
+  @override
+  Future<AuthSession?> restoreSession() async => null;
+
+  @override
+  Future<AuthSession> signIn(String email, String password) {
+    throw const SessionException('Email hoặc mật khẩu không đúng');
+  }
+
+  @override
+  Future<AuthSession?> signUp(String fullName, String email, String password) {
+    throw const SessionException('Địa chỉ email không hợp lệ');
+  }
+
+  @override
+  Future<void> signOut() async {}
 }
 
 void main() {
@@ -43,5 +66,24 @@ void main() {
     expect(find.text('Hồ sơ khám'), findsOneWidget);
     expect(find.text('Thông báo'), findsOneWidget);
     expect(find.text('Cá nhân'), findsOneWidget);
+  });
+
+  testWidgets('keeps the login form visible and shows the backend error',
+      (tester) async {
+    await tester.pumpWidget(
+      PatientApp(sessionProvider: _RejectedLoginProvider()),
+    );
+    await tester.pumpAndSettle();
+
+    final fields = find.byType(TextFormField);
+    await tester.enterText(fields.at(0), 'patient@example.com');
+    await tester.enterText(fields.at(1), 'wrong-password');
+    await tester.tap(find.widgetWithText(FilledButton, 'Đăng nhập'));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const Key('login-error')), findsOneWidget);
+    expect(find.text('Email hoặc mật khẩu không đúng'), findsOneWidget);
+    expect(find.text('Đăng nhập'), findsWidgets);
+    expect(find.text('Đang kiểm tra phiên đăng nhập'), findsNothing);
   });
 }
