@@ -12,6 +12,17 @@ type AuthTokens = {
 
 type SignUpResult = { authUserId: string; tokens: AuthTokens | null };
 
+export class AuthProviderError extends Error {
+  constructor(
+    message: string,
+    readonly providerCode?: string,
+    readonly status?: number
+  ) {
+    super(message);
+    this.name = "AuthProviderError";
+  }
+}
+
 export type AuthProvider = {
   signIn(email: string, password: string): Promise<AuthTokens>;
   signUp(fullName: string, email: string, password: string): Promise<SignUpResult>;
@@ -36,16 +47,32 @@ function toTokens(data: {
   };
 }
 
-export function createSupabaseAuthProvider(url?: string, anonKey?: string): AuthProvider | null {
+function providerError(defaultCode: string, error: unknown): AuthProviderError {
+  const providerCode = typeof error === "object" && error !== null && "code" in error && typeof error.code === "string"
+    ? error.code
+    : undefined;
+  const status = typeof error === "object" && error !== null && "status" in error && typeof error.status === "number"
+    ? error.status
+    : undefined;
+  return new AuthProviderError(defaultCode, providerCode, status);
+}
+
+export function createSupabaseAuthProvider(url?: string, anonKey?: string, timeoutMs = 15_000): AuthProvider | null {
   if (!url || !anonKey) return null;
+  const timedFetch: typeof fetch = (input, init) => fetch(input, {
+    ...init,
+    signal: init?.signal ?? AbortSignal.timeout(timeoutMs)
+  });
   const client = () => createClient(url, anonKey, {
-    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false }
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+    global: { fetch: timedFetch }
   });
   return {
     async signIn(email, password) {
       const { data, error } = await client().auth.signInWithPassword({ email, password });
       const tokens = toTokens(data);
-      if (error || !tokens) throw new Error("AUTH_INVALID_CREDENTIALS");
+      if (error) throw providerError("AUTH_LOGIN_FAILED", error);
+      if (!tokens) throw new AuthProviderError("AUTH_LOGIN_FAILED");
       return tokens;
     },
     async signUp(fullName, email, password) {
@@ -54,13 +81,15 @@ export function createSupabaseAuthProvider(url?: string, anonKey?: string): Auth
         password,
         options: { data: { full_name: fullName } }
       });
-      if (error || !data.user) throw new Error("AUTH_REGISTRATION_FAILED");
+      if (error) throw providerError("AUTH_REGISTRATION_FAILED", error);
+      if (!data.user) throw new AuthProviderError("AUTH_REGISTRATION_FAILED");
       return { authUserId: data.user.id, tokens: toTokens(data) };
     },
     async refresh(refreshToken) {
       const { data, error } = await client().auth.refreshSession({ refresh_token: refreshToken });
       const tokens = toTokens(data);
-      if (error || !tokens) throw new Error("AUTH_REFRESH_INVALID");
+      if (error) throw providerError("AUTH_REFRESH_INVALID", error);
+      if (!tokens) throw new AuthProviderError("AUTH_REFRESH_INVALID");
       return tokens;
     },
     async signOut(accessToken, refreshToken) {
@@ -105,9 +134,21 @@ function session(tokens: AuthTokens, profile: UserProfile) {
 
 function authFailure(res: express.Response, cause: unknown) {
   const code = cause instanceof Error ? cause.message : "";
-  if (code === "AUTH_INVALID_CREDENTIALS") return fail(res, 401, code, "Email hoặc mật khẩu không đúng");
+  const providerCode = cause instanceof AuthProviderError ? cause.providerCode : undefined;
+  const status = cause instanceof AuthProviderError ? cause.status : undefined;
+  console.warn(JSON.stringify({ event: "auth.provider_error", code, providerCode, status }));
+
+  if (providerCode === "invalid_credentials") return fail(res, 401, "AUTH_INVALID_CREDENTIALS", "Email hoặc mật khẩu không đúng");
+  if (providerCode === "email_not_confirmed") return fail(res, 403, "AUTH_EMAIL_NOT_CONFIRMED", "Email chưa được xác nhận");
+  if (providerCode === "email_address_invalid") return fail(res, 400, "AUTH_EMAIL_INVALID", "Địa chỉ email không hợp lệ");
+  if (providerCode === "over_email_send_rate_limit" || status === 429) {
+    return fail(res, 429, "AUTH_RATE_LIMITED", "Quá nhiều yêu cầu xác thực, vui lòng thử lại sau");
+  }
+  if (code === "AUTH_LOGIN_FAILED" && status === 400) return fail(res, 401, "AUTH_INVALID_CREDENTIALS", "Email hoặc mật khẩu không đúng");
   if (code === "AUTH_REFRESH_INVALID" || code === "AUTH_SESSION_INVALID") return fail(res, 401, code, "Phiên đăng nhập không hợp lệ hoặc đã hết hạn");
-  if (code === "AUTH_REGISTRATION_FAILED") return fail(res, 400, code, "Không thể đăng ký tài khoản");
+  if (code === "AUTH_REGISTRATION_FAILED" && status !== undefined && status < 500) {
+    return fail(res, 400, code, "Không thể đăng ký tài khoản");
+  }
   return fail(res, 503, "AUTH_SERVICE_UNAVAILABLE", "Authentication service is unavailable");
 }
 

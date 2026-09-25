@@ -1,7 +1,7 @@
 import express from "express";
 import request from "supertest";
 import { describe, expect, it, vi } from "vitest";
-import { createAuthRouter, createInternalVerifyHandler, type AuthProvider } from "../src/auth.js";
+import { AuthProviderError, createAuthRouter, createInternalVerifyHandler, type AuthProvider } from "../src/auth.js";
 import type { UserProfile, UserRepository } from "../src/repository.js";
 
 const profile: UserProfile = {
@@ -76,6 +76,34 @@ describe("User Service authentication ownership", () => {
     expect(response.status).toBe(400);
     expect(response.body.error.code).toBe("VALIDATION_ERROR");
     expect(provider.signIn).not.toHaveBeenCalled();
+  });
+
+  it("returns a specific error when Supabase rejects the email address", async () => {
+    const { app, provider } = dependencies();
+    vi.mocked(provider.signUp).mockRejectedValue(
+      new AuthProviderError("AUTH_REGISTRATION_FAILED", "email_address_invalid", 400)
+    );
+
+    const response = await request(app)
+      .post("/api/v1/auth/register")
+      .send({ fullName: "Patient One", email: "patient@example.com", password: "secret12" });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.code).toBe("AUTH_EMAIL_INVALID");
+  });
+
+  it("returns a retryable error when Supabase email delivery is rate limited", async () => {
+    const { app, provider } = dependencies();
+    vi.mocked(provider.signUp).mockRejectedValue(
+      new AuthProviderError("AUTH_REGISTRATION_FAILED", "over_email_send_rate_limit", 429)
+    );
+
+    const response = await request(app)
+      .post("/api/v1/auth/register")
+      .send({ fullName: "Patient One", email: "patient@example.com", password: "secret12" });
+
+    expect(response.status).toBe(429);
+    expect(response.body.error.code).toBe("AUTH_RATE_LIMITED");
   });
 
   it("verifies access tokens internally and resolves the trusted role", async () => {

@@ -18,7 +18,15 @@ const pool = new Pool({
 });
 export const app = express();
 const repository = new UserRepository(pool);
-const authProvider = createSupabaseAuthProvider(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
+const authProviderTimeoutMs = Number(process.env.AUTH_PROVIDER_TIMEOUT_MS ?? 15_000);
+if (!Number.isInteger(authProviderTimeoutMs) || authProviderTimeoutMs <= 0) {
+  throw new Error("AUTH_PROVIDER_TIMEOUT_MS must be a positive integer");
+}
+const authProvider = createSupabaseAuthProvider(
+  process.env.SUPABASE_URL,
+  process.env.SUPABASE_ANON_KEY,
+  authProviderTimeoutMs
+);
 const port = Number(process.env.USER_SERVICE_PORT ?? 3001);
 
 const updateOwnUserSchema = z.object({
