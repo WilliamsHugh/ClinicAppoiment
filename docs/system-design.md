@@ -679,6 +679,7 @@ Khuyến nghị:
 - `DATABASE_SSL_REJECT_UNAUTHORIZED`
 - `SUPABASE_URL`
 - `SUPABASE_ANON_KEY`
+- `AUTH_PROVIDER_TIMEOUT_MS` (mặc định `15000`; phải nhỏ hơn `PROXY_TIMEOUT_MS` của Gateway)
 - `LOG_LEVEL`
 
 ### Doctor Service

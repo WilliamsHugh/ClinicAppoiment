@@ -26,7 +26,7 @@ const envSchema = z.object({
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(120),
   AUTH_TIMEOUT_MS: z.coerce.number().int().positive().default(3_000),
   HEALTH_CHECK_TIMEOUT_MS: z.coerce.number().int().positive().default(1_500),
-  PROXY_TIMEOUT_MS: z.coerce.number().int().positive().default(10_000),
+  PROXY_TIMEOUT_MS: z.coerce.number().int().positive().default(20_000),
   USER_SERVICE_URL: z.string().url().default("http://localhost:3001"),
   DOCTOR_SERVICE_URL: z.string().url().default("http://localhost:3002"),
   APPOINTMENT_SERVICE_URL: z.string().url().default("http://localhost:3003"),

@@ -141,7 +141,7 @@ class GatewaySessionProvider
             },
             body: jsonEncode(body),
           )
-          .timeout(const Duration(seconds: 15));
+          .timeout(const Duration(seconds: 25));
     } catch (_) {
       throw const SessionException(
         'Không thể kết nối đến hệ thống. Vui lòng thử lại.',
