@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
 import { visibleRoutes } from "../lib/navigation/routes";
 import { useSession } from "../lib/session/session-context";
+import { RouteGuard } from "./route-guard";
 
 export function AppShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
@@ -53,7 +54,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             </Link>
           ))}
         </nav>
-        <main className="content">{children}</main>
+        <main className="content"><RouteGuard>{children}</RouteGuard></main>
       </div>
     </div>
   );

@@ -4,7 +4,7 @@ import { useEffect, useState, useTransition } from "react";
 import Link from "next/link";
 import { Pagination } from "../../src/components/pagination";
 import { EmptyState, ErrorState, LoadingState } from "../../src/components/states";
-import { createBrowserApiClient } from "../../src/lib/api/client";
+import { createBrowserApiClient, type PaginatedData } from "../../src/lib/api/client";
 import { useSession } from "../../src/lib/session/session-context";
 import type { ClinicRole } from "../../src/lib/session/session";
 
@@ -48,10 +48,10 @@ export default function UsersPage() {
       if (statusFilter) query.status = statusFilter;
       if (searchQuery.trim()) query.q = searchQuery.trim();
 
-      const res = await api.get<UserItem[]>("/api/v1/users", { query });
-      setUsers(res.data ?? []);
+      const res = await api.get<PaginatedData<UserItem>>("/api/v1/users", { query });
+      setUsers(res.data.items);
       setPage(res.pagination?.page ?? targetPage);
-      setTotal(res.pagination?.total ?? (res.data ? res.data.length : 0));
+      setTotal(res.pagination?.total ?? res.data.items.length);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Không thể tải danh sách người dùng.");
     } finally {

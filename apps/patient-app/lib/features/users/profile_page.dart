@@ -6,9 +6,10 @@ import '../../core/theme/app_theme.dart';
 import '../../shared/widgets/async_states.dart';
 
 class ProfilePage extends StatefulWidget {
-  const ProfilePage({this.tokenProvider, super.key});
+  const ProfilePage({this.tokenProvider, this.apiClient, super.key});
 
   final TokenProvider? tokenProvider;
+  final ClinicApiClient? apiClient;
 
   @override
   State<ProfilePage> createState() => _ProfilePageState();
@@ -35,8 +36,9 @@ class _ProfilePageState extends State<ProfilePage> {
   @override
   void initState() {
     super.initState();
-    if (widget.tokenProvider != null) {
-      _apiClient = ClinicApiClient(tokenProvider: widget.tokenProvider!);
+    if (widget.apiClient != null || widget.tokenProvider != null) {
+      _apiClient = widget.apiClient ??
+          ClinicApiClient(tokenProvider: widget.tokenProvider!);
       _loadProfile();
     }
   }
@@ -225,7 +227,9 @@ class _ProfilePageState extends State<ProfilePage> {
                                     '/api/v1/users/me',
                                     body: {
                                       'fullName': nameCtrl.text.trim(),
-                                      'phone': phoneCtrl.text.trim(),
+                                      'phone': phoneCtrl.text.trim().isEmpty
+                                          ? null
+                                          : phoneCtrl.text.trim(),
                                     },
                                   );
 

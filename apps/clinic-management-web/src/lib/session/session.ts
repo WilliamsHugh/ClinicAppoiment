@@ -1,5 +1,9 @@
 export type ClinicRole = "PATIENT" | "DOCTOR" | "STAFF" | "ADMIN";
 
+export function isClinicManagementRole(role: string): role is Exclude<ClinicRole, "PATIENT"> {
+  return role === "DOCTOR" || role === "STAFF" || role === "ADMIN";
+}
+
 export type SessionStatus = "loading" | "authenticated" | "unauthenticated";
 
 export interface SessionIdentity {
@@ -16,6 +20,7 @@ export interface Session {
   getAccessToken(): Promise<string | null>;
   signIn(email: string, password: string): Promise<void>;
   signOut(): Promise<void>;
+  handleUnauthorized?(): Promise<void>;
 }
 
 export const unauthenticatedSession: Session = {
