@@ -109,6 +109,15 @@ describe("USER-001 & USER-004: UserRepository tests", () => {
     expect(updateQuery?.values).toEqual(["New Name", "0999999999", sampleUser.id]);
   });
 
+  it("idempotently provisions a patient profile when an admin assigns PATIENT", async () => {
+    const { repo, queries } = createMockDb();
+    await repo.updateUser(sampleUser.id, { role: "PATIENT" });
+
+    const insertPatient = queries.find((q) => q.sql.includes("INSERT INTO user_service.patient_profiles"));
+    expect(insertPatient?.sql).toContain("ON CONFLICT (user_id) DO NOTHING");
+    expect(insertPatient?.values).toEqual([sampleUser.id]);
+  });
+
   it("updates patient fields safely", async () => {
     const { repo, queries } = createMockDb();
     await repo.updatePatient(samplePatient.id, {

@@ -1,9 +1,9 @@
 # Tài Liệu Kỹ Thuật API: User Service & Xác Thực
 
 > **Chủ sở hữu**: Thành viên 2 (User Service, Xác thực Supabase Auth, Hồ sơ bệnh nhân)  
-> **Phiên bản**: v1.0.0  
-> **Cập nhật lần cuối**: 2026-09-24  
-> **Nhánh phát triển**: `feature/user-001-profile-and-auth`
+> **Phiên bản**: v1.1.0
+> **Cập nhật lần cuối**: 2026-09-28
+> **Nhánh phát triển**: `fix/user-001-profile-and-auth-hardening`
 
 ---
 
@@ -311,6 +311,7 @@ User Service chịu trách nhiệm độc quyền:
   - `page`: số nguyên >= 1 (Mặc định: 1)
   - `limit`: số nguyên 1..100 (Mặc định: 20)
   - `q`: từ khóa tìm kiếm (họ tên, số điện thoại, email hoặc mã thẻ BHYT)
+  - `appointmentId`: bắt buộc với `DOCTOR`; User Service chỉ trả bệnh nhân thuộc lịch khám mà bác sĩ đó phụ trách.
 - **Response thành công** (`200 OK`):
   ```json
   {
@@ -342,7 +343,8 @@ User Service chịu trách nhiệm độc quyền:
 #### 13. Xem chi tiết hồ sơ bệnh nhân: `GET /api/v1/patients/{id}`
 - **Quyền hạn**:
   - `PATIENT`: Chỉ xem được hồ sơ bệnh nhân của chính mình (`patient.userId === actor.userId`).
-  - `DOCTOR`, `STAFF`, `ADMIN`: Được xem hồ sơ.
+  - `DOCTOR`: Chỉ được xem hồ sơ thuộc `appointmentId` mà bác sĩ đó phụ trách; truyền `appointmentId` trên query string.
+  - `STAFF`, `ADMIN`: Được xem hồ sơ.
 - **Lỗi**:
   - `403 ACCESS_DENIED`: Bệnh nhân cố tình đọc hồ sơ người khác.
   - `404 PATIENT_NOT_FOUND`: Không tìm thấy hồ sơ.

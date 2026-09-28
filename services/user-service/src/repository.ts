@@ -6,7 +6,7 @@ export type UserProfile = {
   supabaseAuthUserId: string;
   email: string;
   fullName: string;
-  phone?: string;
+  phone?: string | null;
   role: Role;
   status: "ACTIVE" | "INACTIVE" | "LOCKED";
   createdAt?: string;
@@ -16,11 +16,11 @@ export type UserProfile = {
 export type PatientProfile = {
   id: string;
   userId: string;
-  dateOfBirth?: string;
-  gender?: string;
-  address?: string;
-  emergencyContact?: string;
-  insuranceNumber?: string;
+  dateOfBirth?: string | null;
+  gender?: string | null;
+  address?: string | null;
+  emergencyContact?: string | null;
+  insuranceNumber?: string | null;
   fullName?: string;
   email?: string;
   phone?: string;
@@ -44,6 +44,7 @@ export type FindUsersFilter = {
 };
 
 export type FindPatientsFilter = {
+  patientId?: string;
   q?: string;
   page?: number;
   limit?: number;
@@ -165,7 +166,7 @@ export class UserRepository {
       status: "status",
       role: "role",
     } as const;
-    const entries = (Object.entries(input) as Array<[keyof typeof columns, string | undefined]>)
+    const entries = (Object.entries(input) as Array<[keyof typeof columns, string | null | undefined]>)
       .filter(([, v]) => v !== undefined);
     if (entries.length === 0) return this.findUserById(id);
     const assignments = entries
@@ -176,7 +177,16 @@ export class UserRepository {
        WHERE id = $${entries.length + 1} RETURNING ${userSelect}`,
       [...entries.map(([, value]) => value ?? null), id],
     );
-    return result.rows[0] ?? null;
+    const user = result.rows[0] ?? null;
+    if (user?.role === "PATIENT") {
+      await this.pool.query(
+        `INSERT INTO user_service.patient_profiles (user_id)
+         VALUES ($1)
+         ON CONFLICT (user_id) DO NOTHING`,
+        [user.id],
+      );
+    }
+    return user;
   }
 
   async findPatients(filter: FindPatientsFilter = {}): Promise<PaginatedResult<PatientProfile>> {
@@ -186,6 +196,11 @@ export class UserRepository {
 
     const conditions: string[] = [];
     const values: unknown[] = [];
+
+    if (filter.patientId) {
+      values.push(filter.patientId);
+      conditions.push(`p.id = $${values.length}`);
+    }
 
     if (filter.q) {
       values.push(`%${filter.q.trim()}%`);
@@ -267,7 +282,7 @@ export class UserRepository {
       emergencyContact: "emergency_contact",
       insuranceNumber: "insurance_number",
     } as const;
-    const entries = (Object.entries(input) as Array<[keyof typeof columns, string | undefined]>)
+    const entries = (Object.entries(input) as Array<[keyof typeof columns, string | null | undefined]>)
       .filter(([, v]) => v !== undefined);
     if (entries.length === 0) return this.findPatientById(id);
     const assignments = entries
