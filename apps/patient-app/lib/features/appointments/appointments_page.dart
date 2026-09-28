@@ -134,7 +134,9 @@ class _AppointmentsPageState extends State<AppointmentsPage>
                 color: ClinicColors.ink)),
         bottom: TabBar(
           controller: _tab,
-          isScrollable: true,
+          isScrollable: false,
+          indicatorSize: TabBarIndicatorSize.tab,
+          labelPadding: EdgeInsets.zero,
           labelColor: ClinicColors.primary,
           unselectedLabelColor: ClinicColors.muted,
           indicatorColor: ClinicColors.primary,
