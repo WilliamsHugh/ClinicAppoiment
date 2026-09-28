@@ -60,6 +60,11 @@ npm run dev:medical-record
 npm run dev:notification
 ```
 
+Mỗi lệnh backend trên tự nạp file `gateway/api-gateway/.env` hoặc
+`services/<service>/.env`. Tạo file đó từ `.env.example` tương ứng và không commit
+credential thật. Chỉ User Service được cấu hình `SUPABASE_URL` và
+`SUPABASE_ANON_KEY`; các service còn lại chỉ nhận `DATABASE_URL` của database mình sở hữu.
+
 Chạy Patient App trên Android emulator:
 
 ```bash
@@ -91,6 +96,9 @@ Supabase Auth trong User Service.
 npm run build
 npm run build:patient
 npm run lint
+npm test
+npm run analyze:patient
+npm run test:patient
 npm audit --omit=dev --audit-level=high
 ```
 
