@@ -13,7 +13,9 @@ function render(role?: ClinicRole) {
   currentSession = {
     status: role ? "authenticated" : "unauthenticated",
     identity: role ? { id: "user-1", role } : null,
-    getAccessToken: async () => role ? "test-token" : null
+    getAccessToken: async () => role ? "test-token" : null,
+    signIn: async () => {},
+    signOut: async () => {}
   };
   return renderToStaticMarkup(React.createElement(DoctorPanel));
 }
