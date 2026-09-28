@@ -36,8 +36,8 @@ Express mount path có biên segment nên `/api/v1/doctors` và mọi đường 
 Doctor Service, nhưng `/api/v1/doctors-other` không match. Gateway tái tạo nguyên đường dẫn public;
 service nhận đúng path, query và method mà frontend gửi. Không có quy ước strip prefix. Request body,
 `Authorization`, `Idempotency-Key`, content headers và response phù hợp được proxy chuyển tiếp.
-Gateway luôn xóa/ghi đè `X-User-Id`, `X-Role`, `X-Supabase-Auth-User-Id` từ client trước khi thêm
-danh tính đã xác minh.
+Gateway luôn xóa `X-User-Id`, `X-Role`, `X-Supabase-Auth-User-Id` do client gửi, sau đó chỉ thêm
+`X-User-Id` và `X-Role` từ danh tính đã xác minh. Supabase Auth user ID không được chuyển sang service nghiệp vụ.
 
 Mặc định mọi nhóm nghiệp vụ yêu cầu đăng nhập. Ngoại lệ public hiện chỉ gồm `GET /health`, tài liệu
 Gateway và `POST /api/v1/auth/login|register|refresh`; logout cần access token và refresh token.
