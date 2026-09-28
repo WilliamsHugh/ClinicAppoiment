@@ -1,14 +1,19 @@
 import request from "supertest";
-import { describe, expect, it } from "vitest";
-import { app } from "../src/index.js";
+import { describe, expect, it, vi } from "vitest";
+import { createDoctorApp } from "../src/app.js";
+import type { DoctorRepository } from "../src/repository.js";
 
 const identity = { "X-User-Id": "patient-user", "X-Role": "PATIENT" };
+const repository = {
+  listDoctors: vi.fn().mockResolvedValue({ items: [], page: 1, limit: 20, total: 0 }),
+} as unknown as DoctorRepository;
+const app = createDoctorApp(repository, { findDoctorAccount: vi.fn() });
 
 describe("Doctor Service authorization", () => {
   it("requires a verified gateway identity for public APIs", async () => {
     const response = await request(app).get("/api/v1/doctors");
     expect(response.status).toBe(401);
-    expect(response.body.error.code).toBe("AUTH_REQUIRED");
+    expect(response.body.error.code).toBe("AUTH_TOKEN_MISSING");
   });
 
   it("allows authenticated actors to read doctors", async () => {

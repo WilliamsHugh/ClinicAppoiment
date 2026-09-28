@@ -243,8 +243,15 @@ Gateway không xử lý credential, còn frontend không nhận cấu hình Supa
 | `POST` | `/api/v1/doctors/{doctorId}/schedules` | Bác sĩ chính mình, `STAFF`, `ADMIN` | `{ "weekday": 0..6, "startTime": "HH:mm", "endTime": "HH:mm", "slotDurationMinutes": integer }` |
 | `PATCH` | `/api/v1/schedules/{scheduleId}` | Bác sĩ sở hữu lịch, `STAFF`, `ADMIN` | Các trường lịch có thể cập nhật |
 | `GET` | `/api/v1/doctors/{doctorId}/available-slots?date=YYYY-MM-DD` | Bất kỳ role đã đăng nhập | `date` bắt buộc; trả `[{ "startAt": ISODateTime, "endAt": ISODateTime }]` |
+| `GET` | `/api/v1/doctors/{doctorId}/time-offs` | Bác sĩ chính mình, `STAFF`, `ADMIN` | `page`, `limit`; không trả lý do nghỉ cho bệnh nhân |
+| `POST` | `/api/v1/doctors/{doctorId}/time-offs` | Bác sĩ chính mình, `STAFF`, `ADMIN` | `{ "startAt": ISODateTime, "endAt": ISODateTime, "reason"?: string }` |
+| `PATCH` | `/api/v1/time-offs/{timeOffId}` | Bác sĩ sở hữu, `STAFF`, `ADMIN` | Các trường thời gian nghỉ có thể cập nhật |
 
-`weekday`: Chủ Nhật `0`, Thứ Hai `1`, ..., Thứ Bảy `6`. `startTime`/`endTime` là giờ địa phương của phòng khám; response slot luôn là UTC. Doctor phải tồn tại và `isActive=true`; slot phải nằm trọn trong schedule và ngoài time-off.
+`weekday`: Chủ Nhật `0`, Thứ Hai `1`, ..., Thứ Bảy `6`. `startTime`/`endTime` là giờ địa phương của phòng khám theo `Asia/Ho_Chi_Minh` (UTC+7); response slot luôn là UTC. `date` trong truy vấn slot là ngày ở Việt Nam. Khoảng thời gian dùng quy ước `[startAt, endAt)`. Doctor phải tồn tại và `isActive=true`; slot phải nằm trọn trong schedule và ngoài time-off. Schedule không qua nửa đêm và các schedule đang hoạt động của cùng bác sĩ không chồng nhau.
+
+Doctor Service sinh slot từ lịch làm việc, trừ thời gian nghỉ, sau đó trừ các khoảng đã đặt còn hiệu lực do Appointment Service cung cấp qua API nội bộ. Danh sách slot chỉ phản ánh thời điểm đọc; API tạo/đổi lịch của Appointment Service kiểm tra lại và dùng ràng buộc database làm điểm quyết định cuối cùng. Trong giai đoạn nhánh Doctor chưa có API nội bộ từ Appointment, endpoint slot chỉ trả các slot đáp ứng lịch làm việc/thời gian nghỉ; frontend phải diễn đạt đây là lựa chọn tạm thời, không khẳng định đã giữ chỗ.
+
+Khi thay đổi lịch làm việc, thời gian nghỉ hoặc ngừng hoạt động bác sĩ, Doctor Service phải kiểm tra các lịch hẹn tương lai còn hiệu lực. Thay đổi làm lịch hẹn mất hiệu lực trả `409 SCHEDULE_CONFLICT_WITH_APPOINTMENTS` kèm số lịch bị ảnh hưởng, không tự động hủy/đổi lịch. Nếu không thể kiểm tra Appointment Service, thao tác này từ chối an toàn (`502` hoặc `503`). Các thao tác này cần quy trình phối hợp để xử lý đặt lịch đồng thời với thay đổi lịch làm việc; chưa được coi là bảo đảm nguyên tử xuyên service.
 
 ### Appointment
 
@@ -352,6 +359,7 @@ Các route này không được mount vào Gateway public router. Trong MVP gọ
 | Caller -> Owner | Method/path | Request | Response |
 |---|---|---|---|
 | Appointment -> Doctor | `POST /internal/v1/doctors/verify-slot` | `{ "doctorId": string, "startAt": ISODateTime, "endAt": ISODateTime }` | `{ "valid": boolean, "reason"?: string }` |
+| Doctor -> Appointment | `GET /internal/v1/appointments/occupied-slots?doctorId={id}&from={ISODateTime}&to={ISODateTime?}` | `doctorId`, `from` bắt buộc; `to` tùy chọn cho truy vấn mọi lịch tương lai | Mảng `{ "startAt": ISODateTime, "endAt": ISODateTime }`; chỉ gồm `PENDING`, `CONFIRMED`, `CHECKED_IN`, không chứa dữ liệu bệnh nhân. Endpoint này thuộc nhánh Booking. |
 | Medical Record -> Appointment | `GET /internal/v1/appointments/{appointmentId}/verify-for-medical-record` | Không có | `{ "valid": boolean, "appointment"?: { "id", "patientId", "doctorId", "status" } }` |
 | Medical Record/Appointment -> User | `GET /internal/v1/patients/{patientId}` | Không có | `{ "id": string, "userId": string }` |
 | Medical Record -> User | `GET /internal/v1/patients/by-user/{userId}` | Không có | `{ "id": string, "userId": string }` |
