@@ -86,7 +86,7 @@ class _AuthPageState extends State<AuthPage>
                         Padding(
                           padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
                           child: SizedBox(
-                            height: 360,
+                            height: 430,
                             child: TabBarView(
                               controller: _tab,
                               children: [

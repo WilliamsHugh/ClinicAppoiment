@@ -66,6 +66,6 @@ final patientRoutes = <PatientRoute>[
     path: AppRoutes.profile,
     label: 'Cá nhân',
     icon: Icons.person_outline,
-    builder: (_, __, ___) => const ProfilePage(),
+    builder: (_, session, ___) => ProfilePage(tokenProvider: session),
   ),
 ];

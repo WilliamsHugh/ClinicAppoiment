@@ -78,36 +78,30 @@ class SessionController extends ChangeNotifier implements TokenProvider {
 
   Future<void> signIn(String email, String password) async {
     final provider = _credentialProvider();
-    _status = SessionStatus.loading;
-    notifyListeners();
     try {
       _session = await provider.signIn(email, password);
       _status = SessionStatus.authenticated;
+      notifyListeners();
     } catch (_) {
       _session = null;
       _status = SessionStatus.unauthenticated;
       rethrow;
-    } finally {
-      notifyListeners();
     }
   }
 
   Future<bool> signUp(String fullName, String email, String password) async {
     final provider = _credentialProvider();
-    _status = SessionStatus.loading;
-    notifyListeners();
     try {
       _session = await provider.signUp(fullName, email, password);
       _status = _session == null
           ? SessionStatus.unauthenticated
           : SessionStatus.authenticated;
+      if (_session != null) notifyListeners();
       return _session != null;
     } catch (_) {
       _session = null;
       _status = SessionStatus.unauthenticated;
       rethrow;
-    } finally {
-      notifyListeners();
     }
   }
 
