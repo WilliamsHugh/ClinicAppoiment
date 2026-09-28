@@ -1,7 +1,7 @@
 "use client";
 
-import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-import { unauthenticatedSession, type ClinicRole, type Session, type SessionIdentity, type SessionStatus } from "./session";
+import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { isClinicManagementRole, unauthenticatedSession, type ClinicRole, type Session, type SessionIdentity, type SessionStatus } from "./session";
 
 const SESSION_STORAGE_KEY = "clinic_web_session";
 
@@ -32,6 +32,7 @@ function RealSessionProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<SessionStatus>("loading");
   const [identity, setIdentity] = useState<SessionIdentity | null>(null);
   const [tokens, setTokens] = useState<{ accessToken: string; refreshToken: string; expiresAt: Date } | null>(null);
+  const refreshInFlight = useRef<Promise<string | null> | null>(null);
 
   const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080";
 
@@ -64,54 +65,61 @@ function RealSessionProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const refreshSession = async (currentRefreshToken?: string): Promise<string | null> => {
+    if (refreshInFlight.current) return refreshInFlight.current;
     const refToken = currentRefreshToken ?? tokens?.refreshToken;
     if (!refToken) {
-      handleSignOut();
+      clearLocalSession();
       return null;
     }
-    try {
-      const response = await fetch(`${baseUrl}/api/v1/auth/refresh`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ refreshToken: refToken }),
-      });
-      if (!response.ok) {
-        handleSignOut();
-        return null;
-      }
-      const body = await response.json();
-      if (!body.success || !body.data?.accessToken) {
-        handleSignOut();
-        return null;
-      }
-      const { accessToken, refreshToken: newRefreshToken, expiresIn, user } = body.data;
-      const expiresAt = new Date(Date.now() + expiresIn * 1000);
-      const newTokens = { accessToken, refreshToken: newRefreshToken, expiresAt };
-      setTokens(newTokens);
+    const operation = (async () => {
+      try {
+        const response = await fetch(`${baseUrl}/api/v1/auth/refresh`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ refreshToken: refToken }),
+        });
+        if (!response.ok) {
+          clearLocalSession();
+          return null;
+        }
+        const body = await response.json();
+        if (!body.success || !body.data?.accessToken || !isClinicManagementRole(body.data.user?.role)) {
+          clearLocalSession();
+          return null;
+        }
+        const { accessToken, refreshToken: newRefreshToken, expiresIn, user } = body.data;
+        const expiresAt = new Date(Date.now() + expiresIn * 1000);
+        const newTokens = { accessToken, refreshToken: newRefreshToken, expiresAt };
+        setTokens(newTokens);
 
-      const updatedIdentity: SessionIdentity = {
-        id: user.id,
-        role: user.role as ClinicRole,
-        displayName: identity?.displayName ?? user.role,
-        email: identity?.email,
-        phone: identity?.phone,
-      };
-      setIdentity(updatedIdentity);
+        const updatedIdentity: SessionIdentity = {
+          id: user.id,
+          role: user.role as ClinicRole,
+          displayName: identity?.displayName ?? user.role,
+          email: identity?.email,
+          phone: identity?.phone,
+        };
+        setIdentity(updatedIdentity);
 
-      localStorage.setItem(
-        SESSION_STORAGE_KEY,
-        JSON.stringify({
-          accessToken,
-          refreshToken: newRefreshToken,
-          expiresAt: expiresAt.toISOString(),
-          identity: updatedIdentity,
-        }),
-      );
-      return accessToken;
-    } catch {
-      handleSignOut();
-      return null;
-    }
+        localStorage.setItem(
+          SESSION_STORAGE_KEY,
+          JSON.stringify({
+            accessToken,
+            refreshToken: newRefreshToken,
+            expiresAt: expiresAt.toISOString(),
+            identity: updatedIdentity,
+          }),
+        );
+        return accessToken;
+      } catch {
+        clearLocalSession();
+        return null;
+      } finally {
+        refreshInFlight.current = null;
+      }
+    })();
+    refreshInFlight.current = operation;
+    return operation;
   };
 
   const getAccessToken = async (): Promise<string | null> => {
@@ -138,6 +146,14 @@ function RealSessionProvider({ children }: { children: ReactNode }) {
       }
 
       const { accessToken, refreshToken, expiresIn, user } = data.data;
+      if (!isClinicManagementRole(user.role)) {
+        await fetch(`${baseUrl}/api/v1/auth/logout`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
+          body: JSON.stringify({ refreshToken }),
+        }).catch(() => undefined);
+        throw new Error("Clinic Management Web chỉ dành cho bác sĩ, nhân viên và quản trị viên.");
+      }
       const expiresAt = new Date(Date.now() + expiresIn * 1000);
 
       let displayName = user.role;
@@ -204,6 +220,10 @@ function RealSessionProvider({ children }: { children: ReactNode }) {
         // Ignore logout network errors
       }
     }
+    clearLocalSession();
+  };
+
+  const clearLocalSession = () => {
     localStorage.removeItem(SESSION_STORAGE_KEY);
     setTokens(null);
     setIdentity(null);
@@ -216,6 +236,7 @@ function RealSessionProvider({ children }: { children: ReactNode }) {
     getAccessToken,
     signIn: handleSignIn,
     signOut: handleSignOut,
+    handleUnauthorized: async () => clearLocalSession(),
   };
 
   return <SessionContext.Provider value={sessionValue}>{children}</SessionContext.Provider>;
