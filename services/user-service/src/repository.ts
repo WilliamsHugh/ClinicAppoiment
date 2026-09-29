@@ -194,7 +194,7 @@ export class UserRepository {
     const limit = Math.max(1, Math.min(100, filter.limit ?? 20));
     const offset = (page - 1) * limit;
 
-    const conditions: string[] = [];
+    const conditions: string[] = ["u.role = 'PATIENT'"];
     const values: unknown[] = [];
 
     if (filter.patientId) {
@@ -210,7 +210,7 @@ export class UserRepository {
       );
     }
 
-    const whereClause = conditions.length > 0 ? `WHERE ${conditions.join(" AND ")}` : "";
+    const whereClause = `WHERE ${conditions.join(" AND ")}`;
 
     const countResult = await this.pool.query<{ count: string }>(
       `SELECT count(*)::text AS count
