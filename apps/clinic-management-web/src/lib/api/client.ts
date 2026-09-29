@@ -12,6 +12,10 @@ export interface ApiResult<T> {
   requestId?: string;
 }
 
+export interface PaginatedData<T> extends PaginationMeta {
+  items: T[];
+}
+
 export interface ApiErrorShape {
   code?: string;
   message?: string;
@@ -44,7 +48,7 @@ export interface RequestOptions {
 
 export interface ApiClientOptions {
   baseUrl: string;
-  session: Pick<Session, "getAccessToken">;
+  session: Pick<Session, "getAccessToken"> & Partial<Pick<Session, "handleUnauthorized">>;
   fetcher?: typeof fetch;
   timeoutMs?: number;
 }
@@ -155,6 +159,7 @@ export class ApiClient {
 
       if (!response.ok || envelope.success !== true) {
         const failure = envelope as ErrorEnvelope;
+        if (response.status === 401) await this.options.session.handleUnauthorized?.();
         throw new ApiClientError(
           failure.error?.message ?? `Yêu cầu thất bại (${response.status}).`,
           response.status,
@@ -187,7 +192,9 @@ export class ApiClient {
   }
 }
 
-export function createBrowserApiClient(session: Pick<Session, "getAccessToken">): ApiClient {
+export function createBrowserApiClient(
+  session: Pick<Session, "getAccessToken"> & Partial<Pick<Session, "handleUnauthorized">>,
+): ApiClient {
   return new ApiClient({
     baseUrl: process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080",
     session

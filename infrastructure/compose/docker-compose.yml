@@ -56,6 +56,8 @@ services:
       SUPABASE_URL: ${SUPABASE_URL:?SUPABASE_URL is required by User Service}
       SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:?SUPABASE_ANON_KEY is required by User Service}
       AUTH_PROVIDER_TIMEOUT_MS: ${AUTH_PROVIDER_TIMEOUT_MS:-15000}
+      DOCTOR_SERVICE_URL: http://doctor-service:3002
+      APPOINTMENT_SERVICE_URL: http://appointment-service:3003
     expose:
       - "3001"
     healthcheck:

@@ -12,6 +12,7 @@ export const appRoutes: readonly AppRoute[] = [
   { href: "/doctors", label: "Bác sĩ & lịch làm việc", roles: ["DOCTOR", "STAFF", "ADMIN"] },
   { href: "/medical-records", label: "Hồ sơ khám", roles: ["DOCTOR", "ADMIN"] },
   { href: "/notifications", label: "Thông báo", roles: ["DOCTOR", "STAFF", "ADMIN"] },
+  { href: "/profile", label: "Hồ sơ cá nhân", roles: ["DOCTOR", "STAFF", "ADMIN"] },
   { href: "/users", label: "Tài khoản", roles: ["ADMIN"] },
   { href: "/health", label: "Sức khỏe hệ thống", roles: ["ADMIN"] }
 ];
@@ -23,4 +24,12 @@ export function canAccessRoute(route: AppRoute, session: Session): boolean {
 
 export function visibleRoutes(session: Session): readonly AppRoute[] {
   return appRoutes.filter((route) => canAccessRoute(route, session));
+}
+
+export function routeForPath(pathname: string): AppRoute | undefined {
+  return [...appRoutes]
+    .sort((left, right) => right.href.length - left.href.length)
+    .find((route) => route.href === "/"
+      ? pathname === "/"
+      : pathname === route.href || pathname.startsWith(`${route.href}/`));
 }

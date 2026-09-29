@@ -63,6 +63,7 @@ describe("ApiClient", () => {
     expect(headers.has("X-User-Id")).toBe(false);
     expect(init?.body).toBe(JSON.stringify({ doctorId: "doctor-1" }));
     expect(result.pagination).toEqual({ page: 2, limit: 10, total: 27 });
+    expect(result.data.items).toEqual([]);
     expect(result.requestId).toBe("req-1");
   });
 
@@ -80,6 +81,21 @@ describe("ApiClient", () => {
       details: [{ field: "role" }],
       requestId: `body-${status}`
     });
+  });
+
+  it("invalidates the local session once when Gateway rejects the access token", async () => {
+    const handleUnauthorized = vi.fn(async () => undefined);
+    const api = new ApiClient({
+      baseUrl: "http://gateway.test",
+      session: { getAccessToken: async () => "expired-token", handleUnauthorized },
+      fetcher: vi.fn<typeof fetch>().mockResolvedValue(response({
+        success: false,
+        error: { code: "AUTH_TOKEN_INVALID", message: "Expired", details: [] },
+      }, 401)),
+    });
+
+    await expect(api.get("/protected")).rejects.toMatchObject({ status: 401 });
+    expect(handleUnauthorized).toHaveBeenCalledTimes(1);
   });
 
   it("reports malformed JSON without losing the response request ID", async () => {
