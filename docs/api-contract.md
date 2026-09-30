@@ -359,6 +359,7 @@ Các route này không được mount vào Gateway public router. Trong MVP gọ
 | Caller -> Owner | Method/path | Request | Response |
 |---|---|---|---|
 | Appointment -> Doctor | `POST /internal/v1/doctors/verify-slot` | `{ "doctorId": string, "startAt": ISODateTime, "endAt": ISODateTime }` | `{ "valid": boolean, "reason"?: string }` |
+| Doctor -> User | `GET /internal/v1/users/{userId}/doctor-eligibility` | `userId` là UUID tài khoản cần liên kết; `X-Request-Id` được chuyển tiếp nếu có | `200 { "success": true, "data": { "id": UUID, "role": "PATIENT" \| "DOCTOR" \| "STAFF" \| "ADMIN", "status": "ACTIVE" \| "INACTIVE" \| "LOCKED" } }`; không có user trả `404 USER_NOT_FOUND` |
 | Doctor -> Appointment | `GET /internal/v1/appointments/occupied-slots?doctorId={id}&from={ISODateTime}&to={ISODateTime?}` | `doctorId`, `from` bắt buộc; `to` tùy chọn cho truy vấn mọi lịch tương lai | Mảng `{ "startAt": ISODateTime, "endAt": ISODateTime }`; chỉ gồm `PENDING`, `CONFIRMED`, `CHECKED_IN`, không chứa dữ liệu bệnh nhân. Endpoint này thuộc nhánh Booking. |
 | Medical Record -> Appointment | `GET /internal/v1/appointments/{appointmentId}/verify-for-medical-record` | Không có | `{ "valid": boolean, "appointment"?: { "id", "patientId", "doctorId", "status" } }` |
 | Medical Record/Appointment -> User | `GET /internal/v1/patients/{patientId}` | Không có | `{ "id": string, "userId": string }` |

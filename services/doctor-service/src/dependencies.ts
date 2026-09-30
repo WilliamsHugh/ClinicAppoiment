@@ -12,22 +12,26 @@ export interface AppointmentOccupancy {
   occupied(doctorId: string, from: string, to?: string, requestId?: string): Promise<Slot[]>;
 }
 
-async function jsonRequest(url: URL, service: "user" | "appointment", requestId?: string): Promise<{ status: number; body: unknown }> {
+async function jsonRequest(url: URL, service: "user" | "appointment", requestId?: string, timeoutMs = 3000): Promise<{ status: number; body: unknown }> {
   try {
     const response = await fetch(url, { headers: { Accept: "application/json", ...(requestId ? { "X-Request-Id": requestId } : {}) },
-      signal: AbortSignal.timeout(3000) });
+      signal: AbortSignal.timeout(timeoutMs) });
     return { status: response.status, body: await response.json() };
   } catch { throw new DependencyError(service); }
 }
 
-export function createUserDirectory(baseUrl = process.env.USER_SERVICE_URL ?? "http://localhost:3001"): UserDirectory {
+export function createUserDirectory(baseUrl = process.env.USER_SERVICE_URL ?? "http://localhost:3001", timeoutMs = 3000): UserDirectory {
   return {
     async findDoctorAccount(userId, requestId) {
-      const result = await jsonRequest(new URL(`/api/v1/users/${encodeURIComponent(userId)}`, baseUrl), "user", requestId);
+      const result = await jsonRequest(new URL(`/internal/v1/users/${encodeURIComponent(userId)}/doctor-eligibility`, baseUrl), "user", requestId, timeoutMs);
       if (result.status === 404) return null;
-      const envelope = result.body as { success?: boolean; data?: { id?: string; role?: string; status?: string } };
-      if (result.status !== 200 || envelope.success !== true || !envelope.data?.id) throw new DependencyError("user");
-      return { id: envelope.data.id, role: envelope.data.role ?? "", status: envelope.data.status ?? "" };
+      const envelope = result.body as { success?: boolean; data?: { id?: unknown; role?: unknown; status?: unknown } } | null;
+      if (result.status !== 200 || envelope?.success !== true || envelope.data?.id !== userId
+        || !["PATIENT", "DOCTOR", "STAFF", "ADMIN"].includes(String(envelope.data.role))
+        || !["ACTIVE", "INACTIVE", "LOCKED"].includes(String(envelope.data.status))) {
+        throw new DependencyError("user");
+      }
+      return { id: userId, role: String(envelope.data.role), status: String(envelope.data.status) };
     }
   };
 }

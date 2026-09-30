@@ -4,6 +4,7 @@ import { Pool } from "pg";
 import swaggerUi from "swagger-ui-express";
 import { z } from "zod";
 import { createAuthRouter, createInternalVerifyHandler, createSupabaseAuthProvider } from "./auth.js";
+import { createDoctorEligibilityHandler } from "./doctor-eligibility.js";
 import { UserRepository } from "./repository.js";
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -80,6 +81,7 @@ const swaggerDocument = {
       patch: { summary: "Cập nhật hồ sơ bệnh nhân (Bệnh nhân chính mình hoặc ADMIN)" }
     },
     "/internal/v1/auth/verify": { get: { summary: "Xác minh token nội bộ cho API Gateway" } },
+    "/internal/v1/users/{userId}/doctor-eligibility": { get: { summary: "Lấy vai trò và trạng thái tài khoản cho Doctor Service (Nội bộ)" } },
     "/internal/v1/patients/by-user/{userId}": { get: { summary: "Lấy thông tin bệnh nhân qua User ID (Nội bộ)" } },
     "/internal/v1/patients/{id}": { get: { summary: "Lấy thông tin bệnh nhân qua Patient ID (Nội bộ)" } }
   }
@@ -95,6 +97,7 @@ app.get("/openapi.json", (_req, res) => res.json(swaggerDocument));
 app.use("/docs", swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 app.use("/api/v1/auth", createAuthRouter(authProvider, repository));
 app.get("/internal/v1/auth/verify", createInternalVerifyHandler(authProvider, repository));
+app.get("/internal/v1/users/:userId/doctor-eligibility", createDoctorEligibilityHandler(repository));
 
 function success<T>(data: T) {
   return { success: true, data };

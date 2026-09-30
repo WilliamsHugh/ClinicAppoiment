@@ -1,4 +1,4 @@
-import type { Pool } from "pg";
+type Pool = InstanceType<typeof import("pg").Pool>;
 import type { Role } from "@clinic/shared-types";
 
 export type UserProfile = {
