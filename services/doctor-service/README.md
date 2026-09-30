@@ -20,9 +20,9 @@ Docker Compose passes `USER_SERVICE_URL=http://user-service:3001` and `APPOINTME
 
 Doctor public routes require `X-User-Id` and `X-Role` supplied by the authenticated Gateway; clients must call Gateway, not this service directly. `/health`, `/docs`, and `/openapi.json` are available on the internal service port.
 
-## Appointment integration pending on the Booking branch
+## Appointment integration
 
-`APPOINTMENT_SERVICE_URL` enables a read-only internal call to `GET /internal/v1/appointments/occupied-slots`. The response must be `{ "success": true, "data": [{ "startAt": "...Z", "endAt": "...Z" }] }`, with active future appointments only and no patient data. The Booking branch owns this endpoint. Until it exists, available-slots returns candidate schedule slots after time off is removed; it cannot guarantee they are unbooked. Creating appointments remains the final decision in Appointment Service.
+`APPOINTMENT_SERVICE_URL` enables a read-only internal call to `GET /internal/v1/appointments/occupied-slots`. The response is `{ "success": true, "data": [{ "startAt": "...Z", "endAt": "...Z" }] }`, with active future appointments only and no patient data. The current Appointment Service route reads its in-memory repository; Booking must connect it to persistent appointments before production use. Without `APPOINTMENT_SERVICE_URL`, available-slots returns candidate schedule slots after time off is removed and cannot guarantee they are unbooked. Creating appointments remains the final decision in Appointment Service.
 
 Editing a schedule, adding/editing time off, or deactivating a doctor requires the occupancy check. These writes fail closed with `503` when `APPOINTMENT_SERVICE_URL` is unset, or `502` when the endpoint is unavailable. A `409 SCHEDULE_CONFLICT_WITH_APPOINTMENTS` response contains the number of future bookings that would become invalid. This cross-service check needs coordination with Booking for concurrent booking versus schedule changes before production use.
 

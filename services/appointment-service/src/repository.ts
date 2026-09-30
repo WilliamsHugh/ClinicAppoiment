@@ -45,6 +45,20 @@ export class AppointmentRepository {
     });
   }
 
+  occupiedSlots(doctorId: string, from: string, to?: string) {
+    const lowerBound = Math.max(Date.parse(from), Date.now());
+    const upperBound = to ? Date.parse(to) : Infinity;
+    return this.appointments
+      .filter((appointment) => appointment.doctorId === doctorId
+        && activeSlotStatuses.includes(appointment.status)
+        && Date.parse(appointment.scheduledEndAt) > lowerBound
+        && Date.parse(appointment.scheduledStartAt) < upperBound)
+      .map((appointment) => ({
+        startAt: new Date(appointment.scheduledStartAt).toISOString(),
+        endAt: new Date(appointment.scheduledEndAt).toISOString()
+      }));
+  }
+
   findById(id: string) {
     return this.appointments.find((appointment) => appointment.id === id);
   }

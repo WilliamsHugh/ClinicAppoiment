@@ -29,6 +29,11 @@ const createAppointmentSchema = z.object({
   scheduledEndAt: z.string().datetime(),
   reason: z.string().optional()
 });
+const occupiedSlotsQuerySchema = z.object({
+  doctorId: z.string().uuid(),
+  from: z.string().datetime(),
+  to: z.string().datetime().optional()
+});
 
 const swaggerDocument = {
   openapi: "3.0.3",
@@ -37,7 +42,8 @@ const swaggerDocument = {
     "/api/v1/appointments": { get: { summary: "List appointments" }, post: { summary: "Create appointment" } },
     "/api/v1/appointments/{id}/confirm": { patch: { summary: "Confirm appointment" } },
     "/api/v1/appointments/{id}/check-in": { patch: { summary: "Check in patient" } },
-    "/api/v1/appointments/{id}/complete": { patch: { summary: "Complete appointment" } }
+    "/api/v1/appointments/{id}/complete": { patch: { summary: "Complete appointment" } },
+    "/internal/v1/appointments/occupied-slots": { get: { summary: "List active occupied doctor slots (internal)" } }
   }
 };
 
@@ -229,6 +235,16 @@ app.patch("/api/v1/appointments/:id/confirm", requireRoles("STAFF", "ADMIN"), tr
 app.patch("/api/v1/appointments/:id/check-in", requireRoles("STAFF", "ADMIN"), transition("CHECKED_IN"));
 app.patch("/api/v1/appointments/:id/complete", requireRoles("DOCTOR", "ADMIN"), transition("COMPLETED"));
 app.patch("/api/v1/appointments/:id/no-show", requireRoles("STAFF", "ADMIN"), transition("NO_SHOW"));
+app.get("/internal/v1/appointments/occupied-slots", (req, res) => {
+  const parsed = occupiedSlotsQuerySchema.safeParse(req.query);
+  if (!parsed.success || (parsed.data.to && Date.parse(parsed.data.to) <= Date.parse(parsed.data.from))) {
+    return res.status(400).json(error("VALIDATION_ERROR", "Invalid occupied slots query",
+      parsed.success ? [] : parsed.error.issues));
+  }
+  const requestId = req.header("X-Request-Id");
+  if (requestId) res.setHeader("X-Request-Id", requestId);
+  return res.json(success(repository.occupiedSlots(parsed.data.doctorId, parsed.data.from, parsed.data.to)));
+});
 app.get("/internal/v1/appointments/:id/verify-for-medical-record", (req, res) => {
   const appointment = repository.findById(String(req.params.id));
   if (!appointment) return res.status(404).json(error("APPOINTMENT_NOT_FOUND", "Appointment not found"));

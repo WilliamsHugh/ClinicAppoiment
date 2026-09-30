@@ -36,7 +36,17 @@ export function createUserDirectory(baseUrl = process.env.USER_SERVICE_URL ?? "h
   };
 }
 
-export function createAppointmentOccupancy(baseUrl = process.env.APPOINTMENT_SERVICE_URL): AppointmentOccupancy | null {
+function validUtcSlot(value: unknown): value is Slot {
+  if (typeof value !== "object" || value === null) return false;
+  const slot = value as Record<string, unknown>;
+  const utcTimestamp = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?Z$/;
+  return typeof slot.startAt === "string" && typeof slot.endAt === "string"
+    && utcTimestamp.test(slot.startAt) && utcTimestamp.test(slot.endAt)
+    && Number.isFinite(Date.parse(slot.startAt)) && Number.isFinite(Date.parse(slot.endAt))
+    && Date.parse(slot.startAt) < Date.parse(slot.endAt);
+}
+
+export function createAppointmentOccupancy(baseUrl = process.env.APPOINTMENT_SERVICE_URL, timeoutMs = 3000): AppointmentOccupancy | null {
   if (!baseUrl) return null;
   return {
     async occupied(doctorId, from, to, requestId) {
@@ -44,17 +54,15 @@ export function createAppointmentOccupancy(baseUrl = process.env.APPOINTMENT_SER
       url.searchParams.set("doctorId", doctorId);
       url.searchParams.set("from", from);
       if (to) url.searchParams.set("to", to);
-      const result = await jsonRequest(url, "appointment", requestId);
-      const envelope = result.body as { success?: boolean; data?: unknown };
-      if (result.status !== 200 || envelope.success !== true || !Array.isArray(envelope.data)) {
+      const result = await jsonRequest(url, "appointment", requestId, timeoutMs);
+      const envelope = result.body as { success?: boolean; data?: unknown } | null;
+      if (result.status !== 200 || envelope?.success !== true || !Array.isArray(envelope.data)) {
         throw new DependencyError("appointment");
       }
-      if (!envelope.data.every((slot) => typeof slot.startAt === "string" && typeof slot.endAt === "string"
-        && Number.isFinite(Date.parse(slot.startAt)) && Number.isFinite(Date.parse(slot.endAt))
-        && Date.parse(slot.startAt) < Date.parse(slot.endAt))) {
+      if (!envelope.data.every(validUtcSlot)) {
         throw new DependencyError("appointment");
       }
-      return (envelope.data as Slot[]).map((slot) => ({
+      return envelope.data.map((slot) => ({
         startAt: new Date(slot.startAt).toISOString(), endAt: new Date(slot.endAt).toISOString()
       }));
     }
