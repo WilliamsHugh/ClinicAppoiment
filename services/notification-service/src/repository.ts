@@ -1,4 +1,4 @@
-import type { Pool } from "pg";
+type Pool = InstanceType<typeof import("pg").Pool>;
 
 export type Notification = {
   id: string; recipientUserId: string; type: string; title: string; message: string;

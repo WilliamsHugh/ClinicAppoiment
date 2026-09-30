@@ -51,7 +51,7 @@ class _ProfilePageState extends State<ProfilePage> {
     try {
       final response = await _apiClient!.get('/api/v1/users/me');
       final data = response.data;
-      if (data is Map<String, dynamic>) {
+      if (mounted && data is Map<String, dynamic>) {
         setState(() {
           _fullName = data['fullName']?.toString() ?? '';
           _email = data['email']?.toString() ?? '';
@@ -71,9 +71,7 @@ class _ProfilePageState extends State<ProfilePage> {
         });
       }
     } catch (e) {
-      setState(() {
-        _error = e.toString();
-      });
+      if (mounted) setState(() => _error = e.toString());
     } finally {
       if (mounted) {
         setState(() {
@@ -162,7 +160,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     ),
                     const SizedBox(height: 12),
                     DropdownButtonFormField<String>(
-                      value: selectedGender,
+                      initialValue: selectedGender,
                       decoration: const InputDecoration(
                         labelText: 'Giới tính',
                         prefixIcon: Icon(Icons.wc_outlined),
@@ -234,36 +232,49 @@ class _ProfilePageState extends State<ProfilePage> {
                                     await _apiClient?.patch(
                                       '/api/v1/patients/$_patientProfileId',
                                       body: {
-                                        'dateOfBirth': dobCtrl.text.trim().isEmpty ? null : dobCtrl.text.trim(),
+                                        'dateOfBirth':
+                                            dobCtrl.text.trim().isEmpty
+                                                ? null
+                                                : dobCtrl.text.trim(),
                                         'gender': selectedGender,
-                                        'address': addressCtrl.text.trim().isEmpty ? null : addressCtrl.text.trim(),
-                                        'emergencyContact': emergencyCtrl.text.trim().isEmpty ? null : emergencyCtrl.text.trim(),
-                                        'insuranceNumber': insuranceCtrl.text.trim().isEmpty ? null : insuranceCtrl.text.trim(),
+                                        'address':
+                                            addressCtrl.text.trim().isEmpty
+                                                ? null
+                                                : addressCtrl.text.trim(),
+                                        'emergencyContact':
+                                            emergencyCtrl.text.trim().isEmpty
+                                                ? null
+                                                : emergencyCtrl.text.trim(),
+                                        'insuranceNumber':
+                                            insuranceCtrl.text.trim().isEmpty
+                                                ? null
+                                                : insuranceCtrl.text.trim(),
                                       },
                                     );
                                   }
 
-                                  if (mounted) {
-                                    Navigator.pop(ctx);
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text('Cập nhật hồ sơ thành công!'),
-                                        backgroundColor: Colors.green,
-                                      ),
-                                    );
-                                    _loadProfile();
-                                  }
+                                  if (!mounted || !ctx.mounted) return;
+                                  Navigator.pop(ctx);
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content:
+                                          Text('Cập nhật hồ sơ thành công!'),
+                                      backgroundColor: Colors.green,
+                                    ),
+                                  );
+                                  _loadProfile();
                                 } catch (err) {
-                                  if (mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text('Lỗi: $err'),
-                                        backgroundColor: Colors.red,
-                                      ),
-                                    );
-                                  }
+                                  if (!mounted || !ctx.mounted) return;
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text('Lỗi: $err'),
+                                      backgroundColor: Colors.red,
+                                    ),
+                                  );
                                 } finally {
-                                  setSheetState(() => saving = false);
+                                  if (ctx.mounted) {
+                                    setSheetState(() => saving = false);
+                                  }
                                 }
                               },
                         child: saving
@@ -345,7 +356,8 @@ class _ProfilePageState extends State<ProfilePage> {
                 children: [
                   CircleAvatar(
                     radius: 36,
-                    backgroundColor: ClinicColors.primary.withValues(alpha: 0.1),
+                    backgroundColor:
+                        ClinicColors.primary.withValues(alpha: 0.1),
                     child: Text(
                       initials,
                       style: const TextStyle(
@@ -377,7 +389,8 @@ class _ProfilePageState extends State<ProfilePage> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 4),
                         decoration: BoxDecoration(
                           color: ClinicColors.primary.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(12),
@@ -393,7 +406,8 @@ class _ProfilePageState extends State<ProfilePage> {
                       ),
                       const SizedBox(width: 8),
                       Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 10, vertical: 4),
                         decoration: BoxDecoration(
                           color: _status == 'ACTIVE'
                               ? Colors.green.withValues(alpha: 0.1)
@@ -405,7 +419,8 @@ class _ProfilePageState extends State<ProfilePage> {
                           style: TextStyle(
                             fontSize: 12,
                             fontWeight: FontWeight.bold,
-                            color: _status == 'ACTIVE' ? Colors.green : Colors.red,
+                            color:
+                                _status == 'ACTIVE' ? Colors.green : Colors.red,
                           ),
                         ),
                       ),
@@ -421,9 +436,12 @@ class _ProfilePageState extends State<ProfilePage> {
               title: 'Thông tin liên hệ',
               icon: Icons.contact_mail_outlined,
               children: [
-                _buildInfoTile('Họ và tên', _fullName.isNotEmpty ? _fullName : 'Chưa cập nhật'),
-                _buildInfoTile('Email', _email.isNotEmpty ? _email : 'Chưa cập nhật'),
-                _buildInfoTile('Số điện thoại', _phone.isNotEmpty ? _phone : 'Chưa cập nhật'),
+                _buildInfoTile('Họ và tên',
+                    _fullName.isNotEmpty ? _fullName : 'Chưa cập nhật'),
+                _buildInfoTile(
+                    'Email', _email.isNotEmpty ? _email : 'Chưa cập nhật'),
+                _buildInfoTile('Số điện thoại',
+                    _phone.isNotEmpty ? _phone : 'Chưa cập nhật'),
               ],
             ),
             const SizedBox(height: 16),
@@ -433,14 +451,28 @@ class _ProfilePageState extends State<ProfilePage> {
               title: 'Hồ sơ y tế & BHYT',
               icon: Icons.medical_information_outlined,
               children: [
-                _buildInfoTile('Ngày sinh', _dateOfBirth.isNotEmpty ? _dateOfBirth : 'Chưa cập nhật'),
+                _buildInfoTile('Ngày sinh',
+                    _dateOfBirth.isNotEmpty ? _dateOfBirth : 'Chưa cập nhật'),
                 _buildInfoTile(
                   'Giới tính',
-                  _gender == 'MALE' ? 'Nam' : _gender == 'FEMALE' ? 'Nữ' : 'Khác',
+                  _gender == 'MALE'
+                      ? 'Nam'
+                      : _gender == 'FEMALE'
+                          ? 'Nữ'
+                          : 'Khác',
                 ),
-                _buildInfoTile('Địa chỉ', _address.isNotEmpty ? _address : 'Chưa cập nhật'),
-                _buildInfoTile('Liên hệ khẩn cấp', _emergencyContact.isNotEmpty ? _emergencyContact : 'Chưa cập nhật'),
-                _buildInfoTile('Số thẻ BHYT', _insuranceNumber.isNotEmpty ? _insuranceNumber : 'Chưa cập nhật'),
+                _buildInfoTile('Địa chỉ',
+                    _address.isNotEmpty ? _address : 'Chưa cập nhật'),
+                _buildInfoTile(
+                    'Liên hệ khẩn cấp',
+                    _emergencyContact.isNotEmpty
+                        ? _emergencyContact
+                        : 'Chưa cập nhật'),
+                _buildInfoTile(
+                    'Số thẻ BHYT',
+                    _insuranceNumber.isNotEmpty
+                        ? _insuranceNumber
+                        : 'Chưa cập nhật'),
               ],
             ),
             const SizedBox(height: 24),
@@ -457,7 +489,8 @@ class _ProfilePageState extends State<ProfilePage> {
                   ),
                 ),
                 onPressed: _openEditDialog,
-                icon: const Icon(Icons.edit_outlined, color: ClinicColors.primary),
+                icon: const Icon(Icons.edit_outlined,
+                    color: ClinicColors.primary),
                 label: const Text(
                   'Chỉnh sửa thông tin hồ sơ',
                   style: TextStyle(

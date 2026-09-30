@@ -1,4 +1,6 @@
-import type { Pool, PoolClient } from "pg";
+import type { PoolClient } from "pg";
+
+type Pool = InstanceType<typeof import("pg").Pool>;
 
 export type PrescriptionItem = { medicineName: string; dosage: string; frequency: string; duration: string };
 export type MedicalRecord = {
