@@ -5,15 +5,22 @@ import '../../core/api/clinic_api_client.dart';
 import '../../core/session/session.dart';
 import '../../core/theme/app_theme.dart';
 import '../../shared/widgets/async_states.dart';
+import 'booking_selection.dart';
 import 'data/appointment_repository.dart';
 import 'widgets/appointment_card.dart';
 import 'widgets/reschedule_sheet.dart';
 
 class AppointmentsPage extends StatefulWidget {
-  const AppointmentsPage({required this.tokenProvider, this.api, super.key});
+  const AppointmentsPage({
+    required this.tokenProvider,
+    this.api,
+    this.bookingSelection,
+    super.key,
+  });
 
   final TokenProvider tokenProvider;
   final ClinicApiClient? api;
+  final BookingSelection? bookingSelection;
 
   @override
   State<AppointmentsPage> createState() => _AppointmentsPageState();
@@ -143,30 +150,58 @@ class _AppointmentsPageState extends State<AppointmentsPage>
           tabs: _tabs.map((t) => Tab(text: t)).toList(),
         ),
       ),
-      body: _loading
-          ? const AppLoadingState(label: 'Đang tải lịch hẹn...')
-          : _error != null
-              ? AppErrorState(message: _error!, onRetry: _load)
-              : _items.isEmpty
-                  ? AppEmptyState(
-                      title: 'Chưa có lịch hẹn',
-                      message: 'Trạng thái ${_tabs[_tab.index]} trống',
-                      icon: Icons.calendar_month_outlined,
-                    )
-                  : RefreshIndicator(
-                      onRefresh: _load,
-                      child: ListView.separated(
-                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 24),
-                        itemCount: _items.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 12),
-                        itemBuilder: (_, i) => AppointmentCard(
-                          data: _items[i],
-                          onCancel: () => _cancel(_items[i]['id'].toString()),
-                          onReschedule: () =>
-                              _reschedule(_items[i]['id'].toString()),
-                        ),
+      body: Column(
+        children: [
+          if (widget.bookingSelection case final selection?)
+            Card(
+              margin: const EdgeInsets.all(16),
+              child: Padding(
+                padding: const EdgeInsets.all(12),
+                child: Row(
+                  children: [
+                    const Icon(Icons.event_available_outlined),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        'Đã chọn ${selection.doctorName}, ${selection.displayTime}. '
+                        'Lịch hẹn chưa được tạo.',
                       ),
                     ),
+                  ],
+                ),
+              ),
+            ),
+          Expanded(
+            child: _loading
+                ? const AppLoadingState(label: 'Đang tải lịch hẹn...')
+                : _error != null
+                    ? AppErrorState(message: _error!, onRetry: _load)
+                    : _items.isEmpty
+                        ? AppEmptyState(
+                            title: 'Chưa có lịch hẹn',
+                            message: 'Trạng thái ${_tabs[_tab.index]} trống',
+                            icon: Icons.calendar_month_outlined,
+                          )
+                        : RefreshIndicator(
+                            onRefresh: _load,
+                            child: ListView.separated(
+                              padding:
+                                  const EdgeInsets.fromLTRB(16, 16, 16, 24),
+                              itemCount: _items.length,
+                              separatorBuilder: (_, __) =>
+                                  const SizedBox(height: 12),
+                              itemBuilder: (_, i) => AppointmentCard(
+                                data: _items[i],
+                                onCancel: () =>
+                                    _cancel(_items[i]['id'].toString()),
+                                onReschedule: () =>
+                                    _reschedule(_items[i]['id'].toString()),
+                              ),
+                            ),
+                          ),
+          ),
+        ],
+      ),
     );
   }
 }

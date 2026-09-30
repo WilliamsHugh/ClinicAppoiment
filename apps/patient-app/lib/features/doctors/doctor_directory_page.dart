@@ -113,11 +113,15 @@ class _DoctorDirectoryPageState extends State<DoctorDirectoryPage> {
     final api = _api;
     if (api == null) return;
     final request = ++_detailRequest;
+    ++_slotRequest;
     setState(() {
       _selectedDoctor = doctor;
       _selectedSlot = null;
+      _slots = const [];
       _loadingDetail = true;
+      _loadingSlots = false;
       _detailError = null;
+      _slotError = null;
     });
     try {
       final response = await api.get('/api/v1/doctors/${doctor.id}');
@@ -167,7 +171,19 @@ class _DoctorDirectoryPageState extends State<DoctorDirectoryPage> {
   }
 
   void _chooseSpecialty(Specialty? specialty) {
-    setState(() { _selectedSpecialty = specialty; _doctorPage = 1; _selectedDoctor = null; _slots = const []; });
+    ++_detailRequest;
+    ++_slotRequest;
+    setState(() {
+      _selectedSpecialty = specialty;
+      _doctorPage = 1;
+      _selectedDoctor = null;
+      _selectedSlot = null;
+      _slots = const [];
+      _loadingDetail = false;
+      _loadingSlots = false;
+      _detailError = null;
+      _slotError = null;
+    });
     _loadDirectory();
   }
 
