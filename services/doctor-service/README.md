@@ -39,3 +39,33 @@ npm run lint -w @clinic/doctor-service
 npm run test -w @clinic/doctor-service
 npm run build -w @clinic/doctor-service
 ```
+
+## Live smoke test through Gateway
+
+Use a dedicated **test** Doctor database and fresh active User accounts: one ADMIN, two
+DOCTOR accounts not yet linked to Doctor profiles, and one PATIENT with a patient profile.
+Start User, Appointment, Doctor and Gateway with their private `.env` files. Doctor and
+Appointment must share `DOCTOR_INTERNAL_API_TOKEN`; Doctor must point to the running
+User and Appointment services. Run the Doctor migration twice to check that it is
+rerunnable before testing the public API:
+
+```bash
+npm run db:migrate:doctor
+npm run db:migrate:doctor
+```
+
+Provide raw access tokens through environment variables (without a `Bearer ` prefix):
+`SMOKE_ADMIN_TOKEN`, `SMOKE_DOCTOR_TOKEN`, `SMOKE_OTHER_DOCTOR_TOKEN`, and
+`SMOKE_PATIENT_TOKEN`. `SMOKE_GATEWAY_URL` defaults to `http://localhost:8080`.
+An ignored `.env.smoke` file at the repository root can hold these values; run it with
+`node --env-file=.env.smoke scripts/smoke-doctor.mjs`. Alternatively, export the variables
+in the shell and run `npm run smoke:doctor`. Never commit tokens or database URLs.
+
+The smoke command creates specialties, two Doctor profiles, a schedule, a time off and
+an appointment through Gateway. It checks patient search/detail/slots, Doctor ownership,
+User eligibility, Appointment occupancy, and `409` responses that leave Doctor data
+unchanged. Doctor test records remain in the isolated database; the current Appointment
+repository is in-memory, so its test appointment lasts only for that service process.
+Stop Appointment Service separately to verify dependent schedule/time-off writes return
+`502`/`503` without changing persisted Doctor data, then restart it; the automated
+smoke command does not stop services or alter their network settings.
