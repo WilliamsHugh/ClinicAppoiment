@@ -33,7 +33,8 @@ export const doctorOpenApi = {
     description: "Public paths are called through Gateway. Gateway verifies the bearer token and forwards X-User-Id and X-Role." },
   security: [{ bearerAuth: [] }],
   paths: {
-    "/health": { get: operation("Database health", response({ type: "object" }), { internal: true }) },
+    "/health": { get: { ...operation("Database health", response({ type: "object" }), { internal: true }),
+      responses: { "200": response({ type: "object" }), "503": { description: "Database unavailable", content: json(ref("ApiError")) } } } },
     "/api/v1/specialties": {
       get: operation("List specialties", list(ref("Specialty")), { parameters: [...pageParameters, parameter("q", "query", false), parameter("isActive", "query", false)] }),
       post: { ...operation("Create specialty (ADMIN)", response(ref("Specialty")), { requestBody: body(ref("SpecialtyCreate")) }), responses: { "201": response(ref("Specialty")), ...errors } }
@@ -64,12 +65,13 @@ export const doctorOpenApi = {
       { parameters: [parameter("doctorId", "path"), parameter("timeOffId", "path")], requestBody: body(ref("TimeOffUpdate")) }) },
     "/api/v1/doctors/{id}/available-slots": { get: operation("List candidate slots, excluding occupied slots when Appointment integration is configured",
       response({ type: "array", items: ref("Slot") }), { parameters: [parameter("id", "path"), parameter("date", "query")] }) },
-    "/internal/v1/doctors/verify-slot": { post: operation("Verify active doctor and exact schedule slot",
+    "/internal/v1/doctors/verify-slot": { post: { ...operation("Verify active doctor and exact schedule slot",
       response({ type: "object", required: ["valid"], properties: { valid: { type: "boolean" }, reason: { type: "string" } } }),
-      { requestBody: body(ref("VerifySlot")), internal: true }) }
+      { requestBody: body(ref("VerifySlot")), internal: true }), security: [{ internalToken: [] }] } }
   },
   components: {
-    securitySchemes: { bearerAuth: { type: "http", scheme: "bearer", bearerFormat: "JWT" } },
+    securitySchemes: { bearerAuth: { type: "http", scheme: "bearer", bearerFormat: "JWT" },
+      internalToken: { type: "apiKey", in: "header", name: "X-Internal-Token" } },
     schemas: {
       ApiError: { type: "object", required: ["success", "error"], properties: { success: { type: "boolean", enum: [false] },
         error: { type: "object", required: ["code", "message", "details"], properties: {

@@ -63,15 +63,30 @@ function error(code: string, message: string, details: unknown[] = []) {
   return { success: false, error: { code, message, details } };
 }
 
-async function verifyDoctorSlot(doctorId: string, startAt: string, endAt: string) {
-  const response = await fetch(`${doctorServiceUrl}/internal/v1/doctors/verify-slot`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ doctorId, startAt, endAt })
-  });
-  if (!response.ok) return false;
-  const body = (await response.json()) as { success: true; data: { valid: boolean } };
-  return body.success && body.data.valid;
+async function verifyDoctorSlot(doctorId: string, startAt: string, endAt: string,
+  requestId?: string): Promise<boolean | null> {
+  const internalToken = process.env.DOCTOR_INTERNAL_API_TOKEN;
+  if (!internalToken || Buffer.byteLength(internalToken, "utf8") < 32) return null;
+  const forwardedRequestId = requestId && /^[a-zA-Z0-9-]{1,80}$/.test(requestId) ? requestId : undefined;
+  try {
+    const response = await fetch(`${doctorServiceUrl}/internal/v1/doctors/verify-slot`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Internal-Token": internalToken,
+        ...(forwardedRequestId ? { "X-Request-Id": forwardedRequestId } : {}) },
+      body: JSON.stringify({ doctorId, startAt, endAt }),
+      redirect: "error",
+      signal: AbortSignal.timeout(3000)
+    });
+    if (!response.ok) return null;
+    const body: unknown = await response.json();
+    if (typeof body !== "object" || body === null) return null;
+    const envelope = body as { success?: unknown; data?: unknown };
+    if (envelope.success !== true || typeof envelope.data !== "object" || envelope.data === null) return null;
+    const data = envelope.data as Record<string, unknown>;
+    return typeof data.valid === "boolean" ? data.valid : null;
+  } catch {
+    return null;
+  }
 }
 
 async function publishNotificationEvent(eventType: string, appointment: { id: string; patientId: string; scheduledStartAt: string }, eventId: string) {
@@ -187,7 +202,9 @@ app.post("/api/v1/appointments", requireRoles("PATIENT", "STAFF", "ADMIN"), asyn
   const existing = repository.findByIdempotencyKey(idempotencyKey);
   if (existing) return res.status(200).json(success(existing));
 
-  const slotValid = await verifyDoctorSlot(parsed.data.doctorId, parsed.data.scheduledStartAt, parsed.data.scheduledEndAt);
+  const slotValid = await verifyDoctorSlot(parsed.data.doctorId, parsed.data.scheduledStartAt,
+    parsed.data.scheduledEndAt, req.header("X-Request-Id") ?? undefined);
+  if (slotValid === null) return res.status(503).json(error("DOCTOR_VERIFICATION_UNAVAILABLE", "Doctor slot verification is unavailable"));
   if (!slotValid) return res.status(422).json(error("APPOINTMENT_SLOT_INVALID", "Khung gio khong thuoc lich lam viec cua bac si"));
 
   if (repository.hasActiveSlotConflict(parsed.data.doctorId, parsed.data.scheduledStartAt)) {
@@ -220,7 +237,9 @@ app.patch("/api/v1/appointments/:id/reschedule", requireRoles("PATIENT", "STAFF"
   if (!(await patientCanAccess(req, appointment.patientId))) {
     return res.status(403).json(error("ACCESS_DENIED", "Appointment access denied"));
   }
-  const slotValid = await verifyDoctorSlot(appointment.doctorId, parsed.data.scheduledStartAt, parsed.data.scheduledEndAt);
+  const slotValid = await verifyDoctorSlot(appointment.doctorId, parsed.data.scheduledStartAt,
+    parsed.data.scheduledEndAt, req.header("X-Request-Id") ?? undefined);
+  if (slotValid === null) return res.status(503).json(error("DOCTOR_VERIFICATION_UNAVAILABLE", "Doctor slot verification is unavailable"));
   if (!slotValid) return res.status(422).json(error("APPOINTMENT_SLOT_INVALID", "Khung gio khong hop le"));
   if (repository.hasActiveSlotConflict(appointment.doctorId, parsed.data.scheduledStartAt)) {
     return res.status(409).json(error("APPOINTMENT_SLOT_UNAVAILABLE", "Khung gio da duoc dat"));

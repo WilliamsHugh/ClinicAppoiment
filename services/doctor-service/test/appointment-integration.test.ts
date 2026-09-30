@@ -41,7 +41,8 @@ function fixture() {
   });
   vi.stubGlobal("fetch", upstream);
   const app = createDoctorApp(repository as unknown as DoctorRepository,
-    { findDoctorAccount: vi.fn() }, createAppointmentOccupancy("http://appointment-service:3003"));
+    { findDoctorAccount: vi.fn() }, createAppointmentOccupancy("http://appointment-service:3003"),
+    "doctor-internal-test-token-with-32-bytes");
   return { app, repository, upstream };
 }
 

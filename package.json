@@ -16,7 +16,7 @@
     "dev:user": "CLINIC_ENV_FILE=services/user-service/.env scripts/with-env.sh npm run dev -w @clinic/user-service",
     "dev:doctor": "node scripts/with-env.mjs services/doctor-service/.env npm run dev -w @clinic/doctor-service",
     "db:migrate:doctor": "node scripts/with-env.mjs services/doctor-service/.env npm run db:migrate -w @clinic/doctor-service",
-    "dev:appointment": "npm run dev -w @clinic/appointment-service",
+    "dev:appointment": "node scripts/with-env.mjs services/appointment-service/.env npm run dev -w @clinic/appointment-service",
     "dev:medical-record": "npm run dev -w @clinic/medical-record-service",
     "dev:notification": "CLINIC_ENV_FILE=services/notification-service/.env scripts/with-env.sh npm run dev -w @clinic/notification-service",
     "build": "npm run build --workspaces --if-present",

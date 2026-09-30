@@ -7,7 +7,8 @@ const identity = { "X-User-Id": "patient-user", "X-Role": "PATIENT" };
 const repository = {
   listDoctors: vi.fn().mockResolvedValue({ items: [], page: 1, limit: 20, total: 0 }),
 } as unknown as DoctorRepository;
-const app = createDoctorApp(repository, { findDoctorAccount: vi.fn() });
+const app = createDoctorApp(repository, { findDoctorAccount: vi.fn() }, null,
+  "doctor-internal-test-token-with-32-bytes");
 
 describe("Doctor Service authorization", () => {
   it("requires a verified gateway identity for public APIs", async () => {

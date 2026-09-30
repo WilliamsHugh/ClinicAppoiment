@@ -36,7 +36,8 @@ Express mount path có biên segment nên `/api/v1/doctors` và mọi đường 
 Doctor Service, nhưng `/api/v1/doctors-other` không match. Gateway tái tạo nguyên đường dẫn public;
 service nhận đúng path, query và method mà frontend gửi. Không có quy ước strip prefix. Request body,
 `Authorization`, `Idempotency-Key`, content headers và response phù hợp được proxy chuyển tiếp.
-Gateway luôn xóa/ghi đè `X-User-Id`, `X-Role`, `X-Supabase-Auth-User-Id` từ client trước khi thêm
+Gateway luôn xóa/ghi đè `X-User-Id`, `X-Role`, `X-Supabase-Auth-User-Id` từ client và xóa
+`X-Internal-Token` trước khi thêm
 danh tính đã xác minh.
 
 Mặc định mọi nhóm nghiệp vụ yêu cầu đăng nhập. Ngoại lệ public hiện chỉ gồm `GET /health`, tài liệu
@@ -358,14 +359,17 @@ Các route này không được mount vào Gateway public router. Trong MVP gọ
 
 | Caller -> Owner | Method/path | Request | Response |
 |---|---|---|---|
-| Appointment -> Doctor | `POST /internal/v1/doctors/verify-slot` | `{ "doctorId": string, "startAt": ISODateTime, "endAt": ISODateTime }` | `{ "valid": boolean, "reason"?: string }` |
+| Appointment -> Doctor | `POST /internal/v1/doctors/verify-slot` | Header `X-Internal-Token` chứa credential chung chỉ có ở hai backend; chuyển tiếp `X-Request-Id` nếu có; body `{ "doctorId": string, "startAt": ISODateTime, "endAt": ISODateTime }` | `200 { "success": true, "data": { "valid": boolean, "reason"?: string } }`; thiếu/sai credential trả `401 INTERNAL_AUTH_REQUIRED` |
 | Doctor -> User | `GET /internal/v1/users/{userId}/doctor-eligibility` | `userId` là UUID tài khoản cần liên kết; `X-Request-Id` được chuyển tiếp nếu có | `200 { "success": true, "data": { "id": UUID, "role": "PATIENT" \| "DOCTOR" \| "STAFF" \| "ADMIN", "status": "ACTIVE" \| "INACTIVE" \| "LOCKED" } }`; không có user trả `404 USER_NOT_FOUND` |
 | Doctor -> Appointment | `GET /internal/v1/appointments/occupied-slots?doctorId={id}&from={ISODateTime}&to={ISODateTime?}` | `doctorId` là UUID; `from` bắt buộc, `to` tùy chọn và phải sau `from`; khoảng truy vấn `[from, to)`; chuyển tiếp `X-Request-Id` | `200 { "success": true, "data": [{ "startAt": ISODateTime UTC, "endAt": ISODateTime UTC }] }`; chỉ gồm lịch tương lai `PENDING`, `CONFIRMED`, `CHECKED_IN`, không chứa dữ liệu bệnh nhân. Query sai trả `400 VALIDATION_ERROR`. Route đọc hiện dùng repository in-memory; Booking phải nối với persistence thật. |
 | Medical Record -> Appointment | `GET /internal/v1/appointments/{appointmentId}/verify-for-medical-record` | Không có | `{ "valid": boolean, "appointment"?: { "id", "patientId", "doctorId", "status" } }` |
 | Medical Record/Appointment -> User | `GET /internal/v1/patients/{patientId}` | Không có | `{ "id": string, "userId": string }` |
+
 | Medical Record -> User | `GET /internal/v1/patients/by-user/{userId}` | Không có | `{ "id": string, "userId": string }` |
 | Medical Record -> Doctor | `GET /internal/v1/doctors/by-user/{userId}` | Không có | `{ "id": string, "userId": string, "isActive": boolean }` |
 | Appointment/Medical Record -> Notification | `POST /internal/v1/notifications` | `{ "eventId": string, "type": string, "payload": object }` | `201` khi nhận lần đầu; `200` khi event đã nhận trước đó |
+
+Doctor Service yêu cầu `DOCTOR_INTERNAL_API_TOKEN` tối thiểu 32 byte khi khởi động. Appointment Service gửi token này khi xác minh slot và trả `503 DOCTOR_VERIFICATION_UNAVAILABLE` nếu credential thiếu hoặc Doctor Service không thể xác minh. Token chỉ nằm trong cấu hình backend, không gửi tới Gateway hay frontend. `GET /health` của Doctor Service trả `200` khi Doctor database sẵn sàng, hoặc `503 DATABASE_UNAVAILABLE` với envelope lỗi chung khi truy vấn database thất bại.
 
 Notification tối thiểu xử lý event types `appointment.created`, `appointment.rescheduled`, `appointment.cancelled`, `appointment.confirmed`, `medical-record.created`, `medical-record.updated`. `eventId` dùng để deduplicate retry. Gửi HTTP đồng bộ không phải durable queue; caller cần timeout, retry có giới hạn và idempotency. Lỗi notification không được rollback appointment/medical record đã commit.
 

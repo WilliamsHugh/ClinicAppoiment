@@ -34,7 +34,8 @@ function fixture(role: "DOCTOR" | "PATIENT", status: "ACTIVE" | "INACTIVE" | "LO
     createDoctor: vi.fn().mockResolvedValue(doctor)
   };
   const app = createDoctorApp(repository as unknown as DoctorRepository,
-    createUserDirectory("http://user-service:3001"));
+    createUserDirectory("http://user-service:3001"), null,
+    "doctor-internal-test-token-with-32-bytes");
   return { app, repository, userRepository, upstream };
 }
 

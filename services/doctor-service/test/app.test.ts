@@ -16,6 +16,7 @@ const timeOffId = "00000000-0000-4000-8000-000000000005";
 const timeOff = { id: timeOffId, doctorId, startAt: "2030-01-08T01:00:00.000Z",
   endAt: "2030-01-08T02:00:00.000Z", reason: null, createdAt: "", updatedAt: "" };
 const booked = { startAt: "2030-01-07T01:00:00.000Z", endAt: "2030-01-07T01:30:00.000Z" };
+const internalToken = "doctor-internal-test-token-with-32-bytes";
 
 function fixture() {
   const repository = {
@@ -35,11 +36,51 @@ function fixture() {
   };
   const users: UserDirectory = { findDoctorAccount: vi.fn().mockResolvedValue({ id: userId, role: "DOCTOR", status: "ACTIVE" }) };
   const appointments: AppointmentOccupancy = { occupied: vi.fn().mockResolvedValue([booked]) };
-  const app = createDoctorApp(repository as unknown as DoctorRepository, users, appointments);
+  const app = createDoctorApp(repository as unknown as DoctorRepository, users, appointments, internalToken);
   return { app, repository, users, appointments };
 }
 
 describe("Doctor API authorization and slot contract", () => {
+  it("reports database readiness without leaking the database error", async () => {
+    const { app, repository } = fixture();
+    const healthy = await request(app).get("/health").set("X-Request-Id", "health-ok");
+    expect(healthy.status).toBe(200);
+    expect(healthy.body.data.status).toBe("ok");
+    vi.mocked(repository.health).mockRejectedValueOnce(new Error("private database connection string"));
+
+    const unavailable = await request(app).get("/health").set("X-Request-Id", "health-failed");
+    expect(unavailable.status).toBe(503);
+    expect(unavailable.body).toEqual({
+      success: false,
+      error: { code: "DATABASE_UNAVAILABLE", message: "Database is unavailable", details: [] },
+      requestId: "health-failed"
+    });
+    expect(JSON.stringify(unavailable.body)).not.toContain("private database connection string");
+  });
+
+  it("rejects missing or incorrect internal credentials before reading doctor data", async () => {
+    const { app, repository } = fixture();
+    const path = "/internal/v1/doctors/verify-slot";
+    const body = { doctorId, startAt: booked.startAt, endAt: booked.endAt };
+    const missing = await request(app).post(path).set("X-Role", "ADMIN").send(body);
+    const incorrect = await request(app).post(path)
+      .set("X-Internal-Token", "x".repeat(internalToken.length)).send(body);
+    expect(missing.status).toBe(401);
+    expect(incorrect.status).toBe(401);
+    expect(missing.body.error.code).toBe("INTERNAL_AUTH_REQUIRED");
+    expect(repository.findDoctor).not.toHaveBeenCalled();
+
+    const allowed = await request(app).post(path).set("X-Internal-Token", internalToken).send(body);
+    expect(allowed.status).toBe(200);
+    expect(allowed.body.data).toEqual({ valid: true });
+  });
+
+  it("refuses a weak internal token at startup", () => {
+    const { repository, users, appointments } = fixture();
+    expect(() => createDoctorApp(repository as unknown as DoctorRepository, users, appointments, "short"))
+      .toThrow("DOCTOR_INTERNAL_API_TOKEN");
+  });
+
   it("documents the Doctor and time-off operations", async () => {
     const { app } = fixture();
     const response = await request(app).get("/openapi.json");
@@ -48,6 +89,9 @@ describe("Doctor API authorization and slot contract", () => {
     expect(response.body.paths["/api/v1/doctors/{doctorId}/time-offs/{timeOffId}"].patch).toBeDefined();
     expect(response.body.paths["/api/v1/time-offs/{id}"]).toBeUndefined();
     expect(response.body.paths["/internal/v1/doctors/verify-slot"].post).toBeDefined();
+    expect(response.body.paths["/internal/v1/doctors/verify-slot"].post.security).toEqual([{ internalToken: [] }]);
+    expect(response.body.components.securitySchemes.internalToken.name).toBe("X-Internal-Token");
+    expect(response.body.paths["/health"].get.responses["503"]).toBeDefined();
   });
 
   it("requires Gateway identity headers", async () => {
@@ -107,7 +151,7 @@ describe("Doctor API authorization and slot contract", () => {
 
   it("fails closed when a schedule edit cannot check Appointment Service", async () => {
     const { repository, users } = fixture();
-    const app = createDoctorApp(repository as unknown as DoctorRepository, users, null);
+    const app = createDoctorApp(repository as unknown as DoctorRepository, users, null, internalToken);
     const response = await request(app).patch(`/api/v1/schedules/${scheduleId}`)
       .set("X-User-Id", userId).set("X-Role", "DOCTOR")
       .send({ startTime: "09:00" });

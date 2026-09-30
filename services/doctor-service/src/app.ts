@@ -1,5 +1,5 @@
 import express, { type ErrorRequestHandler, type Request, type Response } from "express";
-import { randomUUID } from "node:crypto";
+import { randomUUID, timingSafeEqual } from "node:crypto";
 import swaggerUi from "swagger-ui-express";
 import { z } from "zod";
 import type { AppointmentOccupancy, UserDirectory } from "./dependencies.js";
@@ -92,7 +92,11 @@ function fail(res: Response, status: number, code: string, message: string, deta
 }
 
 export function createDoctorApp(repository: DoctorRepository, users: UserDirectory,
-  appointments: AppointmentOccupancy | null = null) {
+  appointments: AppointmentOccupancy | null, internalToken: string) {
+  const internalCredential = Buffer.from(internalToken, "utf8");
+  if (internalCredential.length < 32) {
+    throw new Error("DOCTOR_INTERNAL_API_TOKEN must contain at least 32 bytes");
+  }
   const app = express();
   app.use((req, res, next) => {
     const supplied = req.header("X-Request-Id");
@@ -127,7 +131,14 @@ export function createDoctorApp(repository: DoctorRepository, users: UserDirecto
       "Schedule change would invalidate existing appointments", [{ count: invalid.length }]);
   }
 
-  app.get("/health", wrap(async (_req, res) => { await repository.health(); ok(res, { service: "doctor-service", status: "ok" }); }));
+  app.get("/health", wrap(async (_req, res) => {
+    try {
+      await repository.health();
+      ok(res, { service: "doctor-service", status: "ok" });
+    } catch {
+      fail(res, 503, "DATABASE_UNAVAILABLE", "Database is unavailable");
+    }
+  }));
 
   app.get("/api/v1/specialties", wrap(async (req, res) => {
     const user = actor(req), query = parse(specialtyQuery, req.query);
@@ -264,6 +275,11 @@ export function createDoctorApp(repository: DoctorRepository, users: UserDirecto
   }));
 
   app.post("/internal/v1/doctors/verify-slot", wrap(async (req, res) => {
+    const supplied = req.header("X-Internal-Token");
+    const actual = Buffer.from(supplied ?? "", "utf8");
+    if (actual.length !== internalCredential.length || !timingSafeEqual(actual, internalCredential)) {
+      throw new ApiError(401, "INTERNAL_AUTH_REQUIRED", "Internal service credential is required");
+    }
     const input = parse(verifyBody, req.body);
     const doctor = await repository.findDoctor(input.doctorId);
     if (!doctor?.isActive) { ok(res, { valid: false, reason: "DOCTOR_NOT_AVAILABLE" }); return; }

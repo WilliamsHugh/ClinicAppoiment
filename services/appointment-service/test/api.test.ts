@@ -1,5 +1,5 @@
 import request from "supertest";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { app, repository } from "../src/index.js";
 
 const patientHeaders = { "X-User-Id": "user-patient-1", "X-Role": "PATIENT" };
@@ -8,9 +8,11 @@ const slot = {
   scheduledStartAt: "2026-10-01T08:00:00.000Z",
   scheduledEndAt: "2026-10-01T08:30:00.000Z"
 };
+const internalToken = "doctor-internal-test-token-with-32-bytes";
 
 beforeEach(() => {
   repository.clear();
+  vi.stubEnv("DOCTOR_INTERNAL_API_TOKEN", internalToken);
   vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) => {
     const url = String(input);
     if (url.includes("/internal/v1/patients/by-user/")) {
@@ -29,16 +31,59 @@ beforeEach(() => {
   }));
 });
 
+afterEach(() => {
+  vi.unstubAllEnvs();
+  vi.unstubAllGlobals();
+});
+
 describe("Appointment Service authorization", () => {
   it("derives the patient profile instead of trusting patientId from the client", async () => {
     const response = await request(app)
       .post("/api/v1/appointments")
       .set(patientHeaders)
       .set("Idempotency-Key", "appointment-test-key-0001")
+      .set("X-Request-Id", "booking-verify-1")
       .send({ ...slot, patientId: "patient-spoofed" });
 
     expect(response.status).toBe(201);
     expect(response.body.data.patientId).toBe("patient-owned");
+    const doctorCall = vi.mocked(fetch).mock.calls.find(([url]) =>
+      String(url).endsWith("/internal/v1/doctors/verify-slot"));
+    expect(doctorCall).toBeDefined();
+    expect(new Headers(doctorCall![1]?.headers).get("X-Internal-Token")).toBe(internalToken);
+    expect(new Headers(doctorCall![1]?.headers).get("X-Request-Id")).toBe("booking-verify-1");
+  });
+
+  it("fails closed when the Doctor internal credential is missing", async () => {
+    vi.stubEnv("DOCTOR_INTERNAL_API_TOKEN", "");
+    const response = await request(app)
+      .post("/api/v1/appointments")
+      .set(patientHeaders)
+      .set("Idempotency-Key", "appointment-test-key-missing-doctor-token")
+      .send(slot);
+    expect(response.status).toBe(503);
+    expect(response.body.error.code).toBe("DOCTOR_VERIFICATION_UNAVAILABLE");
+    expect(vi.mocked(fetch).mock.calls.some(([url]) =>
+      String(url).endsWith("/internal/v1/doctors/verify-slot"))).toBe(false);
+  });
+
+  it("reports Doctor internal authentication failures as unavailable instead of an invalid slot", async () => {
+    const original = vi.mocked(fetch).getMockImplementation()!;
+    vi.mocked(fetch).mockImplementation(async (input, options) => {
+      if (String(input).endsWith("/internal/v1/doctors/verify-slot")) {
+        return new Response(JSON.stringify({ success: false,
+          error: { code: "INTERNAL_AUTH_REQUIRED", message: "Internal service credential is required", details: [] } }),
+        { status: 401 });
+      }
+      return original(input, options);
+    });
+    const response = await request(app)
+      .post("/api/v1/appointments")
+      .set(patientHeaders)
+      .set("Idempotency-Key", "appointment-test-key-doctor-auth-failed")
+      .send(slot);
+    expect(response.status).toBe(503);
+    expect(response.body.error.code).toBe("DOCTOR_VERIFICATION_UNAVAILABLE");
   });
 
   it("scopes patient lists to the authenticated patient", async () => {

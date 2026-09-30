@@ -28,6 +28,11 @@ project Supabase tương ứng. Chạy file `infrastructure/supabase/<service>/s
 trên đúng database của service đó. Không chạy migration của service này trên database
 của service khác.
 
+Tạo một secret ngẫu nhiên tối thiểu 32 byte và đặt `DOCTOR_INTERNAL_API_TOKEN` trong `.env`.
+Compose chuyển secret này chỉ cho Doctor và Appointment Service để xác minh slot qua API nội bộ.
+Khi chạy service trực tiếp, đặt cùng giá trị trong hai file `.env` riêng của chúng; không đưa
+secret vào frontend hoặc Git.
+
 Supabase Auth thuộc project của User Service. Chỉ User Service nhận `SUPABASE_URL` và
 `SUPABASE_ANON_KEY` ở môi trường backend để đăng ký, đăng nhập, refresh và xác minh token.
 API Gateway proxy `/api/v1/auth/*` tới User Service và dùng API nội bộ của User Service để
