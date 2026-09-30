@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useState, type FormEvent } from "react";
+import React, { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { ErrorState, LoadingState } from "../../components/states";
 import { Pagination } from "../../components/pagination";
 import { createBrowserApiClient } from "../../lib/api/client";
@@ -37,6 +37,7 @@ export function DoctorPanel() {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
+  const busyRef = useRef(false);
   const [revision, setRevision] = useState(0);
 
   const [specialtyName, setSpecialtyName] = useState("");
@@ -116,13 +117,15 @@ export function DoctorPanel() {
     return () => { alive = false; };
   }, [api, selectedId, date, revision, role, session.status]);
 
-  async function mutate(action: () => Promise<unknown>, success: string) {
+  async function mutate(action: () => Promise<unknown>, success: string, onSuccess?: () => void) {
+    if (busyRef.current) return;
+    busyRef.current = true;
     setBusy(true);
     setError("");
     setNotice("");
-    try { await action(); setNotice(success); setRevision((value) => value + 1); }
+    try { await action(); onSuccess?.(); setNotice(success); setRevision((value) => value + 1); }
     catch (caught) { setError(message(caught)); }
-    finally { setBusy(false); }
+    finally { busyRef.current = false; setBusy(false); }
   }
 
   function submitSearch(event: FormEvent) { event.preventDefault(); setPage(1); setQuery(search.trim()); }
@@ -145,7 +148,7 @@ export function DoctorPanel() {
   return <div className={styles.stack}>
     <header><p className="eyebrow">Doctor Service</p><h1>Bác sĩ và lịch làm việc</h1>
       <p className={styles.muted}>Giờ phòng khám: Việt Nam (UTC+7). Khung giờ có thể thay đổi trước khi đặt lịch thành công.</p></header>
-    {error && <div role="alert" className={styles.error}>{error}</div>}
+    {error && <div role="alert" className={styles.error}>{error} <button type="button" disabled={loading || detailLoading || busy} onClick={() => setRevision((value) => value + 1)}>Tải lại dữ liệu</button></div>}
     {notice && <div role="status" className={styles.notice}>{notice}</div>}
 
     <section className={styles.card} aria-label="Tìm bác sĩ">
@@ -183,25 +186,25 @@ export function DoctorPanel() {
       <h2>Quản lý chuyên khoa</h2>
       <div className={styles.list}>{specialties.map((item) => <div key={item.id} className={styles.listRow}>
         <span>{item.name} {!item.isActive && "(ngừng hoạt động)"}</span>
-        <button type="button" onClick={() => editSpecialty(item)}>Sửa</button>
+        <button type="button" disabled={busy} onClick={() => editSpecialty(item)}>Sửa</button>
         <button type="button" disabled={busy} onClick={() => void mutate(() => api.updateSpecialty(item.id, { isActive: !item.isActive }), "Đã cập nhật chuyên khoa.")}>{item.isActive ? "Ngừng" : "Kích hoạt"}</button>
       </div>)}</div>
       <form className={styles.form} onSubmit={(event) => { event.preventDefault(); void mutate(
         () => editingSpecialtyId ? api.updateSpecialty(editingSpecialtyId, { name: specialtyName, description: specialtyDescription }) : api.createSpecialty({ name: specialtyName, description: specialtyDescription }),
-        "Đã lưu chuyên khoa."); }}>
+        "Đã lưu chuyên khoa.", () => { setEditingSpecialtyId(null); setSpecialtyName(""); setSpecialtyDescription(""); }); }}>
         <label>Tên chuyên khoa<input required minLength={2} value={specialtyName} onChange={(event) => setSpecialtyName(event.target.value)} /></label>
         <label>Mô tả<textarea value={specialtyDescription} onChange={(event) => setSpecialtyDescription(event.target.value)} /></label>
         <div className={styles.row}><button disabled={busy} type="submit">{editingSpecialtyId ? "Lưu chuyên khoa" : "Thêm chuyên khoa"}</button>
-          {editingSpecialtyId && <button type="button" onClick={() => { setEditingSpecialtyId(null); setSpecialtyName(""); setSpecialtyDescription(""); }}>Hủy sửa</button>}</div>
+          {editingSpecialtyId && <button type="button" disabled={busy} onClick={() => { setEditingSpecialtyId(null); setSpecialtyName(""); setSpecialtyDescription(""); }}>Hủy sửa</button>}</div>
       </form>
     </section>}
 
     {admin && <section className={styles.card} aria-label="Quản lý hồ sơ bác sĩ">
       <h2>Quản lý hồ sơ bác sĩ</h2>
-      {selected && <button type="button" onClick={() => { setEditingDoctor(true); setDoctorUserId(selected.userId); setDoctorSpecialtyId(selected.specialtyId); setDoctorName(selected.displayName); setDoctorBio(selected.bio ?? ""); }}>Sửa bác sĩ đang chọn</button>}
+      {selected && <button type="button" disabled={busy} onClick={() => { setEditingDoctor(true); setDoctorUserId(selected.userId); setDoctorSpecialtyId(selected.specialtyId); setDoctorName(selected.displayName); setDoctorBio(selected.bio ?? ""); }}>Sửa bác sĩ đang chọn</button>}
       <form className={styles.form} onSubmit={(event) => { event.preventDefault(); void mutate(
         () => editingDoctor && selected ? api.updateDoctor(selected.id, { specialtyId: doctorSpecialtyId, displayName: doctorName, bio: doctorBio }) : api.createDoctor({ userId: doctorUserId, specialtyId: doctorSpecialtyId, displayName: doctorName, bio: doctorBio }),
-        "Đã lưu hồ sơ bác sĩ."); }}>
+        "Đã lưu hồ sơ bác sĩ.", () => { setEditingDoctor(false); setDoctorUserId(""); setDoctorSpecialtyId(""); setDoctorName(""); setDoctorBio(""); }); }}>
         <label>Tài khoản bác sĩ<select required disabled={editingDoctor} value={doctorUserId} onChange={(event) => { const id = event.target.value; setDoctorUserId(id); setDoctorName(accounts.find((account) => account.id === id)?.fullName ?? ""); }}>
           <option value="">Chọn tài khoản</option>{accounts.map((account) => <option key={account.id} value={account.id}>{account.fullName}</option>)}
         </select></label>
@@ -211,7 +214,7 @@ export function DoctorPanel() {
         <label>Tên hiển thị<input required minLength={2} value={doctorName} onChange={(event) => setDoctorName(event.target.value)} /></label>
         <label>Giới thiệu<textarea value={doctorBio} onChange={(event) => setDoctorBio(event.target.value)} /></label>
         <div className={styles.row}><button disabled={busy} type="submit">{editingDoctor ? "Lưu bác sĩ" : "Thêm bác sĩ"}</button>
-          {editingDoctor && <button type="button" onClick={() => { setEditingDoctor(false); setDoctorUserId(""); setDoctorSpecialtyId(""); setDoctorName(""); setDoctorBio(""); }}>Hủy sửa</button>}
+          {editingDoctor && <button type="button" disabled={busy} onClick={() => { setEditingDoctor(false); setDoctorUserId(""); setDoctorSpecialtyId(""); setDoctorName(""); setDoctorBio(""); }}>Hủy sửa</button>}
           {editingDoctor && selected && <button type="button" disabled={busy} onClick={() => void mutate(() => api.updateDoctor(selected.id, { isActive: !selected.isActive }), "Đã cập nhật trạng thái bác sĩ.")}>{selected.isActive ? "Ngừng hoạt động" : "Kích hoạt"}</button>}</div>
       </form>
     </section>}
@@ -220,36 +223,36 @@ export function DoctorPanel() {
       <h2>Lịch làm việc</h2>
       <div className={styles.list}>{schedules.map((item) => <div key={item.id} className={styles.listRow}>
         <span>{weekdays[item.weekday]} · {item.startTime}–{item.endTime} · {item.slotDurationMinutes} phút {item.isActive ? "" : "(ngừng)"}</span>
-        <button type="button" onClick={() => editSchedule(item)}>Sửa</button>
+        <button type="button" disabled={busy} onClick={() => editSchedule(item)}>Sửa</button>
         <button type="button" disabled={busy} onClick={() => void mutate(() => api.updateSchedule(item.id, { isActive: !item.isActive }), "Đã cập nhật lịch làm việc.")}>{item.isActive ? "Ngừng" : "Kích hoạt"}</button>
       </div>)}</div>
       <form className={styles.row} onSubmit={(event) => { event.preventDefault(); void mutate(
         () => scheduleId ? api.updateSchedule(scheduleId, { weekday, startTime, endTime, slotDurationMinutes: duration }) : api.createSchedule(selected.id, { weekday, startTime, endTime, slotDurationMinutes: duration }),
-        "Đã lưu lịch làm việc."); }}>
+        "Đã lưu lịch làm việc.", () => setScheduleId(null)); }}>
         <label>Thứ<select value={weekday} onChange={(event) => setWeekday(Number(event.target.value))}>{weekdays.map((label, index) => <option key={index} value={index}>{label}</option>)}</select></label>
         <label>Bắt đầu<input type="time" required value={startTime} onChange={(event) => setStartTime(event.target.value)} /></label>
         <label>Kết thúc<input type="time" required value={endTime} onChange={(event) => setEndTime(event.target.value)} /></label>
         <label>Phút mỗi lượt<input type="number" min="5" max="240" required value={duration} onChange={(event) => setDuration(Number(event.target.value))} /></label>
         <button type="submit" disabled={busy}>Lưu lịch</button>
-        {scheduleId && <button type="button" onClick={() => setScheduleId(null)}>Thêm mới</button>}
+        {scheduleId && <button type="button" disabled={busy} onClick={() => setScheduleId(null)}>Thêm mới</button>}
       </form>
     </section>}
 
     {canManage && selected && <section className={styles.card} aria-label="Thời gian nghỉ">
       <h2>Thời gian nghỉ</h2>
-      {timeOffError && <p role="alert" className={styles.error}>{timeOffError}</p>}
+      {timeOffError && <p role="alert" className={styles.error}>{timeOffError} <button type="button" disabled={busy || detailLoading} onClick={() => setRevision((value) => value + 1)}>Tải lại thời gian nghỉ</button></p>}
       <div className={styles.list}>{timeOffs.map((item) => <div key={item.id} className={styles.listRow}>
         <span>{displayTime(item.startAt)} – {displayTime(item.endAt)} {item.reason && `· ${item.reason}`}</span>
-        <button type="button" onClick={() => editTimeOff(item)}>Sửa</button>
+        <button type="button" disabled={busy} onClick={() => editTimeOff(item)}>Sửa</button>
       </div>)}</div>
       <form className={styles.row} onSubmit={(event) => { event.preventDefault(); void mutate(
         () => timeOffId ? api.updateTimeOff(selected.id, timeOffId, { startAt: ictToUtc(offStart), endAt: ictToUtc(offEnd), reason: offReason }) : api.createTimeOff(selected.id, { startAt: ictToUtc(offStart), endAt: ictToUtc(offEnd), reason: offReason }),
-        "Đã lưu thời gian nghỉ."); }}>
+        "Đã lưu thời gian nghỉ.", () => { setTimeOffId(null); setOffStart(""); setOffEnd(""); setOffReason(""); }); }}>
         <label>Bắt đầu (giờ Việt Nam)<input type="datetime-local" required value={offStart} onChange={(event) => setOffStart(event.target.value)} /></label>
         <label>Kết thúc (giờ Việt Nam)<input type="datetime-local" required value={offEnd} onChange={(event) => setOffEnd(event.target.value)} /></label>
         <label>Lý do<input value={offReason} onChange={(event) => setOffReason(event.target.value)} /></label>
         <button type="submit" disabled={busy}>Lưu thời gian nghỉ</button>
-        {timeOffId && <button type="button" onClick={() => setTimeOffId(null)}>Thêm mới</button>}
+        {timeOffId && <button type="button" disabled={busy} onClick={() => setTimeOffId(null)}>Thêm mới</button>}
       </form>
     </section>}
   </div>;
