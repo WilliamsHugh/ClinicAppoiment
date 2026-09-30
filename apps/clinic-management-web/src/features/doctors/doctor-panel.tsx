@@ -243,7 +243,7 @@ export function DoctorPanel() {
         <button type="button" onClick={() => editTimeOff(item)}>Sửa</button>
       </div>)}</div>
       <form className={styles.row} onSubmit={(event) => { event.preventDefault(); void mutate(
-        () => timeOffId ? api.updateTimeOff(timeOffId, { startAt: ictToUtc(offStart), endAt: ictToUtc(offEnd), reason: offReason }) : api.createTimeOff(selected.id, { startAt: ictToUtc(offStart), endAt: ictToUtc(offEnd), reason: offReason }),
+        () => timeOffId ? api.updateTimeOff(selected.id, timeOffId, { startAt: ictToUtc(offStart), endAt: ictToUtc(offEnd), reason: offReason }) : api.createTimeOff(selected.id, { startAt: ictToUtc(offStart), endAt: ictToUtc(offEnd), reason: offReason }),
         "Đã lưu thời gian nghỉ."); }}>
         <label>Bắt đầu (giờ Việt Nam)<input type="datetime-local" required value={offStart} onChange={(event) => setOffStart(event.target.value)} /></label>
         <label>Kết thúc (giờ Việt Nam)<input type="datetime-local" required value={offEnd} onChange={(event) => setOffEnd(event.target.value)} /></label>

@@ -233,18 +233,21 @@ export function createDoctorApp(repository: DoctorRepository, users: UserDirecto
       "Time off overlaps existing appointments", [{ count: conflicts.length }]);
     ok(res, await repository.createTimeOff({ doctorId, ...input, reason: input.reason ?? undefined }), 201);
   }));
-  app.patch("/api/v1/time-offs/:id", wrap(async (req, res) => {
-    const id = parse(uuid, req.params.id), input = parse(timeOffUpdate, req.body);
-    const current = await repository.findTimeOff(id);
+  app.patch("/api/v1/doctors/:doctorId/time-offs/:timeOffId", wrap(async (req, res) => {
+    const doctorId = parse(uuid, req.params.doctorId);
+    const timeOffId = parse(uuid, req.params.timeOffId);
+    const input = parse(timeOffUpdate, req.body);
+    await canManage(req, doctorId);
+    const current = await repository.findTimeOff(timeOffId);
     if (!current) throw new ApiError(404, "TIME_OFF_NOT_FOUND", "Time off not found");
-    await canManage(req, current.doctorId);
+    if (current.doctorId !== doctorId) throw new ApiError(404, "TIME_OFF_NOT_FOUND", "Time off not found");
     const proposed: DoctorTimeOff = { ...current, ...input };
     validateTimeOff(proposed);
     const booked = await occupied(current.doctorId, proposed.startAt, proposed.endAt, String(res.getHeader("X-Request-Id")));
     const conflicts = booked.filter((slot) => overlaps(slot, proposed));
     if (conflicts.length) throw new ApiError(409, "SCHEDULE_CONFLICT_WITH_APPOINTMENTS",
       "Time off overlaps existing appointments", [{ count: conflicts.length }]);
-    ok(res, await repository.updateTimeOff(id, proposed));
+    ok(res, await repository.updateTimeOff(timeOffId, proposed));
   }));
 
   app.get("/api/v1/doctors/:id/available-slots", wrap(async (req, res) => {

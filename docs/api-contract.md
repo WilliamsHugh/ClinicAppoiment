@@ -245,7 +245,7 @@ Gateway không xử lý credential, còn frontend không nhận cấu hình Supa
 | `GET` | `/api/v1/doctors/{doctorId}/available-slots?date=YYYY-MM-DD` | Bất kỳ role đã đăng nhập | `date` bắt buộc; trả `[{ "startAt": ISODateTime, "endAt": ISODateTime }]` |
 | `GET` | `/api/v1/doctors/{doctorId}/time-offs` | Bác sĩ chính mình, `STAFF`, `ADMIN` | `page`, `limit`; không trả lý do nghỉ cho bệnh nhân |
 | `POST` | `/api/v1/doctors/{doctorId}/time-offs` | Bác sĩ chính mình, `STAFF`, `ADMIN` | `{ "startAt": ISODateTime, "endAt": ISODateTime, "reason"?: string }` |
-| `PATCH` | `/api/v1/time-offs/{timeOffId}` | Bác sĩ sở hữu, `STAFF`, `ADMIN` | Các trường thời gian nghỉ có thể cập nhật |
+| `PATCH` | `/api/v1/doctors/{doctorId}/time-offs/{timeOffId}` | Bác sĩ sở hữu, `STAFF`, `ADMIN` | Các trường thời gian nghỉ có thể cập nhật; `timeOffId` phải thuộc `doctorId`, nếu không trả `404 TIME_OFF_NOT_FOUND` |
 
 `weekday`: Chủ Nhật `0`, Thứ Hai `1`, ..., Thứ Bảy `6`. `startTime`/`endTime` là giờ địa phương của phòng khám theo `Asia/Ho_Chi_Minh` (UTC+7); response slot luôn là UTC. `date` trong truy vấn slot là ngày ở Việt Nam. Khoảng thời gian dùng quy ước `[startAt, endAt)`. Doctor phải tồn tại và `isActive=true`; slot phải nằm trọn trong schedule và ngoài time-off. Schedule không qua nửa đêm và các schedule đang hoạt động của cùng bác sĩ không chồng nhau.
 

@@ -26,7 +26,7 @@ Doctor public routes require `X-User-Id` and `X-Role` supplied by the authentica
 
 Editing a schedule, adding/editing time off, or deactivating a doctor requires the occupancy check. These writes fail closed with `503` when `APPOINTMENT_SERVICE_URL` is unset, or `502` when the endpoint is unavailable. A `409 SCHEDULE_CONFLICT_WITH_APPOINTMENTS` response contains the number of future bookings that would become invalid. This cross-service check needs coordination with Booking for concurrent booking versus schedule changes before production use.
 
-Gateway routing for `GET/POST /api/v1/doctors/{doctorId}/time-offs` and `PATCH /api/v1/time-offs/{timeOffId}` remains with the Gateway owner. The Doctor branch implements the service routes and documents them in `docs/api-contract.md` for review.
+Gateway forwards `GET/POST /api/v1/doctors/{doctorId}/time-offs` and `PATCH /api/v1/doctors/{doctorId}/time-offs/{timeOffId}` through its existing `/api/v1/doctors` prefix. The update route verifies that the time off belongs to the doctor in the path.
 
 ## Checks
 

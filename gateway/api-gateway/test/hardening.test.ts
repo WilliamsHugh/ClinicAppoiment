@@ -187,6 +187,25 @@ describe("Gateway prefix routing", () => {
 });
 
 describe("Gateway proxy boundary", () => {
+  it("forwards the doctors root and nested time-off update through the existing prefix", async () => {
+    const upstream = await startUpstream((req, res) => {
+      let body = "";
+      req.on("data", (chunk) => { body += chunk; });
+      req.on("end", () => sendJson(res, 200, { success: true,
+        data: { method: req.method, url: req.url, body: body ? JSON.parse(body) : null } }));
+    });
+    const app = appFor(upstream.url, "ADMIN");
+    const root = await request(app).get("/api/v1/doctors").set("Authorization", "Bearer token");
+    const update = await request(app).patch("/api/v1/doctors/doctor-1/time-offs/off-1")
+      .set("Authorization", "Bearer token").send({ reason: "Training" });
+
+    expect(root.status).toBe(200);
+    expect(root.body.data).toEqual({ method: "GET", url: "/api/v1/doctors/", body: null });
+    expect(update.status).toBe(200);
+    expect(update.body.data).toEqual({ method: "PATCH",
+      url: "/api/v1/doctors/doctor-1/time-offs/off-1", body: { reason: "Training" } });
+  });
+
   it("forwards method, JSON body, query, and authorization to a new endpoint inside an owned prefix", async () => {
     const upstream = await startUpstream((req, res) => {
       let body = "";

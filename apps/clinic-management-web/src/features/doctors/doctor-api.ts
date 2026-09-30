@@ -28,5 +28,6 @@ export const doctorApi = (client: ApiClient) => ({
   updateSchedule: (id: string, body: Partial<Schedule>) => client.patch<Schedule>(`/api/v1/schedules/${id}`, { body }),
   createTimeOff: (doctorId: string, body: { startAt: string; endAt: string; reason?: string }) =>
     client.post<TimeOff>(`/api/v1/doctors/${doctorId}/time-offs`, { body }),
-  updateTimeOff: (id: string, body: Partial<TimeOff>) => client.patch<TimeOff>(`/api/v1/time-offs/${id}`, { body })
+  updateTimeOff: (doctorId: string, timeOffId: string, body: Partial<TimeOff>) =>
+    client.patch<TimeOff>(`/api/v1/doctors/${doctorId}/time-offs/${timeOffId}`, { body })
 });

@@ -60,8 +60,8 @@ export const doctorOpenApi = {
       post: { ...operation("Create time off without invalidating appointments", response(ref("TimeOff")),
         { parameters: [parameter("id", "path")], requestBody: body(ref("TimeOffCreate")) }), responses: { "201": response(ref("TimeOff")), ...errors } }
     },
-    "/api/v1/time-offs/{id}": { patch: operation("Update time off", response(ref("TimeOff")),
-      { parameters: [parameter("id", "path")], requestBody: body(ref("TimeOffUpdate")) }) },
+    "/api/v1/doctors/{doctorId}/time-offs/{timeOffId}": { patch: operation("Update time off owned by this doctor", response(ref("TimeOff")),
+      { parameters: [parameter("doctorId", "path"), parameter("timeOffId", "path")], requestBody: body(ref("TimeOffUpdate")) }) },
     "/api/v1/doctors/{id}/available-slots": { get: operation("List candidate slots, excluding occupied slots when Appointment integration is configured",
       response({ type: "array", items: ref("Slot") }), { parameters: [parameter("id", "path"), parameter("date", "query")] }) },
     "/internal/v1/doctors/verify-slot": { post: operation("Verify active doctor and exact schedule slot",

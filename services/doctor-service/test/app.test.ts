@@ -12,6 +12,9 @@ const doctor = { id: doctorId, userId, specialtyId, displayName: "Dr A", bio: nu
   isActive: true, createdAt: "", updatedAt: "" };
 const schedule = { id: scheduleId, doctorId, weekday: 1, startTime: "08:00", endTime: "10:00",
   slotDurationMinutes: 30, isActive: true, createdAt: "", updatedAt: "" };
+const timeOffId = "00000000-0000-4000-8000-000000000005";
+const timeOff = { id: timeOffId, doctorId, startAt: "2030-01-08T01:00:00.000Z",
+  endAt: "2030-01-08T02:00:00.000Z", reason: null, createdAt: "", updatedAt: "" };
 const booked = { startAt: "2030-01-07T01:00:00.000Z", endAt: "2030-01-07T01:30:00.000Z" };
 
 function fixture() {
@@ -26,7 +29,9 @@ function fixture() {
     allTimeOffs: vi.fn().mockResolvedValue([]),
     updateSchedule: vi.fn().mockResolvedValue(schedule),
     listSpecialties: vi.fn().mockResolvedValue({ items: [], page: 1, limit: 20, total: 0 }),
-    createTimeOff: vi.fn()
+    createTimeOff: vi.fn(),
+    findTimeOff: vi.fn().mockResolvedValue(timeOff),
+    updateTimeOff: vi.fn().mockResolvedValue(timeOff)
   };
   const users: UserDirectory = { findDoctorAccount: vi.fn().mockResolvedValue({ id: userId, role: "DOCTOR", status: "ACTIVE" }) };
   const appointments: AppointmentOccupancy = { occupied: vi.fn().mockResolvedValue([booked]) };
@@ -40,6 +45,8 @@ describe("Doctor API authorization and slot contract", () => {
     const response = await request(app).get("/openapi.json");
     expect(response.status).toBe(200);
     expect(response.body.paths["/api/v1/doctors/{id}/time-offs"].post).toBeDefined();
+    expect(response.body.paths["/api/v1/doctors/{doctorId}/time-offs/{timeOffId}"].patch).toBeDefined();
+    expect(response.body.paths["/api/v1/time-offs/{id}"]).toBeUndefined();
     expect(response.body.paths["/internal/v1/doctors/verify-slot"].post).toBeDefined();
   });
 
@@ -115,6 +122,55 @@ describe("Doctor API authorization and slot contract", () => {
       .send({ startAt: "2030-01-07T01:15:00.000Z", endAt: "2030-01-07T02:00:00.000Z" });
     expect(response.status).toBe(409);
     expect(repository.createTimeOff).not.toHaveBeenCalled();
+  });
+
+  it("updates time off for its doctor through the nested route", async () => {
+    const { app, repository } = fixture();
+    const response = await request(app).patch(`/api/v1/doctors/${doctorId}/time-offs/${timeOffId}`)
+      .set("X-User-Id", userId).set("X-Role", "DOCTOR")
+      .send({ reason: "Training" });
+    expect(response.status).toBe(200);
+    expect(repository.updateTimeOff).toHaveBeenCalledWith(timeOffId, { ...timeOff, reason: "Training" });
+  });
+
+  it("rejects time off under a different doctor path", async () => {
+    const { app, repository, appointments } = fixture();
+    const otherDoctorId = "00000000-0000-4000-8000-000000000099";
+    const response = await request(app).patch(`/api/v1/doctors/${otherDoctorId}/time-offs/${timeOffId}`)
+      .set("X-User-Id", userId).set("X-Role", "ADMIN")
+      .send({ reason: "Training" });
+    expect(response.status).toBe(404);
+    expect(response.body.error.code).toBe("TIME_OFF_NOT_FOUND");
+    expect(repository.updateTimeOff).not.toHaveBeenCalled();
+    expect(appointments.occupied).not.toHaveBeenCalled();
+  });
+
+  it("rejects a doctor editing another doctor's time off", async () => {
+    const { app, repository } = fixture();
+    vi.mocked(repository.findDoctorByUser).mockResolvedValue({ ...doctor, id: "00000000-0000-4000-8000-000000000099" });
+    const response = await request(app).patch(`/api/v1/doctors/${doctorId}/time-offs/${timeOffId}`)
+      .set("X-User-Id", userId).set("X-Role", "DOCTOR")
+      .send({ reason: "Training" });
+    expect(response.status).toBe(403);
+    expect(repository.updateTimeOff).not.toHaveBeenCalled();
+  });
+
+  it("rejects a patient before reading time off", async () => {
+    const { app, repository } = fixture();
+    const response = await request(app).patch(`/api/v1/doctors/${doctorId}/time-offs/${timeOffId}`)
+      .set("X-User-Id", userId).set("X-Role", "PATIENT")
+      .send({ reason: "Training" });
+    expect(response.status).toBe(403);
+    expect(repository.findTimeOff).not.toHaveBeenCalled();
+  });
+
+  it("does not expose the old time-off update route", async () => {
+    const { app, repository } = fixture();
+    const response = await request(app).patch(`/api/v1/time-offs/${timeOffId}`)
+      .set("X-User-Id", userId).set("X-Role", "ADMIN")
+      .send({ reason: "Training" });
+    expect(response.status).toBe(404);
+    expect(repository.updateTimeOff).not.toHaveBeenCalled();
   });
 
   it("returns a request ID with validation errors", async () => {
