@@ -74,10 +74,16 @@ services:
         APP_PATH: services/doctor-service
     environment:
       DOCTOR_SERVICE_PORT: 3002
-      DATABASE_URL: ${DOCTOR_DATABASE_URL:-}
+      DATABASE_URL: ${DOCTOR_DATABASE_URL:?DOCTOR_DATABASE_URL is required for Doctor Service}
       DATABASE_SSL: ${DOCTOR_DATABASE_SSL:-true}
+      DATABASE_SSL_REJECT_UNAUTHORIZED: ${DOCTOR_DATABASE_SSL_REJECT_UNAUTHORIZED:-false}
+      USER_SERVICE_URL: http://user-service:3001
+      APPOINTMENT_SERVICE_URL: http://appointment-service:3003
     expose:
       - "3002"
+    depends_on:
+      user-service:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3002/health').then((response) => { if (!response.ok) process.exit(1); }).catch(() => process.exit(1));"]
       interval: 10s
