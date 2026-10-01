@@ -8,7 +8,12 @@ import { MedicalRecordRepository } from "./repository.js";
 const port = Number(process.env.MEDICAL_RECORD_SERVICE_PORT ?? 3004);
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) throw new Error("DATABASE_URL is required by Medical Record Service");
-const pool = new Pool({ connectionString: databaseUrl, ssl: process.env.DATABASE_SSL === "true" ? { rejectUnauthorized: true } : undefined });
+const databaseSsl = process.env.DATABASE_SSL === "true";
+const rejectUnauthorized = process.env.DATABASE_SSL_REJECT_UNAUTHORIZED !== "false";
+const pool = new Pool({
+  connectionString: databaseUrl,
+  ssl: databaseSsl ? { rejectUnauthorized } : undefined,
+});
 const repository = new MedicalRecordRepository(pool);
 const appointmentUrl = process.env.APPOINTMENT_SERVICE_URL ?? "http://localhost:3003";
 const doctorUrl = process.env.DOCTOR_SERVICE_URL ?? "http://localhost:3002";

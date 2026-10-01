@@ -59,6 +59,7 @@ describe("ApiClient", () => {
     expect(headers.get("Accept")).toBe("application/json");
     expect(headers.get("Content-Type")).toBe("application/json");
     expect(headers.get("Idempotency-Key")).toBe("random-key-123456");
+    expect(headers.get("X-Request-Id")).toMatch(/^[0-9a-f-]{36}$/);
     expect(headers.has("X-Role")).toBe(false);
     expect(headers.has("X-User-Id")).toBe(false);
     expect(init?.body).toBe(JSON.stringify({ doctorId: "doctor-1" }));

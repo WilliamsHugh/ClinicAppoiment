@@ -162,7 +162,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     ),
                     const SizedBox(height: 12),
                     DropdownButtonFormField<String>(
-                      value: selectedGender,
+                      initialValue: selectedGender,
                       decoration: const InputDecoration(
                         labelText: 'Giới tính',
                         prefixIcon: Icon(Icons.wc_outlined),
@@ -243,26 +243,23 @@ class _ProfilePageState extends State<ProfilePage> {
                                     );
                                   }
 
-                                  if (mounted) {
-                                    Navigator.pop(ctx);
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      const SnackBar(
-                                        content: Text('Cập nhật hồ sơ thành công!'),
-                                        backgroundColor: Colors.green,
-                                      ),
-                                    );
-                                    _loadProfile();
-                                  }
+                                  if (!mounted || !ctx.mounted) return;
+                                  Navigator.pop(ctx);
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    const SnackBar(
+                                      content: Text('Cập nhật hồ sơ thành công!'),
+                                      backgroundColor: Colors.green,
+                                    ),
+                                  );
+                                  _loadProfile();
                                 } catch (err) {
-                                  if (mounted) {
-                                    ScaffoldMessenger.of(context).showSnackBar(
-                                      SnackBar(
-                                        content: Text('Lỗi: $err'),
-                                        backgroundColor: Colors.red,
-                                      ),
-                                    );
-                                  }
-                                } finally {
+                                  if (!mounted || !ctx.mounted) return;
+                                  ScaffoldMessenger.of(context).showSnackBar(
+                                    SnackBar(
+                                      content: Text('Lỗi: $err'),
+                                      backgroundColor: Colors.red,
+                                    ),
+                                  );
                                   setSheetState(() => saving = false);
                                 }
                               },

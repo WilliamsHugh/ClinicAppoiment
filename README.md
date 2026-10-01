@@ -60,6 +60,11 @@ npm run dev:medical-record
 npm run dev:notification
 ```
 
+Mỗi lệnh backend trên tự nạp file `gateway/api-gateway/.env` hoặc
+`services/<service>/.env`. Tạo file đó từ `.env.example` tương ứng và không commit
+credential thật. Chỉ User Service được cấu hình `SUPABASE_URL` và
+`SUPABASE_ANON_KEY`; các service còn lại chỉ nhận `DATABASE_URL` của database mình sở hữu.
+
 Chạy Patient App trên Android emulator:
 
 ```bash
@@ -91,15 +96,20 @@ Supabase Auth trong User Service.
 npm run build
 npm run build:patient
 npm run lint
+npm test
+npm run analyze:patient
+npm run test:patient
 npm audit --omit=dev --audit-level=high
 ```
 
 Doctor và Appointment Service vẫn là scaffold in-memory. Các service này cần được
-chuyển sang Supabase theo task của thành viên 2–3 trước khi kiểm thử luồng khám
+chuyển sang Supabase theo task của thành viên 3 trước khi kiểm thử luồng khám
 end-to-end với Medical Record/Notification trên dữ liệu thật.
 
 ## Tài Liệu
 
+- Quy tắc bắt buộc cho agent và phối hợp nhánh: [.agents/rules.md](.agents/rules.md)
 - Thiết kế hệ thống: `docs/system-design.md`
 - Hợp đồng API v1: `docs/api-contract.md`
+- Hợp đồng thiết kế UI cho thành viên và agent: `docs/ui-design-contract.md`
 - Supabase migrations riêng từng service: `infrastructure/supabase/<service>/schema.sql`
