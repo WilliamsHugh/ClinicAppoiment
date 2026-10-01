@@ -1,5 +1,9 @@
 # Clinic Appointment System Design
 
+Mọi thay đổi giao diện Flutter hoặc Next.js phải tuân thủ `docs/ui-design-contract.md`.
+Tài liệu đó là hợp đồng thống nhất về platform, role, luồng UX, responsive behavior,
+privacy và quy tắc làm việc với agent thiết kế hoặc triển khai UI.
+
 ## 1. Tổng Quan Kiến Trúc
 
 Hệ thống đặt lịch khám được thiết kế theo kiến trúc hướng dịch vụ. Hai frontend không gọi trực tiếp các service nội bộ mà chỉ giao tiếp qua API Gateway. Mỗi backend service sở hữu một miền nghiệp vụ và một PostgreSQL database riêng trong một Supabase project riêng, đồng thời có thể build/deploy độc lập bằng Docker.

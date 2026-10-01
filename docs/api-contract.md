@@ -2,6 +2,10 @@
 
 Tài liệu này là hợp đồng API chuẩn cho các nhánh triển khai tiếp theo của Clinic Appointment System. Frontend và service phải tuân thủ hợp đồng này; nếu cần thay đổi, cập nhật tài liệu trước hoặc cùng pull request có thay đổi API.
 
+Mọi thay đổi giao diện Flutter hoặc Next.js đồng thời phải tuân thủ
+[`docs/ui-design-contract.md`](ui-design-contract.md). Giao diện không được tự diễn giải lại role,
+quyền truy cập, trạng thái nghiệp vụ, endpoint hoặc cấu trúc lỗi được định nghĩa trong tài liệu này.
+
 ## 1. Phạm Vi Và Nguyên Tắc
 
 - API public chỉ truy cập qua API Gateway, prefix `/api/v1`.
@@ -402,7 +406,7 @@ ghi outbox cùng transaction tạo/cập nhật hồ sơ; worker gửi lại b�
 
 | Public prefix | Owner service |
 |---|---|
-| `/api/v1/auth` | Gateway cho session endpoint; User Service cho `/me` |
+| `/api/v1/auth` | User Service; Gateway chỉ xác thực ngoại lệ cần thiết và proxy theo prefix |
 | `/api/v1/users`, `/api/v1/patients` | User Service |
 | `/api/v1/specialties`, `/api/v1/doctors`, `/api/v1/schedules` | Doctor Service |
 | `/api/v1/appointments` | Appointment Service |
@@ -415,12 +419,20 @@ Gateway chịu trách nhiệm xác thực, rate limit, request ID, CORS, routing
 
 Các mục dưới đây là gap giữa scaffold hiện tại và contract; không phải ngoại lệ của contract:
 
-- Service repositories hiện dùng in-memory arrays; persistence Supabase thuộc các task service tương ứng.
+- Doctor và Appointment Service trên baseline hiện còn dùng in-memory arrays; User,
+  Medical Record và Notification Service đã có PostgreSQL repository.
 - Doctor list/specialty/available slot và một số list endpoint hiện chưa áp dụng pagination/filter đầy đủ.
 - Appointment hiện chỉ kiểm tra conflict bằng memory trước khi insert; `BOOK-004` phải dùng transaction và constraint PostgreSQL.
-- `POST /api/v1/notifications` hiện được implement trong Notification Service; contract v1 không cho client gọi route này, cần bỏ hoặc chặn qua Gateway.
-- Internal notification hiện nhận `{ type, payload }` và chưa deduplicate event; bổ sung `eventId` trước khi dựa vào retry.
-- Medical Record Service scaffold có route `/api/v1/patients/{patientId}/medical-records`, nhưng prefix `/api/v1/patients` thuộc User Service ở Gateway. Không expose route này; dùng filter `patientId` trên `/api/v1/medical-records` theo contract.
+- Notification Service đã chặn client tạo notification và đã deduplicate internal event
+  bằng `eventId`; vẫn cần kiểm thử tích hợp với producer và PostgreSQL thật.
+- Reminder worker hiện cần chuyển sang internal Appointment lookup có xác thực thay vì gọi
+  endpoint public thiếu access token.
+- Medical Record completion hiện cần chuyển sang internal Appointment command có xác thực;
+  không tự dựng `X-User-Id`/`X-Role` để gọi endpoint public.
+- Các internal route hiện chủ yếu dựa vào private network. Cần hoàn thành service identity
+  và caller authorization theo milestone M2 trước nghiệm thu liên service.
+- OpenAPI của một số service mới liệt kê route/summary, chưa mô tả đầy đủ request,
+  response, error schema và security requirement.
 - Một số route được liệt kê trong `system-design.md` chưa được code. Triển khai route theo bảng trong tài liệu này và bổ sung Swagger/OpenAPI.
 - Patient App lấy danh tính actor từ phiên do Gateway cấp và không gửi `patientId` cố định khi bệnh nhân tự đặt lịch.
 
@@ -436,7 +448,7 @@ Các mục dưới đây là gap giữa scaffold hiện tại và contract; khô
 1. **Member 1 / Gateway:** chốt và triển khai auth, role, error, request ID, health và Swagger theo contract.
 2. **Member 2 / User:** dùng `UserProfile`/`PatientProfile`, Auth user mapping và quyền theo contract.
 3. **Member 3 / Doctor + Appointment:** triển khai endpoint và state machine; bắt buộc transaction/constraint cho slot.
-4. **Member 4 / Clients + Records + Notification:** tích hợp endpoint public, chỉ dùng Gateway; triển khai internal event theo contract.
+4. **Member 4 / Medical Record + Notification:** triển khai hai service, internal event và giao diện domain sau khi thiết kế được duyệt.
 5. **Cả nhóm:** chạy contract/integration test, build và Docker Compose; rà soát không có truy vấn xuyên schema.
 
 ## 12. Contract Test Checklist
