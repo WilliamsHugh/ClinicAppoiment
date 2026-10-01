@@ -233,24 +233,24 @@ Gateway không xử lý credential, còn frontend không nhận cấu hình Supa
 
 | Method | Path | Quyền | Query/body |
 |---|---|---|---|
-| `GET` | `/api/v1/specialties` | Bất kỳ role đã đăng nhập | `page`, `limit`, `q`, `isActive` |
+| `GET` | `/api/v1/specialties` | Bất kỳ role đã đăng nhập | `page`, `limit`, `q`; `isActive` chỉ có hiệu lực với `ADMIN`, role khác chỉ thấy bản ghi active |
 | `POST` | `/api/v1/specialties` | `ADMIN` | `{ "name": string, "description"?: string }` |
 | `PATCH` | `/api/v1/specialties/{specialtyId}` | `ADMIN` | `{ "name"?: string, "description"?: string, "isActive"?: boolean }` |
-| `GET` | `/api/v1/doctors` | Bất kỳ role đã đăng nhập | `page`, `limit`, `specialtyId`, `q`, `isActive` |
+| `GET` | `/api/v1/doctors` | Bất kỳ role đã đăng nhập | `page`, `limit`, `specialtyId`, `q`; `isActive` chỉ có hiệu lực với `ADMIN`, role khác chỉ thấy bác sĩ active |
 | `POST` | `/api/v1/doctors` | `ADMIN` | `{ "userId": string, "specialtyId": string, "displayName": string, "bio"?: string }` |
 | `GET` | `/api/v1/doctors/{doctorId}` | Bất kỳ role đã đăng nhập | Không có |
 | `PATCH` | `/api/v1/doctors/{doctorId}` | `ADMIN` | Doctor fields có thể cập nhật |
-| `GET` | `/api/v1/doctors/{doctorId}/schedules` | Bất kỳ role đã đăng nhập | `page`, `limit` nếu danh sách có phân trang |
+| `GET` | `/api/v1/doctors/{doctorId}/schedules` | Bất kỳ role đã đăng nhập | `page`, `limit`; trả `{ items, page, limit, total }` |
 | `POST` | `/api/v1/doctors/{doctorId}/schedules` | Bác sĩ chính mình, `STAFF`, `ADMIN` | `{ "weekday": 0..6, "startTime": "HH:mm", "endTime": "HH:mm", "slotDurationMinutes": integer }` |
 | `PATCH` | `/api/v1/schedules/{scheduleId}` | Bác sĩ sở hữu lịch, `STAFF`, `ADMIN` | Các trường lịch có thể cập nhật |
 | `GET` | `/api/v1/doctors/{doctorId}/available-slots?date=YYYY-MM-DD` | Bất kỳ role đã đăng nhập | `date` bắt buộc; trả `[{ "startAt": ISODateTime, "endAt": ISODateTime }]` |
-| `GET` | `/api/v1/doctors/{doctorId}/time-offs` | Bác sĩ chính mình, `STAFF`, `ADMIN` | `page`, `limit`; không trả lý do nghỉ cho bệnh nhân |
+| `GET` | `/api/v1/doctors/{doctorId}/time-offs` | Bác sĩ chính mình, `STAFF`, `ADMIN` | `page`, `limit`; `PATIENT` không được truy cập |
 | `POST` | `/api/v1/doctors/{doctorId}/time-offs` | Bác sĩ chính mình, `STAFF`, `ADMIN` | `{ "startAt": ISODateTime, "endAt": ISODateTime, "reason"?: string }` |
 | `PATCH` | `/api/v1/doctors/{doctorId}/time-offs/{timeOffId}` | Bác sĩ sở hữu, `STAFF`, `ADMIN` | Các trường thời gian nghỉ có thể cập nhật; `timeOffId` phải thuộc `doctorId`, nếu không trả `404 TIME_OFF_NOT_FOUND` |
 
 `weekday`: Chủ Nhật `0`, Thứ Hai `1`, ..., Thứ Bảy `6`. `startTime`/`endTime` là giờ địa phương của phòng khám theo `Asia/Ho_Chi_Minh` (UTC+7); response slot luôn là UTC. `date` trong truy vấn slot là ngày ở Việt Nam. Khoảng thời gian dùng quy ước `[startAt, endAt)`. Doctor phải tồn tại và `isActive=true`; slot phải nằm trọn trong schedule và ngoài time-off. Schedule không qua nửa đêm và các schedule đang hoạt động của cùng bác sĩ không chồng nhau.
 
-Doctor Service sinh slot từ lịch làm việc, trừ thời gian nghỉ, sau đó trừ các khoảng đã đặt còn hiệu lực do Appointment Service cung cấp qua API nội bộ. Danh sách slot chỉ phản ánh thời điểm đọc; API tạo/đổi lịch của Appointment Service kiểm tra lại và dùng ràng buộc database làm điểm quyết định cuối cùng. Trong giai đoạn nhánh Doctor chưa có API nội bộ từ Appointment, endpoint slot chỉ trả các slot đáp ứng lịch làm việc/thời gian nghỉ; frontend phải diễn đạt đây là lựa chọn tạm thời, không khẳng định đã giữ chỗ.
+Doctor Service sinh slot từ lịch làm việc, trừ thời gian nghỉ, sau đó trừ các khoảng đã đặt còn hiệu lực do Appointment Service cung cấp qua API nội bộ. API nội bộ này đã có nhưng hiện đọc repository in-memory của Appointment Service. Nếu `APPOINTMENT_SERVICE_URL` chưa cấu hình, endpoint chỉ trả slot theo schedule/time-off và không thể bảo đảm slot chưa được đặt; các thao tác sửa lịch phụ thuộc occupancy sẽ trả `503`. Danh sách slot chỉ phản ánh thời điểm đọc, không giữ chỗ. API tạo/đổi lịch của Appointment Service kiểm tra lại slot; ràng buộc database chống double booking vẫn thuộc phạm vi Booking và chưa được triển khai.
 
 Khi thay đổi lịch làm việc, thời gian nghỉ hoặc ngừng hoạt động bác sĩ, Doctor Service phải kiểm tra các lịch hẹn tương lai còn hiệu lực. Thay đổi làm lịch hẹn mất hiệu lực trả `409 SCHEDULE_CONFLICT_WITH_APPOINTMENTS` kèm số lịch bị ảnh hưởng, không tự động hủy/đổi lịch. Nếu không thể kiểm tra Appointment Service, thao tác này từ chối an toàn (`502` hoặc `503`). Các thao tác này cần quy trình phối hợp để xử lý đặt lịch đồng thời với thay đổi lịch làm việc; chưa được coi là bảo đảm nguyên tử xuyên service.
 
@@ -398,6 +398,12 @@ ghi outbox cùng transaction tạo/cập nhật hồ sơ; worker gửi lại b�
 | `ROUTE_NOT_FOUND` | 404 | Không tồn tại route |
 | `USER_NOT_FOUND` | 404 | Không tìm thấy profile |
 | `DOCTOR_NOT_FOUND` | 404 | Không tìm thấy bác sĩ |
+| `DOCTOR_ACCOUNT_INVALID` | 422 | Tài khoản liên kết không phải bác sĩ đang hoạt động |
+| `SPECIALTY_INVALID` | 422 | Chuyên khoa không tồn tại hoặc ngừng hoạt động |
+| `SCHEDULE_OVERLAP` | 409 | Lịch làm việc của cùng bác sĩ chồng nhau |
+| `SCHEDULE_CONFLICT_WITH_APPOINTMENTS` | 409 | Thay đổi lịch/thời gian nghỉ làm mất hiệu lực appointment tương lai |
+| `APPOINTMENT_AVAILABILITY_UNAVAILABLE` | 503 | Chưa cấu hình kiểm tra slot đã đặt từ Appointment Service |
+| `DATABASE_UNAVAILABLE` | 503 | Doctor database không khả dụng tại `/health` |
 | `APPOINTMENT_NOT_FOUND` | 404 | Không tìm thấy lịch |
 | `MEDICAL_RECORD_NOT_FOUND` | 404 | Không tìm thấy record |
 | `NOTIFICATION_NOT_FOUND` | 404 | Không tìm thấy notification |
@@ -428,8 +434,8 @@ Gateway chịu trách nhiệm xác thực, rate limit, request ID, CORS, routing
 
 Các mục dưới đây là gap giữa scaffold hiện tại và contract; không phải ngoại lệ của contract:
 
-- Service repositories hiện dùng in-memory arrays; persistence Supabase thuộc các task service tương ứng.
-- Doctor list/specialty/available slot và một số list endpoint hiện chưa áp dụng pagination/filter đầy đủ.
+- Appointment Service hiện dùng repository in-memory; Booking phải bổ sung persistence và ràng buộc database cho appointment.
+- Doctor Service đã dùng PostgreSQL và các list Doctor/Specialty/Schedule/Time-off có pagination; migration và smoke test database thật vẫn cần xác nhận trên project Doctor riêng.
 - Appointment hiện chỉ kiểm tra conflict bằng memory trước khi insert; `BOOK-004` phải dùng transaction và constraint PostgreSQL.
 - `POST /api/v1/notifications` hiện được implement trong Notification Service; contract v1 không cho client gọi route này, cần bỏ hoặc chặn qua Gateway.
 - Internal notification hiện nhận `{ type, payload }` và chưa deduplicate event; bổ sung `eventId` trước khi dựa vào retry.

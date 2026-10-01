@@ -123,6 +123,11 @@ Cung cấp API nội bộ để Appointment Service kiểm tra:
 - Khung giờ có thuộc lịch làm việc hay không.
 - Khung giờ có bị khóa, nghỉ hoặc không nhận lịch hay không.
 
+Doctor Service chỉ lưu dữ liệu Doctor trong PostgreSQL riêng. Khi liên kết tài khoản,
+service gọi API nội bộ của User Service để xác minh role/status; khi trả slot hoặc sửa
+lịch có appointment tương lai, service gọi API nội bộ của Appointment Service để lấy
+slot đã đặt. Frontend chỉ gọi các API public qua Gateway.
+
 ### Appointment Service
 
 Đây là service trung tâm của nghiệp vụ đặt lịch.
@@ -332,8 +337,16 @@ Tất cả API public qua Gateway dùng prefix `/api/v1`.
 - `GET /api/v1/doctors/:id/schedules`
 - `POST /api/v1/doctors/:id/schedules`
 - `PATCH /api/v1/schedules/:id`
+- `GET /api/v1/doctors/:id/time-offs`
+- `POST /api/v1/doctors/:id/time-offs`
+- `PATCH /api/v1/doctors/:doctorId/time-offs/:timeOffId`
 - `GET /api/v1/doctors/:id/available-slots?date=YYYY-MM-DD`
-- `POST /internal/v1/doctors/verify-slot`
+
+Doctor Service cung cấp `POST /internal/v1/doctors/verify-slot` cho Appointment Service;
+route này không đi qua Gateway public. Doctor Service gọi hai API nội bộ thuộc service khác:
+
+- User Service: `GET /internal/v1/users/:userId/doctor-eligibility`.
+- Appointment Service: `GET /internal/v1/appointments/occupied-slots`.
 
 ### Appointment Service
 
@@ -687,6 +700,10 @@ Khuyến nghị:
 - `DOCTOR_SERVICE_PORT`
 - `DATABASE_URL`
 - `DATABASE_SSL`
+- `DATABASE_SSL_REJECT_UNAUTHORIZED`
+- `USER_SERVICE_URL`
+- `APPOINTMENT_SERVICE_URL`
+- `DOCTOR_INTERNAL_API_TOKEN` (cùng giá trị ở Appointment Service)
 - `LOG_LEVEL`
 
 ### Appointment Service
@@ -695,6 +712,7 @@ Khuyến nghị:
 - `DATABASE_URL`
 - `DATABASE_SSL`
 - `DOCTOR_SERVICE_URL`
+- `DOCTOR_INTERNAL_API_TOKEN` (cùng giá trị ở Doctor Service)
 - `NOTIFICATION_SERVICE_URL`
 - `LOG_LEVEL`
 

@@ -38,8 +38,11 @@ Supabase Auth thuộc project của User Service. Chỉ User Service nhận `SUP
 API Gateway proxy `/api/v1/auth/*` tới User Service và dùng API nội bộ của User Service để
 xác minh danh tính trước khi chuyển tiếp request nghiệp vụ.
 Flutter và Next.js chỉ nhận URL của API Gateway; hai frontend không nhận Supabase key,
-database URL và không gọi trực tiếp service nội bộ. User, Medical Record và Notification
-Service cần database để khởi động; Doctor và Appointment hiện vẫn là scaffold in-memory.
+database URL và không gọi trực tiếp service nội bộ. User, Doctor, Medical Record và
+Notification Service cần database để khởi động. Doctor Service dùng PostgreSQL riêng
+và cần chạy migration trước khi khởi động.
+Appointment Service hiện vẫn lưu appointment trong bộ nhớ; Booking cần nối persistence
+trước khi kiểm thử độ bền dữ liệu qua lần khởi động lại.
 
 Flutter SDK được đặt local tại `.tools/flutter`. Nếu máy chưa nhận Flutter toàn cục, dùng trực tiếp binary này.
 
@@ -99,9 +102,11 @@ npm run lint
 npm audit --omit=dev --audit-level=high
 ```
 
-Doctor và Appointment Service vẫn là scaffold in-memory. Các service này cần được
-chuyển sang Supabase theo task của thành viên 2–3 trước khi kiểm thử luồng khám
-end-to-end với Medical Record/Notification trên dữ liệu thật.
+Doctor Service đã có PostgreSQL repository và migration riêng; hướng dẫn migration và
+smoke test qua Gateway nằm trong `services/doctor-service/README.md`. Appointment Service
+vẫn dùng repository in-memory, nên kết quả smoke về slot đã đặt chỉ có hiệu lực trong
+thời gian process Appointment đang chạy. Booking phải hoàn thiện persistence trước khi
+xác nhận luồng đặt lịch bền vững end-to-end.
 
 ## Tài Liệu
 

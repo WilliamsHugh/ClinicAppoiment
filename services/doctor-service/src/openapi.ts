@@ -36,13 +36,13 @@ export const doctorOpenApi = {
     "/health": { get: { ...operation("Database health", response({ type: "object" }), { internal: true }),
       responses: { "200": response({ type: "object" }), "503": { description: "Database unavailable", content: json(ref("ApiError")) } } } },
     "/api/v1/specialties": {
-      get: operation("List specialties", list(ref("Specialty")), { parameters: [...pageParameters, parameter("q", "query", false), parameter("isActive", "query", false)] }),
+      get: operation("List active specialties; ADMIN may filter isActive", list(ref("Specialty")), { parameters: [...pageParameters, parameter("q", "query", false), parameter("isActive", "query", false)] }),
       post: { ...operation("Create specialty (ADMIN)", response(ref("Specialty")), { requestBody: body(ref("SpecialtyCreate")) }), responses: { "201": response(ref("Specialty")), ...errors } }
     },
     "/api/v1/specialties/{id}": { patch: operation("Update specialty (ADMIN)", response(ref("Specialty")),
       { parameters: [parameter("id", "path")], requestBody: body(ref("SpecialtyUpdate")) }) },
     "/api/v1/doctors": {
-      get: operation("List doctors", list(ref("Doctor")), { parameters: [...pageParameters, parameter("q", "query", false), parameter("specialtyId", "query", false), parameter("isActive", "query", false)] }),
+      get: operation("List active doctors; ADMIN may filter isActive", list(ref("Doctor")), { parameters: [...pageParameters, parameter("q", "query", false), parameter("specialtyId", "query", false), parameter("isActive", "query", false)] }),
       post: { ...operation("Link an active doctor account (ADMIN)", response(ref("Doctor")), { requestBody: body(ref("DoctorCreate")) }), responses: { "201": response(ref("Doctor")), ...errors } }
     },
     "/api/v1/doctors/{id}": {
@@ -64,7 +64,7 @@ export const doctorOpenApi = {
     "/api/v1/doctors/{doctorId}/time-offs/{timeOffId}": { patch: operation("Update time off owned by this doctor", response(ref("TimeOff")),
       { parameters: [parameter("doctorId", "path"), parameter("timeOffId", "path")], requestBody: body(ref("TimeOffUpdate")) }) },
     "/api/v1/doctors/{id}/available-slots": { get: operation("List candidate slots, excluding occupied slots when Appointment integration is configured",
-      response({ type: "array", items: ref("Slot") }), { parameters: [parameter("id", "path"), parameter("date", "query")] }) },
+      response({ type: "array", items: ref("Slot") }), { parameters: [parameter("id", "path"), parameter("date", "query", true)] }) },
     "/internal/v1/doctors/verify-slot": { post: { ...operation("Verify active doctor and exact schedule slot",
       response({ type: "object", required: ["valid"], properties: { valid: { type: "boolean" }, reason: { type: "string" } } }),
       { requestBody: body(ref("VerifySlot")), internal: true }), security: [{ internalToken: [] }] } }
@@ -98,7 +98,7 @@ export const doctorOpenApi = {
         startAt: { type: "string", format: "date-time" }, endAt: { type: "string", format: "date-time" }
       } },
       SpecialtyCreate: { type: "object", required: ["name"], properties: { name: { type: "string" }, description: { type: "string" } } },
-      SpecialtyUpdate: { type: "object", properties: { name: { type: "string" }, description: { type: "string", nullable: true }, isActive: { type: "boolean" } } },
+      SpecialtyUpdate: { type: "object", properties: { name: { type: "string" }, description: { type: "string" }, isActive: { type: "boolean" } } },
       DoctorCreate: { type: "object", required: ["userId", "specialtyId", "displayName"], properties: {
         userId: { type: "string", format: "uuid" }, specialtyId: { type: "string", format: "uuid" }, displayName: { type: "string" }, bio: { type: "string" }
       } },
