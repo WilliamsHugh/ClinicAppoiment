@@ -18,6 +18,7 @@
     "db:migrate:doctor": "node scripts/with-env.mjs services/doctor-service/.env npm run db:migrate -w @clinic/doctor-service",
     "smoke:doctor": "node scripts/smoke-doctor.mjs",
     "dev:appointment": "node scripts/with-env.mjs services/appointment-service/.env npm run dev -w @clinic/appointment-service",
+    "db:migrate:appointment": "node scripts/with-env.mjs services/appointment-service/.env npm run db:migrate -w @clinic/appointment-service",
     "dev:medical-record": "npm run dev -w @clinic/medical-record-service",
     "dev:notification": "CLINIC_ENV_FILE=services/notification-service/.env scripts/with-env.sh npm run dev -w @clinic/notification-service",
     "build": "npm run build --workspaces --if-present",

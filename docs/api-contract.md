@@ -361,7 +361,7 @@ Các route này không được mount vào Gateway public router. Trong MVP gọ
 |---|---|---|---|
 | Appointment -> Doctor | `POST /internal/v1/doctors/verify-slot` | Header `X-Internal-Token` chứa credential chung chỉ có ở hai backend; chuyển tiếp `X-Request-Id` nếu có; body `{ "doctorId": string, "startAt": ISODateTime, "endAt": ISODateTime }` | `200 { "success": true, "data": { "valid": boolean, "reason"?: string } }`; thiếu/sai credential trả `401 INTERNAL_AUTH_REQUIRED` |
 | Doctor -> User | `GET /internal/v1/users/{userId}/doctor-eligibility` | `userId` là UUID tài khoản cần liên kết; `X-Request-Id` được chuyển tiếp nếu có | `200 { "success": true, "data": { "id": UUID, "role": "PATIENT" \| "DOCTOR" \| "STAFF" \| "ADMIN", "status": "ACTIVE" \| "INACTIVE" \| "LOCKED" } }`; không có user trả `404 USER_NOT_FOUND` |
-| Doctor -> Appointment | `GET /internal/v1/appointments/occupied-slots?doctorId={id}&from={ISODateTime}&to={ISODateTime?}` | `doctorId` là UUID; `from` bắt buộc, `to` tùy chọn và phải sau `from`; khoảng truy vấn `[from, to)`; chuyển tiếp `X-Request-Id` | `200 { "success": true, "data": [{ "startAt": ISODateTime UTC, "endAt": ISODateTime UTC }] }`; chỉ gồm lịch tương lai `PENDING`, `CONFIRMED`, `CHECKED_IN`, không chứa dữ liệu bệnh nhân. Query sai trả `400 VALIDATION_ERROR`. Route đọc hiện dùng repository in-memory; Booking phải nối với persistence thật. |
+| Doctor -> Appointment | `GET /internal/v1/appointments/occupied-slots?doctorId={id}&from={ISODateTime}&to={ISODateTime?}` | `doctorId` là UUID; `from` bắt buộc, `to` tùy chọn và phải sau `from`; khoảng truy vấn `[from, to)`; chuyển tiếp `X-Request-Id` | `200 { "success": true, "data": [{ "startAt": ISODateTime UTC, "endAt": ISODateTime UTC }] }`; chỉ gồm lịch tương lai `PENDING`, `CONFIRMED`, `CHECKED_IN`, không chứa dữ liệu bệnh nhân. Query sai trả `400 VALIDATION_ERROR`. Route đọc dùng PostgreSQL và chỉ trả về các khoảng giờ active đã lưu bền vững. |
 | Medical Record -> Appointment | `GET /internal/v1/appointments/{appointmentId}/verify-for-medical-record` | Không có | `{ "valid": boolean, "appointment"?: { "id", "patientId", "doctorId", "status" } }` |
 | Medical Record/Appointment -> User | `GET /internal/v1/patients/{patientId}` | Không có | `{ "id": string, "userId": string }` |
 
@@ -434,9 +434,9 @@ Gateway chịu trách nhiệm xác thực, rate limit, request ID, CORS, routing
 
 Các mục dưới đây là gap giữa scaffold hiện tại và contract; không phải ngoại lệ của contract:
 
-- Appointment Service hiện dùng repository in-memory; Booking phải bổ sung persistence và ràng buộc database cho appointment.
+- Appointment Service dùng PostgreSQL cho appointment, history, idempotency và occupancy; constraint chặn các khoảng giờ active chồng lấn của cùng doctor.
 - Doctor Service đã dùng PostgreSQL và các list Doctor/Specialty/Schedule/Time-off có pagination; migration và smoke test database thật vẫn cần xác nhận trên project Doctor riêng.
-- Appointment hiện chỉ kiểm tra conflict bằng memory trước khi insert; `BOOK-004` phải dùng transaction và constraint PostgreSQL.
+- Appointment dùng transaction và exclusion constraint PostgreSQL cho create/reschedule; chạy integration test trên database test riêng trước nghiệm thu.
 - `POST /api/v1/notifications` hiện được implement trong Notification Service; contract v1 không cho client gọi route này, cần bỏ hoặc chặn qua Gateway.
 - Internal notification hiện nhận `{ type, payload }` và chưa deduplicate event; bổ sung `eventId` trước khi dựa vào retry.
 - Medical Record Service scaffold có route `/api/v1/patients/{patientId}/medical-records`, nhưng prefix `/api/v1/patients` thuộc User Service ở Gateway. Không expose route này; dùng filter `patientId` trên `/api/v1/medical-records` theo contract.

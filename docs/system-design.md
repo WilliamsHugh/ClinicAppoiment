@@ -603,9 +603,16 @@ Appointment Service không chỉ kiểm tra bằng code rồi insert. Cần dùn
 Đề xuất:
 
 ```sql
-CREATE UNIQUE INDEX unique_active_doctor_slot
-ON appointment_service.appointments (doctor_id, scheduled_start_at)
-WHERE status IN ('PENDING', 'CONFIRMED', 'CHECKED_IN');
+CREATE EXTENSION IF NOT EXISTS btree_gist;
+ALTER TABLE appointment_service.appointments
+  ADD CONSTRAINT appointment_positive_interval
+  CHECK (scheduled_start_at < scheduled_end_at);
+ALTER TABLE appointment_service.appointments
+  ADD CONSTRAINT appointment_no_active_overlap
+  EXCLUDE USING gist (
+    doctor_id WITH =,
+    tstzrange(scheduled_start_at, scheduled_end_at, '[)') WITH &&
+  ) WHERE (status IN ('PENDING', 'CONFIRMED', 'CHECKED_IN'));
 ```
 
 Luồng tạo lịch:
@@ -614,7 +621,7 @@ Luồng tạo lịch:
 2. Gọi Doctor Service verify doctor và slot.
 3. Bắt đầu transaction.
 4. Insert appointment.
-5. Nếu unique constraint conflict, trả lỗi chuẩn `APPOINTMENT_SLOT_UNAVAILABLE`.
+5. Nếu exclusion constraint phát hiện khoảng giờ chồng lấn, trả `APPOINTMENT_SLOT_UNAVAILABLE`.
 6. Ghi outbox event trong cùng transaction.
 7. Commit.
 
@@ -634,8 +641,8 @@ Response lỗi:
 Idempotency:
 
 - Client gửi `Idempotency-Key` khi tạo lịch.
-- Appointment Service lưu key kèm patient/doctor/slot.
-- Nếu retry cùng key, trả lại appointment đã tạo thay vì tạo bản ghi mới.
+- Appointment Service lưu `(actor_id, operation, key)` cùng fingerprint của patient/doctor/slot/payload trong PostgreSQL.
+- Retry cùng actor, key và payload trả lại appointment đã tạo; payload khác trả `409 IDEMPOTENCY_KEY_REUSED`.
 
 ## 12. Cách Giao Tiếp Giữa Các Service
 

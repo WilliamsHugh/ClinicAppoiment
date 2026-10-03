@@ -4,7 +4,7 @@ import { app, repository } from "../src/index.js";
 
 const patientHeaders = { "X-User-Id": "user-patient-1", "X-Role": "PATIENT" };
 const slot = {
-  doctorId: "doctor-1",
+  doctorId: "00000000-0000-4000-8000-000000000011",
   scheduledStartAt: "2026-10-01T08:00:00.000Z",
   scheduledEndAt: "2026-10-01T08:30:00.000Z"
 };
@@ -43,7 +43,7 @@ describe("Appointment Service authorization", () => {
       .set(patientHeaders)
       .set("Idempotency-Key", "appointment-test-key-0001")
       .set("X-Request-Id", "booking-verify-1")
-      .send({ ...slot, patientId: "patient-spoofed" });
+      .send({ ...slot, patientId: "00000000-0000-4000-8000-000000000099" });
 
     expect(response.status).toBe(201);
     expect(response.body.data.patientId).toBe("patient-owned");
@@ -116,5 +116,34 @@ describe("Appointment Service authorization", () => {
       .set(patientHeaders);
     expect(response.status).toBe(404);
     expect(response.body.error.code).toBe("APPOINTMENT_NOT_FOUND");
+  });
+});
+
+describe("Appointment booking contract", () => {
+  const futureSlot = { ...slot, scheduledStartAt: "2030-01-07T01:00:00.000Z",
+    scheduledEndAt: "2030-01-07T01:30:00.000Z" };
+
+  it("replays only the same actor, key and payload", async () => {
+    const make = (body: object, key: string) => request(app).post("/api/v1/appointments")
+      .set(patientHeaders).set("Idempotency-Key", key).send(body);
+    const first = await make(futureSlot, "stable-key");
+    const replay = await make(futureSlot, "stable-key");
+    const mismatch = await make({ ...futureSlot, reason: "different" }, "stable-key");
+    expect(first.status).toBe(201);
+    expect(replay.status).toBe(200);
+    expect(replay.body.data.id).toBe(first.body.data.id);
+    expect(mismatch.status).toBe(409);
+    expect(mismatch.body.error.code).toBe("IDEMPOTENCY_KEY_REUSED");
+  });
+
+  it("rejects partial overlap and invalid intervals", async () => {
+    const make = (body: object, key: string) => request(app).post("/api/v1/appointments")
+      .set(patientHeaders).set("Idempotency-Key", key).send(body);
+    expect((await make(futureSlot, "first")).status).toBe(201);
+    const overlap = await make({ ...futureSlot, scheduledStartAt: "2030-01-07T01:15:00.000Z",
+      scheduledEndAt: "2030-01-07T01:45:00.000Z" }, "second");
+    expect(overlap.status).toBe(409);
+    expect(overlap.body.error.code).toBe("APPOINTMENT_SLOT_UNAVAILABLE");
+    expect((await make({ ...futureSlot, scheduledEndAt: futureSlot.scheduledStartAt }, "third")).status).toBe(422);
   });
 });
