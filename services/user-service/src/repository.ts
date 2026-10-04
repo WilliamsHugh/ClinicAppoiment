@@ -265,7 +265,7 @@ export class UserRepository {
               p.updated_at AS "updatedAt", u.full_name AS "fullName", u.email, u.phone
        FROM user_service.patient_profiles p
        LEFT JOIN user_service.users u ON p.user_id = u.id
-       WHERE p.user_id = $1`,
+       WHERE p.user_id = $1 AND u.role = 'PATIENT'`,
       [userId],
     );
     return result.rows[0] ?? null;
