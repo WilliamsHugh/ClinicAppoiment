@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { canViewSystemHealth, loadSystemHealth } from "../src/features/health/health";
-import { visibleRoutes } from "../src/lib/navigation/routes";
+import { routeForPath, visibleRoutes } from "../src/lib/navigation/routes";
 import type { ClinicRole, Session } from "../src/lib/session/session";
 
 function session(role?: ClinicRole): Session {
@@ -8,8 +8,8 @@ function session(role?: ClinicRole): Session {
     status: role ? "authenticated" : "unauthenticated",
     identity: role ? { id: "user-1", role } : null,
     getAccessToken: async () => role ? "test-only-token" : null,
-    signIn: async () => {},
-    signOut: async () => {}
+    signIn: vi.fn(),
+    signOut: vi.fn()
   };
 }
 
@@ -42,6 +42,12 @@ describe("route visibility", () => {
 
   it("does not expose clinic-management domain routes to patients", () => {
     expect(visibleRoutes(session("PATIENT")).map((route) => route.href)).toEqual(["/"]);
+  });
+
+  it("resolves nested protected paths for the centralized route guard", () => {
+    expect(routeForPath("/users/user-1")?.roles).toEqual(["ADMIN"]);
+    expect(routeForPath("/profile")?.roles).toEqual(["DOCTOR", "STAFF", "ADMIN"]);
+    expect(routeForPath("/auth")).toBeUndefined();
   });
 });
 

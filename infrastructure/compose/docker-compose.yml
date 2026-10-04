@@ -56,6 +56,8 @@ services:
       SUPABASE_URL: ${SUPABASE_URL:?SUPABASE_URL is required by User Service}
       SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:?SUPABASE_ANON_KEY is required by User Service}
       AUTH_PROVIDER_TIMEOUT_MS: ${AUTH_PROVIDER_TIMEOUT_MS:-15000}
+      DOCTOR_SERVICE_URL: http://doctor-service:3002
+      APPOINTMENT_SERVICE_URL: http://appointment-service:3003
     expose:
       - "3001"
     healthcheck:
@@ -103,6 +105,7 @@ services:
       APPOINTMENT_SERVICE_PORT: 3003
       DATABASE_URL: ${APPOINTMENT_DATABASE_URL:-}
       DATABASE_SSL: ${APPOINTMENT_DATABASE_SSL:-true}
+      DATABASE_SSL_REJECT_UNAUTHORIZED: ${APPOINTMENT_DATABASE_SSL_REJECT_UNAUTHORIZED:-false}
       DOCTOR_SERVICE_URL: http://doctor-service:3002
       DOCTOR_INTERNAL_API_TOKEN: ${DOCTOR_INTERNAL_API_TOKEN:?Set DOCTOR_INTERNAL_API_TOKEN for Doctor and Appointment services}
       NOTIFICATION_SERVICE_URL: http://notification-service:3005
@@ -134,6 +137,7 @@ services:
       MEDICAL_RECORD_SERVICE_PORT: 3004
       DATABASE_URL: ${MEDICAL_RECORD_DATABASE_URL:?MEDICAL_RECORD_DATABASE_URL is required for Medical Record Service}
       DATABASE_SSL: ${MEDICAL_RECORD_DATABASE_SSL:-true}
+      DATABASE_SSL_REJECT_UNAUTHORIZED: ${MEDICAL_RECORD_DATABASE_SSL_REJECT_UNAUTHORIZED:-false}
       APPOINTMENT_SERVICE_URL: http://appointment-service:3003
       USER_SERVICE_URL: http://user-service:3001
       DOCTOR_SERVICE_URL: http://doctor-service:3002

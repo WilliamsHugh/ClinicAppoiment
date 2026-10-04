@@ -41,8 +41,8 @@ Flutter và Next.js chỉ nhận URL của API Gateway; hai frontend không nh�
 database URL và không gọi trực tiếp service nội bộ. User, Doctor, Medical Record và
 Notification Service cần database để khởi động. Doctor Service dùng PostgreSQL riêng
 và cần chạy migration trước khi khởi động.
-Appointment Service hiện vẫn lưu appointment trong bộ nhớ; Booking cần nối persistence
-trước khi kiểm thử độ bền dữ liệu qua lần khởi động lại.
+Appointment Service lưu appointment, history, idempotency và outbox trong PostgreSQL
+riêng; cần chạy migration của service trước khi khởi động.
 
 Flutter SDK được đặt local tại `.tools/flutter`. Nếu máy chưa nhận Flutter toàn cục, dùng trực tiếp binary này.
 
@@ -67,6 +67,11 @@ npm run dev:appointment
 npm run dev:medical-record
 npm run dev:notification
 ```
+
+Mỗi lệnh backend trên tự nạp file `gateway/api-gateway/.env` hoặc
+`services/<service>/.env`. Tạo file đó từ `.env.example` tương ứng và không commit
+credential thật. Chỉ User Service được cấu hình `SUPABASE_URL` và
+`SUPABASE_ANON_KEY`; các service còn lại chỉ nhận `DATABASE_URL` của database mình sở hữu.
 
 Chạy Patient App trên Android emulator:
 
@@ -99,17 +104,21 @@ Supabase Auth trong User Service.
 npm run build
 npm run build:patient
 npm run lint
+npm test
+npm run analyze:patient
+npm run test:patient
 npm audit --omit=dev --audit-level=high
 ```
 
-Doctor Service đã có PostgreSQL repository và migration riêng; hướng dẫn migration và
-smoke test qua Gateway nằm trong `services/doctor-service/README.md`. Appointment Service
-vẫn dùng repository in-memory, nên kết quả smoke về slot đã đặt chỉ có hiệu lực trong
-thời gian process Appointment đang chạy. Booking phải hoàn thiện persistence trước khi
-xác nhận luồng đặt lịch bền vững end-to-end.
+Doctor và Appointment Service đã có PostgreSQL repository và migration riêng.
+Hướng dẫn migration và smoke qua Gateway nằm trong README của từng service.
+Luồng khám end-to-end với Medical Record và Notification vẫn cần kiểm thử trên
+service và database đã tích hợp trước khi nghiệm thu.
 
 ## Tài Liệu
 
+- Quy tắc bắt buộc cho agent và phối hợp nhánh: [.agents/rules.md](.agents/rules.md)
 - Thiết kế hệ thống: `docs/system-design.md`
 - Hợp đồng API v1: `docs/api-contract.md`
+- Hợp đồng thiết kế UI cho thành viên và agent: `docs/ui-design-contract.md`
 - Supabase migrations riêng từng service: `infrastructure/supabase/<service>/schema.sql`

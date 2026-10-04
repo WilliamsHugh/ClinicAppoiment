@@ -1,14 +1,25 @@
 import type { Express } from "express";
 import request from "supertest";
-import { beforeAll, describe, expect, it } from "vitest";
+import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
+import { UserRepository, type UserProfile } from "../src/repository.js";
 
 let app: Express;
+const user: UserProfile = {
+  id: "10000000-0000-4000-8000-000000000001",
+  supabaseAuthUserId: "20000000-0000-4000-8000-000000000001",
+  email: "patient@example.com",
+  fullName: "Patient One",
+  role: "PATIENT",
+  status: "ACTIVE",
+};
 
 beforeAll(async () => {
   process.env.DATABASE_URL = "postgresql://postgres:postgres@127.0.0.1:1/postgres";
   process.env.NODE_ENV = "test";
   ({ app } = await import("../src/index.js"));
 });
+
+afterEach(() => vi.restoreAllMocks());
 
 describe("User Service authorization", () => {
   it("requires trusted identity headers for a public API", async () => {
@@ -32,6 +43,29 @@ describe("User Service authorization", () => {
       .set("X-User-Id", "patient-user")
       .set("X-Role", "PATIENT")
       .send({ role: "ADMIN" });
+    expect(response.status).toBe(400);
+    expect(response.body.error.code).toBe("VALIDATION_ERROR");
+  });
+
+  it("never exposes the Supabase Auth ID through public profile APIs", async () => {
+    vi.spyOn(UserRepository.prototype, "findUserById").mockResolvedValue(user);
+    const response = await request(app)
+      .get("/api/v1/auth/me")
+      .set("X-User-Id", user.id)
+      .set("X-Role", "PATIENT");
+
+    expect(response.status).toBe(200);
+    expect(response.body.data).toMatchObject({ id: user.id, role: "PATIENT" });
+    expect(response.body.data).not.toHaveProperty("supabaseAuthUserId");
+  });
+
+  it("validates patient profile fields before reaching the repository", async () => {
+    const response = await request(app)
+      .patch("/api/v1/patients/30000000-0000-4000-8000-000000000001")
+      .set("X-User-Id", user.id)
+      .set("X-Role", "PATIENT")
+      .send({ dateOfBirth: "not-a-date", gender: "UNKNOWN" });
+
     expect(response.status).toBe(400);
     expect(response.body.error.code).toBe("VALIDATION_ERROR");
   });

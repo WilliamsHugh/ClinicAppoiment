@@ -269,7 +269,7 @@ describe("Gateway proxy boundary", () => {
     expect(response.body.data.headers.authorization).toBe("Bearer private-token");
     expect(response.body.data.headers["x-user-id"]).toBe("verified-user");
     expect(response.body.data.headers["x-role"]).toBe("ADMIN");
-    expect(response.body.data.headers["x-supabase-auth-user-id"]).toBe("verified-auth-user");
+    expect(response.body.data.headers["x-supabase-auth-user-id"]).toBeUndefined();
     expect(response.body.data.headers["x-internal-token"]).toBeUndefined();
     expect(response.body.data.headers["x-request-id"]).toBe("request-123");
   });

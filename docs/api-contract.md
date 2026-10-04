@@ -2,6 +2,10 @@
 
 Tài liệu này là hợp đồng API chuẩn cho các nhánh triển khai tiếp theo của Clinic Appointment System. Frontend và service phải tuân thủ hợp đồng này; nếu cần thay đổi, cập nhật tài liệu trước hoặc cùng pull request có thay đổi API.
 
+Mọi thay đổi giao diện Flutter hoặc Next.js đồng thời phải tuân thủ
+[`docs/ui-design-contract.md`](ui-design-contract.md). Giao diện không được tự diễn giải lại role,
+quyền truy cập, trạng thái nghiệp vụ, endpoint hoặc cấu trúc lỗi được định nghĩa trong tài liệu này.
+
 ## 1. Phạm Vi Và Nguyên Tắc
 
 - API public chỉ truy cập qua API Gateway, prefix `/api/v1`.
@@ -36,9 +40,9 @@ Express mount path có biên segment nên `/api/v1/doctors` và mọi đường 
 Doctor Service, nhưng `/api/v1/doctors-other` không match. Gateway tái tạo nguyên đường dẫn public;
 service nhận đúng path, query và method mà frontend gửi. Không có quy ước strip prefix. Request body,
 `Authorization`, `Idempotency-Key`, content headers và response phù hợp được proxy chuyển tiếp.
-Gateway luôn xóa/ghi đè `X-User-Id`, `X-Role`, `X-Supabase-Auth-User-Id` từ client và xóa
-`X-Internal-Token` trước khi thêm
-danh tính đã xác minh.
+Gateway luôn xóa `X-User-Id`, `X-Role`, `X-Supabase-Auth-User-Id` và `X-Internal-Token`
+do client gửi, sau đó chỉ thêm `X-User-Id` và `X-Role` từ danh tính đã xác minh.
+Supabase Auth user ID và credential nội bộ không được chuyển sang service nghiệp vụ.
 
 Mặc định mọi nhóm nghiệp vụ yêu cầu đăng nhập. Ngoại lệ public hiện chỉ gồm `GET /health`, tài liệu
 Gateway và `POST /api/v1/auth/login|register|refresh`; logout cần access token và refresh token.
@@ -223,11 +227,13 @@ Gateway không xử lý credential, còn frontend không nhận cấu hình Supa
 | `GET` | `/api/v1/users/{userId}` | `ADMIN` | Không có |
 | `PATCH` | `/api/v1/users/{userId}/status` | `ADMIN` | `{ "status": "ACTIVE" \| "INACTIVE" \| "LOCKED" }` |
 | `PATCH` | `/api/v1/users/{userId}/role` | `ADMIN` | `{ "role": "PATIENT" \| "DOCTOR" \| "STAFF" \| "ADMIN" }` |
-| `GET` | `/api/v1/patients` | `STAFF`, `ADMIN`; `DOCTOR` trong phạm vi lịch khám | `page`, `limit`, `q` |
-| `GET` | `/api/v1/patients/{patientId}` | Bệnh nhân chính mình; `DOCTOR`/`STAFF`/`ADMIN` theo phạm vi | Không có |
+| `GET` | `/api/v1/patients` | `STAFF`, `ADMIN`; `DOCTOR` trong phạm vi lịch khám | `page`, `limit`, `q`; `DOCTOR` bắt buộc gửi `appointmentId` |
+| `GET` | `/api/v1/patients/{patientId}` | Bệnh nhân chính mình; `DOCTOR` theo lịch khám; `STAFF`/`ADMIN` | `DOCTOR` bắt buộc gửi `appointmentId` |
 | `PATCH` | `/api/v1/patients/{patientId}` | Bệnh nhân chính mình hoặc `ADMIN` | Patient profile fields |
 
 `UserProfile` response gồm `id`, `supabaseAuthUserId` không trả cho frontend, `email`, `fullName`, `phone`, `role`, `status`, `createdAt`, `updatedAt`. `PatientProfile` gồm `id`, `userId`, `dateOfBirth`, `gender`, `address`, `emergencyContact`, `insuranceNumber`, timestamps. Chỉ trả field patient profile cần thiết cho actor; không đưa `insuranceNumber` vào màn hình/response không cần thiết.
+
+Khi actor là `DOCTOR`, User Service đối chiếu `appointmentId` với Doctor Service và Appointment Service qua API nội bộ. Patient của appointment phải đúng với tài nguyên được yêu cầu, doctor phải đang hoạt động và được phân công cho appointment; appointment `CANCELLED` hoặc `NO_SHOW` không cấp quyền truy cập.
 
 ### Doctor, Specialty Và Schedule
 
@@ -423,7 +429,7 @@ ghi outbox cùng transaction tạo/cập nhật hồ sơ; worker gửi lại b�
 
 | Public prefix | Owner service |
 |---|---|
-| `/api/v1/auth` | Gateway cho session endpoint; User Service cho `/me` |
+| `/api/v1/auth` | User Service; Gateway chỉ xác thực ngoại lệ cần thiết và proxy theo prefix |
 | `/api/v1/users`, `/api/v1/patients` | User Service |
 | `/api/v1/specialties`, `/api/v1/doctors`, `/api/v1/schedules` | Doctor Service |
 | `/api/v1/appointments` | Appointment Service |
@@ -436,12 +442,15 @@ Gateway chịu trách nhiệm xác thực, rate limit, request ID, CORS, routing
 
 Các mục dưới đây là gap giữa scaffold hiện tại và contract; không phải ngoại lệ của contract:
 
-- Appointment Service dùng PostgreSQL cho appointment, history, idempotency và occupancy; constraint chặn các khoảng giờ active chồng lấn của cùng doctor.
-- Doctor Service đã dùng PostgreSQL và các list Doctor/Specialty/Schedule/Time-off có pagination; migration và smoke test database thật vẫn cần xác nhận trên project Doctor riêng.
-- Appointment dùng transaction và exclusion constraint PostgreSQL cho create/reschedule; chạy integration test trên database test riêng trước nghiệm thu.
-- `POST /api/v1/notifications` hiện được implement trong Notification Service; contract v1 không cho client gọi route này, cần bỏ hoặc chặn qua Gateway.
-- Internal notification hiện nhận `{ type, payload }` và chưa deduplicate event; bổ sung `eventId` trước khi dựa vào retry.
-- Medical Record Service scaffold có route `/api/v1/patients/{patientId}/medical-records`, nhưng prefix `/api/v1/patients` thuộc User Service ở Gateway. Không expose route này; dùng filter `patientId` trên `/api/v1/medical-records` theo contract.
+- Doctor và Appointment Service trên nhánh PR #14 đã dùng PostgreSQL; Appointment dùng
+  transaction và exclusion constraint để chặn các khoảng giờ active chồng lấn. Cần smoke
+  qua Gateway trên cây tích hợp trước nghiệm thu.
+- Notification Service đã deduplicate event theo `eventId`; receiver và reminder worker
+  còn cần tích hợp xác thực caller và internal Appointment lookup trên cây mã chung.
+- Medical Record completion còn cần dùng internal Appointment command có xác thực trên
+  cây mã chung; không tự dựng `X-User-Id`/`X-Role` để gọi endpoint public.
+- Các internal User/Patient lookup còn cần service identity và caller authorization theo M2.
+- OpenAPI của một số service chưa mô tả đầy đủ request, response, error và security.
 - Một số route được liệt kê trong `system-design.md` chưa được code. Triển khai route theo bảng trong tài liệu này và bổ sung Swagger/OpenAPI.
 - Patient App lấy danh tính actor từ phiên do Gateway cấp và không gửi `patientId` cố định khi bệnh nhân tự đặt lịch.
 
@@ -457,7 +466,7 @@ Các mục dưới đây là gap giữa scaffold hiện tại và contract; khô
 1. **Member 1 / Gateway:** chốt và triển khai auth, role, error, request ID, health và Swagger theo contract.
 2. **Member 2 / User:** dùng `UserProfile`/`PatientProfile`, Auth user mapping và quyền theo contract.
 3. **Member 3 / Doctor + Appointment:** triển khai endpoint và state machine; bắt buộc transaction/constraint cho slot.
-4. **Member 4 / Clients + Records + Notification:** tích hợp endpoint public, chỉ dùng Gateway; triển khai internal event theo contract.
+4. **Member 4 / Medical Record + Notification:** triển khai hai service, internal event và giao diện domain sau khi thiết kế được duyệt.
 5. **Cả nhóm:** chạy contract/integration test, build và Docker Compose; rà soát không có truy vấn xuyên schema.
 
 ## 12. Contract Test Checklist

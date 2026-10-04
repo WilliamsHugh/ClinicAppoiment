@@ -19,10 +19,13 @@
     "smoke:doctor": "node scripts/smoke-doctor.mjs",
     "dev:appointment": "node scripts/with-env.mjs services/appointment-service/.env npm run dev -w @clinic/appointment-service",
     "db:migrate:appointment": "node scripts/with-env.mjs services/appointment-service/.env npm run db:migrate -w @clinic/appointment-service",
-    "dev:medical-record": "npm run dev -w @clinic/medical-record-service",
+    "dev:medical-record": "CLINIC_ENV_FILE=services/medical-record-service/.env scripts/with-env.sh npm run dev -w @clinic/medical-record-service",
     "dev:notification": "CLINIC_ENV_FILE=services/notification-service/.env scripts/with-env.sh npm run dev -w @clinic/notification-service",
+    "analyze:patient": "scripts/with-env.sh scripts/flutter-patient.sh analyze",
+    "test:patient": "scripts/with-env.sh scripts/flutter-patient.sh test",
     "build": "npm run build --workspaces --if-present",
-    "lint": "npm run lint --workspaces --if-present"
+    "lint": "npm run lint --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present"
   },
   "devDependencies": {
     "typescript": "^5.9.3"

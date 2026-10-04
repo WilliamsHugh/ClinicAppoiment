@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState, useTransition } from "react";
-import { createBrowserApiClient } from "../../lib/api/client";
+import { useEffect, useState } from "react";
+import { createBrowserApiClient, type PaginatedData } from "../../lib/api/client";
 import { useSession } from "../../lib/session/session-context";
 
 export interface PatientItem {
@@ -19,15 +19,15 @@ export interface PatientItem {
 export interface PatientSelectorProps {
   onSelect: (patient: PatientItem) => void;
   selectedPatientId?: string;
+  appointmentId?: string;
 }
 
-export function PatientSelector({ onSelect, selectedPatientId }: PatientSelectorProps) {
+export function PatientSelector({ onSelect, selectedPatientId, appointmentId }: PatientSelectorProps) {
   const session = useSession();
   const [searchTerm, setSearchTerm] = useState("");
   const [patients, setPatients] = useState<PatientItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [, startTransition] = useTransition();
 
   const loadPatients = async (query: string = "") => {
     if (session.status !== "authenticated") return;
@@ -35,10 +35,10 @@ export function PatientSelector({ onSelect, selectedPatientId }: PatientSelector
     setError(null);
     try {
       const api = createBrowserApiClient(session);
-      const res = await api.get<PatientItem[]>("/api/v1/patients", {
-        query: { q: query || undefined, limit: 10 },
+      const res = await api.get<PaginatedData<PatientItem>>("/api/v1/patients", {
+        query: { q: query || undefined, limit: 10, appointmentId },
       });
-      setPatients(res.data ?? []);
+      setPatients(res.data.items);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Không thể tải danh sách bệnh nhân");
     } finally {
@@ -47,15 +47,13 @@ export function PatientSelector({ onSelect, selectedPatientId }: PatientSelector
   };
 
   useEffect(() => {
-    loadPatients();
-  }, [session.status]);
+    const timer = window.setTimeout(() => void loadPatients(searchTerm), 250);
+    return () => window.clearTimeout(timer);
+  }, [session.status, searchTerm, appointmentId]);
 
   const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const val = e.target.value;
     setSearchTerm(val);
-    startTransition(() => {
-      loadPatients(val);
-    });
   };
 
   return (

@@ -48,7 +48,6 @@ function proxyTo(target: string, upstreamPrefix: string, timeoutMs: number, cors
         if (req.user) {
           proxyReq.setHeader("X-User-Id", req.user.id);
           proxyReq.setHeader("X-Role", req.user.role);
-          proxyReq.setHeader("X-Supabase-Auth-User-Id", req.user.authUserId);
         }
         if (req.requestId) proxyReq.setHeader("X-Request-Id", req.requestId);
       },
