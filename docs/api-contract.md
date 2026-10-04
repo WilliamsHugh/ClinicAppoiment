@@ -308,6 +308,8 @@ COMPLETED, CANCELLED, NO_SHOW -> không chuyển tiếp
 
 Chuyển trạng thái không hợp lệ trả `409 APPOINTMENT_INVALID_STATUS_TRANSITION`. Appointment response gồm `id`, `patientId`, `doctorId`, `specialtyId?`, `scheduledStartAt`, `scheduledEndAt`, `reason?`, `status`, `createdAt`, `updatedAt`.
 
+Appointment Service đối chiếu PATIENT qua User Service và DOCTOR qua Doctor Service; DOCTOR chỉ xem/hoàn tất lịch gắn với doctor profile đang active của mình. STAFF/ADMIN xem và vận hành lịch theo các route ghi trong bảng, nhưng không hoàn tất lịch thay bác sĩ. Reschedule chỉ áp dụng cho `PENDING`/`CONFIRMED` và phải chọn thời gian tương lai. Khi lookup profile bắt buộc bị lỗi, service trả `503 DEPENDENCY_UNAVAILABLE`; ID appointment sai định dạng trả `400 VALIDATION_ERROR`.
+
 ### Medical Record
 
 | Method | Path | Quyền | Query/body |
@@ -366,7 +368,7 @@ Các route này không được mount vào Gateway public router. Trong MVP gọ
 | Medical Record/Appointment -> User | `GET /internal/v1/patients/{patientId}` | Không có | `{ "id": string, "userId": string }` |
 
 | Medical Record -> User | `GET /internal/v1/patients/by-user/{userId}` | Không có | `{ "id": string, "userId": string }` |
-| Medical Record -> Doctor | `GET /internal/v1/doctors/by-user/{userId}` | Không có | `{ "id": string, "userId": string, "isActive": boolean }` |
+| Appointment/Medical Record -> Doctor | `GET /internal/v1/doctors/by-user/{userId}` | Header `X-Internal-Token` là credential backend; `userId` là UUID; chuyển tiếp `X-Request-Id` nếu có | `200 { "success": true, "data": { "id": UUID, "userId": UUID, "isActive": boolean } }`; thiếu/sai token trả `401 INTERNAL_AUTH_REQUIRED`; không có profile trả `404 DOCTOR_NOT_FOUND` |
 | Appointment/Medical Record -> Notification | `POST /internal/v1/notifications` | `{ "eventId": string, "type": string, "payload": object }` | `201` khi nhận lần đầu; `200` khi event đã nhận trước đó |
 
 Doctor Service yêu cầu `DOCTOR_INTERNAL_API_TOKEN` tối thiểu 32 byte khi khởi động. Appointment Service gửi token này khi xác minh slot và trả `503 DOCTOR_VERIFICATION_UNAVAILABLE` nếu credential thiếu hoặc Doctor Service không thể xác minh. Token chỉ nằm trong cấu hình backend, không gửi tới Gateway hay frontend. `GET /health` của Doctor Service trả `200` khi Doctor database sẵn sàng, hoặc `503 DATABASE_UNAVAILABLE` với envelope lỗi chung khi truy vấn database thất bại.

@@ -1,7 +1,8 @@
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
-import { createAppointmentPool, IdempotencyMismatchError, PostgresAppointmentRepository,
+import { createAppointmentPool, ConcurrentChangeError, IdempotencyMismatchError,
+  InvalidTransitionError, PostgresAppointmentRepository,
   SlotConflictError, type BookingFingerprint } from "../src/postgres-repository.js";
 
 const databaseUrl = process.env.APPOINTMENT_TEST_DATABASE_URL;
@@ -84,5 +85,27 @@ suite("Appointment PostgreSQL integration (disposable database only)", () => {
       "2030-01-07T01:15:00.000Z", "2030-01-07T01:45:00.000Z", actorId))
       .rejects.toBeInstanceOf(SlotConflictError);
     expect((await repo.findById(made.appointment.id))?.scheduledStartAt).toBe(other.scheduledStartAt);
+  });
+
+  it("serializes competing transitions and writes exactly one matching history row", async () => {
+    const interval = { ...base, scheduledStartAt: "2030-01-07T05:00:00.000Z",
+      scheduledEndAt: "2030-01-07T05:30:00.000Z" };
+    const made = await repo.createBooking({ ...interval, createdBy: actorId }, "transition-key", interval);
+    const results = await Promise.allSettled([
+      repo.transition(made.appointment.id, "CONFIRMED", actorId, undefined, "PENDING"),
+      repo.transition(made.appointment.id, "CONFIRMED", actorId, undefined, "PENDING")
+    ]);
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    expect(results.find((result) => result.status === "rejected")?.reason)
+      .toBeInstanceOf(ConcurrentChangeError);
+    const persisted = await repo.findById(made.appointment.id);
+    expect(persisted?.status).toBe("CONFIRMED");
+    const history = await pool.query(`SELECT from_status, to_status FROM appointment_service.appointment_status_history
+      WHERE appointment_id = $1 ORDER BY created_at ASC`, [made.appointment.id]);
+    expect(history.rows).toHaveLength(2);
+    expect(history.rows[1]).toMatchObject({ from_status: "PENDING", to_status: "CONFIRMED" });
+    await expect(repo.transition(made.appointment.id, "COMPLETED", actorId))
+      .rejects.toBeInstanceOf(InvalidTransitionError);
+    expect((await repo.findById(made.appointment.id))?.status).toBe("CONFIRMED");
   });
 });

@@ -1,6 +1,7 @@
 import type { AppointmentStatus } from "@clinic/shared-types";
 import { randomUUID } from "crypto";
-import { ConcurrentChangeError, IdempotencyMismatchError, RescheduleStateError, SlotConflictError, type BookingFingerprint, type BookingInput, type AppointmentFilters } from "./postgres-repository.js";
+import { ConcurrentChangeError, IdempotencyMismatchError, InvalidTransitionError, RescheduleStateError, SlotConflictError, type BookingFingerprint, type BookingInput, type AppointmentFilters } from "./postgres-repository.js";
+import { canReschedule, canTransition } from "./state-machine.js";
 
 export type Appointment = {
   id: string;
@@ -118,7 +119,7 @@ export class AppointmentRepository {
   rescheduleBooking(id: string, start: string, end: string, actorId: string, reason?: string) {
     const item = this.findById(id);
     if (!item) return null;
-    if (!["PENDING", "CONFIRMED"].includes(item.status)) throw new RescheduleStateError();
+    if (!canReschedule(item.status)) throw new RescheduleStateError();
     if (this.overlaps(item.doctorId, start, end, id)) throw new SlotConflictError();
     if (item.scheduledStartAt === start && item.scheduledEndAt === end && reason === undefined)
       return { appointment: item, eventId: null };
@@ -154,6 +155,7 @@ export class AppointmentRepository {
     const appointment = this.findById(id);
     if (!appointment) return null;
     if (expectedStatus && appointment.status !== expectedStatus) throw new ConcurrentChangeError();
+    if (!canTransition(appointment.status, toStatus)) throw new InvalidTransitionError();
     const fromStatus = appointment.status;
     appointment.status = toStatus;
     appointment.updatedBy = changedBy;

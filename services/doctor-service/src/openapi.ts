@@ -65,6 +65,10 @@ export const doctorOpenApi = {
       { parameters: [parameter("doctorId", "path"), parameter("timeOffId", "path")], requestBody: body(ref("TimeOffUpdate")) }) },
     "/api/v1/doctors/{id}/available-slots": { get: operation("List candidate slots, excluding occupied slots when Appointment integration is configured",
       response({ type: "array", items: ref("Slot") }), { parameters: [parameter("id", "path"), parameter("date", "query", true)] }) },
+    "/internal/v1/doctors/by-user/{userId}": { get: { ...operation("Resolve a doctor's profile for an internal caller",
+      response({ type: "object", required: ["id", "userId", "isActive"], properties: {
+        id: { type: "string", format: "uuid" }, userId: { type: "string", format: "uuid" }, isActive: { type: "boolean" }
+      } }), { parameters: [parameter("userId", "path")], internal: true }), security: [{ internalToken: [] }] } },
     "/internal/v1/doctors/verify-slot": { post: { ...operation("Verify active doctor and exact schedule slot",
       response({ type: "object", required: ["valid"], properties: { valid: { type: "boolean" }, reason: { type: "string" } } }),
       { requestBody: body(ref("VerifySlot")), internal: true }), security: [{ internalToken: [] }] } }

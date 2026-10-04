@@ -2,7 +2,7 @@ import request from "supertest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { app, repository } from "../src/index.js";
 
-const patientHeaders = { "X-User-Id": "user-patient-1", "X-Role": "PATIENT" };
+const patientHeaders = { "X-User-Id": "00000000-0000-4000-8000-000000000301", "X-Role": "PATIENT" };
 const slot = {
   doctorId: "00000000-0000-4000-8000-000000000011",
   scheduledStartAt: "2026-10-01T08:00:00.000Z",
@@ -16,13 +16,13 @@ beforeEach(() => {
   vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) => {
     const url = String(input);
     if (url.includes("/internal/v1/patients/by-user/")) {
-      return new Response(JSON.stringify({ success: true, data: { id: "patient-owned", userId: "user-patient-1" } }), { status: 200 });
+      return new Response(JSON.stringify({ success: true, data: { id: "patient-owned", userId: patientHeaders["X-User-Id"] } }), { status: 200 });
     }
     if (url.endsWith("/internal/v1/doctors/verify-slot")) {
       return new Response(JSON.stringify({ success: true, data: { valid: true } }), { status: 200 });
     }
     if (url.includes("/internal/v1/patients/")) {
-      return new Response(JSON.stringify({ success: true, data: { id: "patient-owned", userId: "user-patient-1" } }), { status: 200 });
+      return new Response(JSON.stringify({ success: true, data: { id: "patient-owned", userId: patientHeaders["X-User-Id"] } }), { status: 200 });
     }
     if (url.endsWith("/internal/v1/notifications")) {
       return new Response(JSON.stringify({ success: true, data: {} }), { status: 201 });
@@ -37,7 +37,7 @@ afterEach(() => {
 });
 
 describe("Appointment Service authorization", () => {
-  it("derives the patient profile instead of trusting patientId from the client", async () => {
+  it("rejects an explicit patientId that differs from the authenticated patient", async () => {
     const response = await request(app)
       .post("/api/v1/appointments")
       .set(patientHeaders)
@@ -45,13 +45,11 @@ describe("Appointment Service authorization", () => {
       .set("X-Request-Id", "booking-verify-1")
       .send({ ...slot, patientId: "00000000-0000-4000-8000-000000000099" });
 
-    expect(response.status).toBe(201);
-    expect(response.body.data.patientId).toBe("patient-owned");
+    expect(response.status).toBe(403);
+    expect(response.body.error.code).toBe("ACCESS_DENIED");
     const doctorCall = vi.mocked(fetch).mock.calls.find(([url]) =>
       String(url).endsWith("/internal/v1/doctors/verify-slot"));
-    expect(doctorCall).toBeDefined();
-    expect(new Headers(doctorCall![1]?.headers).get("X-Internal-Token")).toBe(internalToken);
-    expect(new Headers(doctorCall![1]?.headers).get("X-Request-Id")).toBe("booking-verify-1");
+    expect(doctorCall).toBeUndefined();
   });
 
   it("fails closed when the Doctor internal credential is missing", async () => {
@@ -91,7 +89,7 @@ describe("Appointment Service authorization", () => {
     repository.create({ ...slot, doctorId: "doctor-2", patientId: "patient-other", createdBy: "staff-user" });
 
     const response = await request(app)
-      .get("/api/v1/appointments?patientId=patient-other")
+      .get("/api/v1/appointments?patientId=00000000-0000-4000-8000-000000000099")
       .set(patientHeaders);
 
     expect(response.status).toBe(200);
@@ -110,12 +108,12 @@ describe("Appointment Service authorization", () => {
     expect(response.body.error.code).toBe("ACCESS_DENIED");
   });
 
-  it("returns a standardized 404 for an unknown endpoint in its prefix", async () => {
+  it("rejects a malformed appointment ID before querying storage", async () => {
     const response = await request(app)
       .get("/api/v1/appointments/new-endpoint")
       .set(patientHeaders);
-    expect(response.status).toBe(404);
-    expect(response.body.error.code).toBe("APPOINTMENT_NOT_FOUND");
+    expect(response.status).toBe(400);
+    expect(response.body.error.code).toBe("VALIDATION_ERROR");
   });
 });
 

@@ -118,6 +118,14 @@ export function createDoctorApp(repository: DoctorRepository, users: UserDirecto
     }
   }
 
+  function requireInternalCaller(req: Request) {
+    const supplied = req.header("X-Internal-Token");
+    const actual = Buffer.from(supplied ?? "", "utf8");
+    if (actual.length !== internalCredential.length || !timingSafeEqual(actual, internalCredential)) {
+      throw new ApiError(401, "INTERNAL_AUTH_REQUIRED", "Internal service credential is required");
+    }
+  }
+
   async function occupied(doctorId: string, from: string, to?: string, requestId?: string): Promise<Slot[]> {
     if (!appointments) throw new ApiError(503, "APPOINTMENT_AVAILABILITY_UNAVAILABLE", "Appointment occupancy check is not configured");
     return appointments.occupied(doctorId, from, to, requestId);
@@ -275,11 +283,7 @@ export function createDoctorApp(repository: DoctorRepository, users: UserDirecto
   }));
 
   app.post("/internal/v1/doctors/verify-slot", wrap(async (req, res) => {
-    const supplied = req.header("X-Internal-Token");
-    const actual = Buffer.from(supplied ?? "", "utf8");
-    if (actual.length !== internalCredential.length || !timingSafeEqual(actual, internalCredential)) {
-      throw new ApiError(401, "INTERNAL_AUTH_REQUIRED", "Internal service credential is required");
-    }
+    requireInternalCaller(req);
     const input = parse(verifyBody, req.body);
     const doctor = await repository.findDoctor(input.doctorId);
     if (!doctor?.isActive) { ok(res, { valid: false, reason: "DOCTOR_NOT_AVAILABLE" }); return; }
@@ -288,6 +292,14 @@ export function createDoctorApp(repository: DoctorRepository, users: UserDirecto
     const timeOffs = await repository.allTimeOffs(input.doctorId, window.from, window.to);
     const valid = validExactSlot(input.startAt, input.endAt, schedules, timeOffs);
     ok(res, { valid, ...(valid ? {} : { reason: "SLOT_OUTSIDE_SCHEDULE" }) });
+  }));
+
+  app.get("/internal/v1/doctors/by-user/:userId", wrap(async (req, res) => {
+    requireInternalCaller(req);
+    const userId = parse(uuid, req.params.userId);
+    const doctor = await repository.findDoctorByUser(userId);
+    if (!doctor) throw new ApiError(404, "DOCTOR_NOT_FOUND", "Doctor profile not found");
+    ok(res, { id: doctor.id, userId: doctor.userId, isActive: doctor.isActive });
   }));
 
   app.use((_req, res) => fail(res, 404, "ROUTE_NOT_FOUND", "Route not found"));

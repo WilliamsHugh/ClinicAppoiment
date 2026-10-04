@@ -3,6 +3,7 @@ import pg from "pg";
 import type { PoolClient } from "pg";
 import type { AppointmentStatus } from "@clinic/shared-types";
 import type { Appointment } from "./repository.js";
+import { canReschedule, canTransition } from "./state-machine.js";
 
 type Pool = InstanceType<typeof pg.Pool>;
 type Row = Record<string, unknown>;
@@ -20,6 +21,7 @@ export class SlotConflictError extends Error {}
 export class IdempotencyMismatchError extends Error {}
 export class RescheduleStateError extends Error {}
 export class ConcurrentChangeError extends Error {}
+export class InvalidTransitionError extends Error {}
 
 const columns = `a.id, a.patient_id AS "patientId", a.doctor_id AS "doctorId",
   a.specialty_id AS "specialtyId", a.scheduled_start_at AS "scheduledStartAt",
@@ -194,7 +196,7 @@ export class PostgresAppointmentRepository {
         `SELECT ${columns} FROM appointment_service.appointments a WHERE id = $1 FOR UPDATE`, [id]);
       if (!current.rows[0]) return null;
       const before = appointment(current.rows[0]);
-      if (!["PENDING", "CONFIRMED"].includes(before.status)) throw new RescheduleStateError();
+      if (!canReschedule(before.status)) throw new RescheduleStateError();
       if (before.scheduledStartAt === startAt && before.scheduledEndAt === endAt && reason === undefined) {
         return { appointment: before, eventId: null };
       }
@@ -222,6 +224,7 @@ export class PostgresAppointmentRepository {
       if (!current.rows[0]) return null;
       const before = appointment(current.rows[0]);
       if (expectedStatus && before.status !== expectedStatus) throw new ConcurrentChangeError();
+      if (!canTransition(before.status, toStatus)) throw new InvalidTransitionError();
       const result = await client.query(
         `UPDATE appointment_service.appointments SET status = $2, updated_by = $3,
            updated_at = now() WHERE id = $1 RETURNING *`, [id, toStatus, changedBy]);

@@ -75,6 +75,20 @@ describe("Doctor API authorization and slot contract", () => {
     expect(allowed.body.data).toEqual({ valid: true });
   });
 
+  it("resolves doctor ownership through a token-protected internal lookup", async () => {
+    const { app, repository } = fixture();
+    const path = `/internal/v1/doctors/by-user/${userId}`;
+    expect((await request(app).get(path).set("X-Role", "ADMIN")).status).toBe(401);
+    expect(repository.findDoctorByUser).not.toHaveBeenCalled();
+    const found = await request(app).get(path).set("X-Internal-Token", internalToken);
+    expect(found.status).toBe(200);
+    expect(found.body.data).toEqual({ id: doctorId, userId, isActive: true });
+    vi.mocked(repository.findDoctorByUser).mockResolvedValueOnce(null);
+    expect((await request(app).get(path).set("X-Internal-Token", internalToken)).status).toBe(404);
+    expect((await request(app).get("/internal/v1/doctors/by-user/bad-id")
+      .set("X-Internal-Token", internalToken)).status).toBe(400);
+  });
+
   it("refuses a weak internal token at startup", () => {
     const { repository, users, appointments } = fixture();
     expect(() => createDoctorApp(repository as unknown as DoctorRepository, users, appointments, "short"))
@@ -90,6 +104,7 @@ describe("Doctor API authorization and slot contract", () => {
     expect(response.body.paths["/api/v1/time-offs/{id}"]).toBeUndefined();
     expect(response.body.paths["/internal/v1/doctors/verify-slot"].post).toBeDefined();
     expect(response.body.paths["/internal/v1/doctors/verify-slot"].post.security).toEqual([{ internalToken: [] }]);
+    expect(response.body.paths["/internal/v1/doctors/by-user/{userId}"].get.security).toEqual([{ internalToken: [] }]);
     expect(response.body.components.securitySchemes.internalToken.name).toBe("X-Internal-Token");
     expect(response.body.paths["/health"].get.responses["503"]).toBeDefined();
   });
