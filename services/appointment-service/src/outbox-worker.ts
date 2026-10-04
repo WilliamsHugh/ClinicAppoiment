@@ -1,7 +1,8 @@
 import { z } from "zod";
 import { type OutboxEvent, PostgresAppointmentRepository } from "./postgres-repository.js";
 
-const patientResponse = z.object({ success: z.literal(true), data: z.object({ userId: z.string().uuid() }) });
+const patientResponse = z.object({ success: z.literal(true), data: z.object({ id: z.string().uuid(),
+  userId: z.string().uuid() }) });
 const deliverable = new Set(["appointment.created", "appointment.confirmed", "appointment.rescheduled",
   "appointment.cancelled", "appointment.checked_in"]);
 
@@ -36,10 +37,14 @@ export class AppointmentOutboxWorker {
     if (!appointmentId || !patientId || !scheduledStartAt) throw new DeliveryError("EVENT_PAYLOAD_INVALID");
     let recipientUserId: string;
     try {
+      const userToken = process.env.USER_APPOINTMENT_INTERNAL_API_TOKEN;
+      if (!userToken || Buffer.byteLength(userToken, "utf8") < 32) throw new Error();
       const response = await this.send(`${this.userUrl}/internal/v1/patients/${encodeURIComponent(patientId)}`,
-        { redirect: "error", signal: AbortSignal.timeout(4000) });
+        { headers: { "X-Internal-Token": userToken }, redirect: "error", signal: AbortSignal.timeout(4000) });
       if (!response.ok) throw new Error();
-      recipientUserId = patientResponse.parse(await response.json()).data.userId;
+      const patient = patientResponse.parse(await response.json()).data;
+      if (patient.id !== patientId) throw new Error();
+      recipientUserId = patient.userId;
     } catch { throw new DeliveryError("PATIENT_LOOKUP_UNAVAILABLE"); }
     const token = process.env.NOTIFICATION_INTERNAL_API_TOKEN;
     if (!token || Buffer.byteLength(token, "utf8") < 32)

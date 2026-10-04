@@ -1,12 +1,14 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createUserDirectory, DependencyError } from "../src/dependencies.js";
 
 const userId = "00000000-0000-4000-8000-000000000002";
 const url = `http://user-service:3001/internal/v1/users/${userId}/doctor-eligibility`;
+const userToken = "doctor-to-user-test-token-at-least-32-bytes";
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
 describe("User Service doctor eligibility client", () => {
+  beforeEach(() => vi.stubEnv("USER_DOCTOR_INTERNAL_API_TOKEN", userToken));
   it("uses the internal endpoint and forwards the request ID without a forged role", async () => {
     const fetchMock = vi.fn().mockResolvedValue(new Response(JSON.stringify({
       success: true, data: { id: userId, role: "DOCTOR", status: "ACTIVE" }
@@ -18,7 +20,9 @@ describe("User Service doctor eligibility client", () => {
     expect(fetchMock).toHaveBeenCalledOnce();
     const [calledUrl, options] = fetchMock.mock.calls[0] as [URL, RequestInit];
     expect(calledUrl.href).toBe(url);
-    expect(options.headers).toEqual({ Accept: "application/json", "X-Request-Id": "doctor-req-1" });
+    expect(options.headers).toEqual({ Accept: "application/json", "X-Request-Id": "doctor-req-1",
+      "X-Internal-Token": userToken });
+    expect(options.redirect).toBe("error");
     expect(options.signal).toBeInstanceOf(AbortSignal);
   });
 
@@ -45,6 +49,23 @@ describe("User Service doctor eligibility client", () => {
       options.signal?.addEventListener("abort", () => reject(options.signal?.reason), { once: true });
     })));
     await expect(createUserDirectory("http://user-service:3001", 10).findDoctorAccount(userId))
+      .rejects.toBeInstanceOf(DependencyError);
+  });
+
+  it("fails closed before fetching if the User credential is missing or weak", async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal("fetch", fetchMock);
+    for (const token of ["", "short"]) {
+      vi.stubEnv("USER_DOCTOR_INTERNAL_API_TOKEN", token);
+      await expect(createUserDirectory("http://user-service:3001").findDoctorAccount(userId))
+        .rejects.toBeInstanceOf(DependencyError);
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it("treats User authentication failure as unavailable, not an absent account", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(null, { status: 401 })));
+    await expect(createUserDirectory("http://user-service:3001").findDoctorAccount(userId))
       .rejects.toBeInstanceOf(DependencyError);
   });
 });

@@ -1,6 +1,6 @@
 import { readFile } from "node:fs/promises";
 import { fileURLToPath } from "node:url";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { createAppointmentPool, ConcurrentChangeError, IdempotencyMismatchError,
   InvalidTransitionError, PostgresAppointmentRepository,
   SlotConflictError, type BookingFingerprint } from "../src/postgres-repository.js";
@@ -30,6 +30,7 @@ suite("Appointment PostgreSQL integration (disposable database only)", () => {
     await pool.query("TRUNCATE appointment_service.appointment_completions, appointment_service.appointment_outbox_events, appointment_service.appointment_status_history, appointment_service.idempotency_requests, appointment_service.appointments");
   });
   afterAll(async () => { await pool.end(); });
+  afterEach(() => vi.unstubAllEnvs());
 
   it("persists idempotent create, history and occupancy across repository instances", async () => {
     const first = await repo.createBooking({ ...base, createdBy: actorId }, "first-key", base);
@@ -191,6 +192,34 @@ suite("Appointment PostgreSQL integration (disposable database only)", () => {
     expect(await repo.markOutboxSent(current.id, current.claimToken)).toBe(false);
   });
 
+  it("lets only one independent worker claim a committed event concurrently", async () => {
+    const interval = { ...base, scheduledStartAt: "2030-01-10T01:00:00.000Z",
+      scheduledEndAt: "2030-01-10T01:30:00.000Z" };
+    const made = await repo.createBooking({ ...interval, createdBy: actorId }, "parallel-claim-key", interval);
+    const stored = await pool.query<{ id: string }>(`SELECT id FROM appointment_service.appointment_outbox_events
+      WHERE aggregate_id = $1 AND event_type = 'appointment.created'`, [made.appointment.id]);
+    expect(stored.rows).toHaveLength(1);
+    const eventId = stored.rows[0].id;
+    const firstPool = createAppointmentPool(databaseUrl);
+    const secondPool = createAppointmentPool(databaseUrl);
+    try {
+      const [first, second] = await Promise.all([
+        new PostgresAppointmentRepository(firstPool).claimOutbox(100, 60),
+        new PostgresAppointmentRepository(secondPool).claimOutbox(100, 60)
+      ]);
+      const claims = [...first, ...second].filter((event) => event.id === eventId);
+      expect(claims).toHaveLength(1);
+      expect(claims[0].claimToken).toBeTruthy();
+      expect(await repo.markOutboxSent(eventId, claims[0].claimToken)).toBe(true);
+      expect((await repo.claimOutbox(100, 60)).some((event) => event.id === eventId)).toBe(false);
+      const persisted = await pool.query(`SELECT status, retry_count FROM appointment_service.appointment_outbox_events
+        WHERE id = $1`, [eventId]);
+      expect(persisted.rows[0]).toMatchObject({ status: "SENT", retry_count: 1 });
+    } finally {
+      await Promise.all([firstPool.end(), secondPool.end()]);
+    }
+  });
+
   it("commits final-record completion, history and outbox together with replay protection", async () => {
     const interval = { ...base, scheduledStartAt: "2030-01-07T06:00:00.000Z",
       scheduledEndAt: "2030-01-07T06:30:00.000Z" };
@@ -217,12 +246,16 @@ suite("Appointment PostgreSQL integration (disposable database only)", () => {
     const interval = { ...base, scheduledStartAt: "2030-01-07T07:00:00.000Z",
       scheduledEndAt: "2030-01-07T07:30:00.000Z" };
     const made = await repo.createBooking({ ...interval, createdBy: actorId }, "outage-key", interval);
-    process.env.NOTIFICATION_INTERNAL_API_TOKEN = "notification-internal-test-token-with-32-bytes";
+    vi.stubEnv("NOTIFICATION_INTERNAL_API_TOKEN", "notification-internal-test-token-with-32-bytes");
+    vi.stubEnv("USER_APPOINTMENT_INTERNAL_API_TOKEN", "appointment-to-user-test-token-at-least-32-bytes");
     const sent: unknown[] = [];
+    const userLookupTokens: string[] = [];
     let offline = true;
     const send = async (input: string | URL | Request, init?: RequestInit) => {
-      if (String(input).includes("/patients/"))
-        return Response.json({ success: true, data: { userId: actorId } });
+      if (String(input).includes("/patients/")) {
+        userLookupTokens.push(new Headers(init?.headers).get("X-Internal-Token") ?? "");
+        return Response.json({ success: true, data: { id: patientId, userId: actorId } });
+      }
       if (offline) return new Response(null, { status: 503 });
       sent.push(JSON.parse(String(init?.body)));
       return Response.json({ success: true, data: {} });
@@ -239,8 +272,9 @@ suite("Appointment PostgreSQL integration (disposable database only)", () => {
       "http://user", "http://notification", send as typeof fetch);
     for (let i = 0; i < 20; i++) await restarted.dispatchBatch();
     expect(sent).toContainEqual(expect.objectContaining({ eventId: pending.rows[0].id, type: "appointment.created" }));
+    expect(userLookupTokens.length).toBeGreaterThan(0);
+    expect(userLookupTokens.every((token) => token === process.env.USER_APPOINTMENT_INTERNAL_API_TOKEN)).toBe(true);
     expect((await pool.query(`SELECT status FROM appointment_service.appointment_outbox_events WHERE id = $1`,
       [pending.rows[0].id])).rows[0].status).toBe("SENT");
-    delete process.env.NOTIFICATION_INTERNAL_API_TOKEN;
   });
 });

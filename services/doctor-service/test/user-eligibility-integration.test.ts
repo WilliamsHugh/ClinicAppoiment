@@ -1,6 +1,6 @@
 import express from "express";
 import request from "supertest";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createDoctorApp } from "../src/app.js";
 import { createUserDirectory } from "../src/dependencies.js";
 import type { DoctorRepository } from "../src/repository.js";
@@ -9,10 +9,12 @@ import type { UserRepository } from "../../user-service/src/repository.js";
 
 const userId = "00000000-0000-4000-8000-000000000002";
 const specialtyId = "00000000-0000-4000-8000-000000000004";
+const userToken = "doctor-to-user-test-token-at-least-32-bytes";
 const doctor = { id: "00000000-0000-4000-8000-000000000001", userId, specialtyId,
   displayName: "Dr A", bio: null, isActive: true, createdAt: "", updatedAt: "" };
 
-afterEach(() => vi.unstubAllGlobals());
+beforeEach(() => vi.stubEnv("USER_DOCTOR_INTERNAL_API_TOKEN", userToken));
+afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
 function fixture(role: "DOCTOR" | "PATIENT", status: "ACTIVE" | "INACTIVE" | "LOCKED", exists = true) {
   const userRepository = { findUserById: vi.fn().mockResolvedValue(exists ? {
@@ -49,7 +51,7 @@ describe("admin links a doctor through the User Service internal contract", () =
     expect(repository.createDoctor).toHaveBeenCalledOnce();
     expect(userRepository.findUserById).toHaveBeenCalledWith(userId);
     expect(upstream.mock.calls[0]?.[1].headers).toEqual({
-      Accept: "application/json", "X-Request-Id": "create-doctor-1"
+      Accept: "application/json", "X-Request-Id": "create-doctor-1", "X-Internal-Token": userToken
     });
     expect(response.body.data.id).toBe(doctor.id);
   });

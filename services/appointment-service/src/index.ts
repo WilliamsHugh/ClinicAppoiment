@@ -138,13 +138,17 @@ function requireRoles(...roles: string[]): RequestHandler {
 
 async function patientIdForUser(userId: string) {
   try {
+    const token = process.env.USER_APPOINTMENT_INTERNAL_API_TOKEN;
+    if (!token || Buffer.byteLength(token, "utf8") < 32)
+      throw new UpstreamUnavailableError("User internal credential is unavailable");
     const response = await fetch(
       `${userServiceUrl}/internal/v1/patients/by-user/${encodeURIComponent(userId)}`,
-      { redirect: "error", signal: AbortSignal.timeout(4000) });
+      { headers: { "X-Internal-Token": token }, redirect: "error", signal: AbortSignal.timeout(4000) });
     if (response.status === 404) return null;
     if (!response.ok) throw new UpstreamUnavailableError("User Service unavailable");
     const body = await response.json() as { success?: boolean; data?: { id?: string; userId?: string } };
-    if (body.success !== true || body.data?.userId !== userId || !body.data.id)
+    if (body.success !== true || body.data?.userId !== userId ||
+      !appointmentIdSchema.safeParse(body.data.id).success)
       throw new UpstreamUnavailableError("Invalid patient lookup response");
     return body.data.id;
   } catch (caught) {
@@ -180,12 +184,15 @@ async function doctorIdForUser(userId: string, requestId?: string) {
 
 async function patientExists(patientId: string): Promise<boolean | null> {
   try {
+    const token = process.env.USER_APPOINTMENT_INTERNAL_API_TOKEN;
+    if (!token || Buffer.byteLength(token, "utf8") < 32) return null;
     const response = await fetch(`${userServiceUrl}/internal/v1/patients/${encodeURIComponent(patientId)}`,
-      { signal: AbortSignal.timeout(4000) });
+      { headers: { "X-Internal-Token": token }, redirect: "error", signal: AbortSignal.timeout(4000) });
     if (response.status === 404) return false;
     if (!response.ok) return null;
-    const body = await response.json() as { success?: boolean; data?: { id?: string } };
-    return body.success === true && body.data?.id === patientId;
+    const body = await response.json() as { success?: boolean; data?: { id?: string; userId?: string } };
+    return body.success === true && body.data?.id === patientId &&
+      appointmentIdSchema.safeParse(body.data.userId).success ? true : null;
   } catch { return null; }
 }
 

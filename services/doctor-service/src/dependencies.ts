@@ -17,6 +17,7 @@ async function jsonRequest(url: URL, service: "user" | "appointment", requestId?
   try {
     const response = await fetch(url, { headers: { Accept: "application/json", ...(requestId ? { "X-Request-Id": requestId } : {}),
       ...(internalToken ? { "X-Internal-Token": internalToken } : {}) },
+      redirect: "error",
       signal: AbortSignal.timeout(timeoutMs) });
     return { status: response.status, body: await response.json() };
   } catch { throw new DependencyError(service); }
@@ -25,7 +26,10 @@ async function jsonRequest(url: URL, service: "user" | "appointment", requestId?
 export function createUserDirectory(baseUrl = process.env.USER_SERVICE_URL ?? "http://localhost:3001", timeoutMs = 3000): UserDirectory {
   return {
     async findDoctorAccount(userId, requestId) {
-      const result = await jsonRequest(new URL(`/internal/v1/users/${encodeURIComponent(userId)}/doctor-eligibility`, baseUrl), "user", requestId, timeoutMs);
+      const token = process.env.USER_DOCTOR_INTERNAL_API_TOKEN;
+      if (!token || Buffer.byteLength(token, "utf8") < 32) throw new DependencyError("user");
+      const result = await jsonRequest(new URL(`/internal/v1/users/${encodeURIComponent(userId)}/doctor-eligibility`, baseUrl),
+        "user", requestId, timeoutMs, token);
       if (result.status === 404) return null;
       const envelope = result.body as { success?: boolean; data?: { id?: unknown; role?: unknown; status?: unknown } } | null;
       if (result.status !== 200 || envelope?.success !== true || envelope.data?.id !== userId

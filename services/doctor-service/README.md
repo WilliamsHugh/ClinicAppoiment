@@ -16,7 +16,7 @@ Both root scripts load `services/doctor-service/.env` on Windows and Unix. The s
 
 Generate a random secret of at least 32 bytes, for example with `node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"`. Set `DOCTOR_INTERNAL_API_TOKEN` to that same value in the ignored Doctor and Appointment service `.env` files for local runs, or in the ignored root `.env` for Compose. `npm run dev:appointment` loads its service `.env`. Doctor Service refuses to start without a sufficiently long token. Keep it out of frontend configuration and Git.
 
-`USER_SERVICE_URL` defaults to `http://localhost:3001`. Doctor creation reads User Service's internal `GET /internal/v1/users/{userId}/doctor-eligibility` and requires an active account with role `DOCTOR`. The User Service team owns that API and the account lifecycle.
+`USER_SERVICE_URL` defaults to `http://localhost:3001`. Doctor creation reads User Service's internal `GET /internal/v1/users/{userId}/doctor-eligibility` with `USER_DOCTOR_INTERNAL_API_TOKEN` and requires an active account with role `DOCTOR`. The User Service team owns that API and the account lifecycle. Missing, weak, rejected, or timed-out credentials fail closed as a User dependency error. Set the same private 32+ byte token on User Service; never expose it to a frontend.
 
 Docker Compose passes `USER_SERVICE_URL=http://user-service:3001` and `APPOINTMENT_SERVICE_URL=http://appointment-service:3003` on its private network. Doctor Service waits for User Service health at startup. It cannot wait for Appointment Service health because Appointment Service already waits for Doctor Service; its calls to Appointment Service happen only when needed.
 

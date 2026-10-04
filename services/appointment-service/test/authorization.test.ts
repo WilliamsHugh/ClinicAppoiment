@@ -25,6 +25,7 @@ function fixture(patientId: string, doctorId: string, status: AppointmentStatus 
 beforeEach(() => {
   repository.clear();
   vi.stubEnv("DOCTOR_INTERNAL_API_TOKEN", "doctor-internal-test-token-with-32-bytes");
+  vi.stubEnv("USER_APPOINTMENT_INTERNAL_API_TOKEN", "appointment-to-user-test-token-at-least-32-bytes");
   vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) => {
     const path = new URL(String(input)).pathname;
     if (path.startsWith("/internal/v1/patients/by-user/")) {
@@ -154,6 +155,48 @@ describe("appointment state and input policy", () => {
     expect(doctorResponse.status).toBe(503);
     expect(patientResponse.status).toBe(503);
     expect(repository.findById(item.id)?.status).toBe("CHECKED_IN");
+  });
+
+  it("sends the Appointment credential on patient lookup and fails closed without it", async () => {
+    const item = fixture(patientA, doctorA);
+    const first = await request(app).get(`/api/v1/appointments/${item.id}`)
+      .set(headers(userPatientA, "PATIENT"));
+    expect(first.status).toBe(200);
+    const lookup = vi.mocked(fetch).mock.calls.find(([url]) => String(url).includes("/patients/by-user/"));
+    expect(new Headers(lookup?.[1]?.headers).get("X-Internal-Token"))
+      .toBe("appointment-to-user-test-token-at-least-32-bytes");
+    vi.mocked(fetch).mockClear();
+    vi.stubEnv("USER_APPOINTMENT_INTERNAL_API_TOKEN", "");
+    const denied = await request(app).get(`/api/v1/appointments/${item.id}`)
+      .set(headers(userPatientA, "PATIENT"));
+    expect(denied.status).toBe(503);
+    expect(vi.mocked(fetch)).not.toHaveBeenCalled();
+  });
+
+  it.each(["401", "malformed", "timeout"]) ("does not treat %s User response as a valid patient", async (failure) => {
+    const item = fixture(patientA, doctorA);
+    vi.mocked(fetch).mockImplementation(async () => {
+      if (failure === "timeout") throw new DOMException("timed out", "TimeoutError");
+      if (failure === "401") return new Response(null, { status: 401 });
+      return Response.json({ success: true, data: { id: "not-a-uuid", userId: userPatientA } });
+    });
+    const response = await request(app).get(`/api/v1/appointments/${item.id}`)
+      .set(headers(userPatientA, "PATIENT"));
+    expect(response.status).toBe(503);
+    expect(repository.findById(item.id)?.status).toBe("PENDING");
+  });
+
+  it("fails closed for staff booking if User returns a mismatched patient mapping", async () => {
+    vi.mocked(fetch).mockResolvedValue(Response.json({ success: true,
+      data: { id: patientB, userId: userPatientA } }));
+    const response = await request(app).post("/api/v1/appointments")
+      .set(headers(userStaff, "STAFF")).set("Idempotency-Key", "mismatched-user-mapping")
+      .send({ ...slot, patientId: patientA, doctorId: doctorA });
+    expect(response.status).toBe(503);
+    expect(response.body.error.code).toBe("PATIENT_VERIFICATION_UNAVAILABLE");
+    expect(repository.findAll({})).toHaveLength(0);
+    expect(new Headers(vi.mocked(fetch).mock.calls[0]?.[1]?.headers).get("X-Internal-Token"))
+      .toBe("appointment-to-user-test-token-at-least-32-bytes");
   });
 
   it("does not authorize inactive doctors or malformed actor IDs", async () => {

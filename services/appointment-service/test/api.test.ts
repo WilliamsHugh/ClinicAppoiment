@@ -9,20 +9,23 @@ const slot = {
   scheduledEndAt: "2026-10-01T08:30:00.000Z"
 };
 const internalToken = "doctor-internal-test-token-with-32-bytes";
+const userToken = "appointment-to-user-test-token-at-least-32-bytes";
+const patientOwnedId = "00000000-0000-4000-8000-000000000401";
 
 beforeEach(() => {
   repository.clear();
   vi.stubEnv("DOCTOR_INTERNAL_API_TOKEN", internalToken);
+  vi.stubEnv("USER_APPOINTMENT_INTERNAL_API_TOKEN", userToken);
   vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request) => {
     const url = String(input);
     if (url.includes("/internal/v1/patients/by-user/")) {
-      return new Response(JSON.stringify({ success: true, data: { id: "patient-owned", userId: patientHeaders["X-User-Id"] } }), { status: 200 });
+      return new Response(JSON.stringify({ success: true, data: { id: patientOwnedId, userId: patientHeaders["X-User-Id"] } }), { status: 200 });
     }
     if (url.endsWith("/internal/v1/doctors/verify-slot")) {
       return new Response(JSON.stringify({ success: true, data: { valid: true } }), { status: 200 });
     }
     if (url.includes("/internal/v1/patients/")) {
-      return new Response(JSON.stringify({ success: true, data: { id: "patient-owned", userId: patientHeaders["X-User-Id"] } }), { status: 200 });
+      return new Response(JSON.stringify({ success: true, data: { id: patientOwnedId, userId: patientHeaders["X-User-Id"] } }), { status: 200 });
     }
     if (url.endsWith("/internal/v1/notifications")) {
       return new Response(JSON.stringify({ success: true, data: {} }), { status: 201 });
@@ -85,7 +88,7 @@ describe("Appointment Service authorization", () => {
   });
 
   it("scopes patient lists to the authenticated patient", async () => {
-    repository.create({ ...slot, patientId: "patient-owned", createdBy: "user-patient-1" });
+    repository.create({ ...slot, patientId: patientOwnedId, createdBy: "user-patient-1" });
     repository.create({ ...slot, doctorId: "doctor-2", patientId: "patient-other", createdBy: "staff-user" });
 
     const response = await request(app)
@@ -94,11 +97,11 @@ describe("Appointment Service authorization", () => {
 
     expect(response.status).toBe(200);
     expect(response.body.data.items).toHaveLength(1);
-    expect(response.body.data.items[0].patientId).toBe("patient-owned");
+    expect(response.body.data.items[0].patientId).toBe(patientOwnedId);
   });
 
   it("rejects a patient-only attempt to confirm an appointment", async () => {
-    const appointment = repository.create({ ...slot, patientId: "patient-owned", createdBy: "user-patient-1" });
+    const appointment = repository.create({ ...slot, patientId: patientOwnedId, createdBy: "user-patient-1" });
     const response = await request(app)
       .patch(`/api/v1/appointments/${appointment.id}/confirm`)
       .set(patientHeaders)
