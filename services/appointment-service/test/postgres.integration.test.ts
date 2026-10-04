@@ -53,10 +53,17 @@ suite("Appointment PostgreSQL integration (disposable database only)", () => {
       scheduledEndAt: "2030-01-07T02:30:00.000Z" };
     const shifted = { ...overlap, scheduledStartAt: "2030-01-07T02:15:00.000Z",
       scheduledEndAt: "2030-01-07T02:45:00.000Z" };
-    const results = await Promise.allSettled([
-      repo.createBooking({ ...overlap, createdBy: actorId }, "concurrent-a", overlap),
-      repo.createBooking({ ...shifted, createdBy: actorId }, "concurrent-b", shifted)
-    ]);
+    const firstPool = createAppointmentPool(databaseUrl);
+    const secondPool = createAppointmentPool(databaseUrl);
+    let results: PromiseSettledResult<Awaited<ReturnType<typeof repo.createBooking>>>[];
+    try {
+      results = await Promise.allSettled([
+        new PostgresAppointmentRepository(firstPool).createBooking({ ...overlap, createdBy: actorId }, "concurrent-a", overlap),
+        new PostgresAppointmentRepository(secondPool).createBooking({ ...shifted, createdBy: actorId }, "concurrent-b", shifted)
+      ]);
+    } finally {
+      await Promise.all([firstPool.end(), secondPool.end()]);
+    }
     expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
     expect(results.filter((result) => result.status === "rejected")).toHaveLength(1);
     expect(results.find((result) => result.status === "rejected")?.reason).toBeInstanceOf(SlotConflictError);
@@ -78,6 +85,35 @@ suite("Appointment PostgreSQL integration (disposable database only)", () => {
     expect(ledger.rows[0].count).toBe(1);
   });
 
+  it("scopes identical idempotency keys to each actor", async () => {
+    const otherActorId = "00000000-0000-4000-8000-000000000026";
+    const firstSlot = { ...base, scheduledStartAt: "2030-01-08T01:00:00.000Z",
+      scheduledEndAt: "2030-01-08T01:30:00.000Z" };
+    const secondSlot = { ...base, scheduledStartAt: "2030-01-08T01:30:00.000Z",
+      scheduledEndAt: "2030-01-08T02:00:00.000Z" };
+    const first = await repo.createBooking({ ...firstSlot, createdBy: actorId }, "shared-key", firstSlot);
+    const second = await repo.createBooking({ ...secondSlot, createdBy: otherActorId }, "shared-key", secondSlot);
+    expect(second.appointment.id).not.toBe(first.appointment.id);
+    expect(second.replayed).toBe(false);
+    expect((await repo.createBooking({ ...secondSlot, createdBy: otherActorId }, "shared-key", secondSlot))
+      .appointment.id).toBe(second.appointment.id);
+  });
+
+  it("uses half-open intervals and rejects a non-positive interval in PostgreSQL", async () => {
+    const firstSlot = { ...base, scheduledStartAt: "2030-01-09T01:00:00.000Z",
+      scheduledEndAt: "2030-01-09T01:30:00.000Z" };
+    const adjacentSlot = { ...base, scheduledStartAt: firstSlot.scheduledEndAt,
+      scheduledEndAt: "2030-01-09T02:00:00.000Z" };
+    await repo.createBooking({ ...firstSlot, createdBy: actorId }, "half-open-a", firstSlot);
+    await expect(repo.createBooking({ ...adjacentSlot, createdBy: actorId }, "half-open-b", adjacentSlot))
+      .resolves.toMatchObject({ replayed: false });
+    await expect(pool.query(`INSERT INTO appointment_service.appointments
+      (patient_id, doctor_id, scheduled_start_at, scheduled_end_at, status, created_by)
+      VALUES ($1, $2, $3, $4, 'PENDING', $5)`, [patientId, doctorId,
+      "2030-01-09T03:00:00.000Z", "2030-01-09T03:00:00.000Z", actorId]))
+      .rejects.toMatchObject({ code: "23514" });
+  });
+
   it("rejects overlapping reschedule atomically", async () => {
     const other = { ...base, scheduledStartAt: "2030-01-07T03:00:00.000Z",
       scheduledEndAt: "2030-01-07T03:30:00.000Z" };
@@ -86,6 +122,36 @@ suite("Appointment PostgreSQL integration (disposable database only)", () => {
       "2030-01-07T01:15:00.000Z", "2030-01-07T01:45:00.000Z", actorId))
       .rejects.toBeInstanceOf(SlotConflictError);
     expect((await repo.findById(made.appointment.id))?.scheduledStartAt).toBe(other.scheduledStartAt);
+  });
+
+  it("allows only one overlapping reschedule from independent database pools", async () => {
+    const firstSlot = { ...base, scheduledStartAt: "2030-01-08T03:00:00.000Z",
+      scheduledEndAt: "2030-01-08T03:30:00.000Z" };
+    const secondSlot = { ...base, scheduledStartAt: "2030-01-08T04:00:00.000Z",
+      scheduledEndAt: "2030-01-08T04:30:00.000Z" };
+    const first = await repo.createBooking({ ...firstSlot, createdBy: actorId }, "reschedule-race-a", firstSlot);
+    const second = await repo.createBooking({ ...secondSlot, createdBy: actorId }, "reschedule-race-b", secondSlot);
+    const firstPool = createAppointmentPool(databaseUrl);
+    const secondPool = createAppointmentPool(databaseUrl);
+    let results: PromiseSettledResult<unknown>[];
+    try {
+      results = await Promise.allSettled([
+        new PostgresAppointmentRepository(firstPool).rescheduleBooking(first.appointment.id,
+          "2030-01-08T05:00:00.000Z", "2030-01-08T05:30:00.000Z", actorId),
+        new PostgresAppointmentRepository(secondPool).rescheduleBooking(second.appointment.id,
+          "2030-01-08T05:15:00.000Z", "2030-01-08T05:45:00.000Z", actorId)
+      ]);
+    } finally {
+      await Promise.all([firstPool.end(), secondPool.end()]);
+    }
+    expect(results.filter((result) => result.status === "fulfilled")).toHaveLength(1);
+    expect(results.find((result) => result.status === "rejected")?.reason).toBeInstanceOf(SlotConflictError);
+    const current = await Promise.all([repo.findById(first.appointment.id), repo.findById(second.appointment.id)]);
+    expect(current.filter((item) => item?.scheduledStartAt.startsWith("2030-01-08T05:"))).toHaveLength(1);
+    const history = await pool.query(`SELECT count(*)::int AS count FROM appointment_service.appointment_status_history
+      WHERE appointment_id IN ($1, $2) AND from_status = 'PENDING' AND to_status = 'PENDING'`,
+      [first.appointment.id, second.appointment.id]);
+    expect(history.rows[0].count).toBe(1);
   });
 
   it("serializes competing transitions and writes exactly one matching history row", async () => {
