@@ -7,7 +7,8 @@ const otherDoctorId = "00000000-0000-4000-8000-000000000002";
 const startAt = "2030-01-07T01:00:00.000Z";
 const endAt = "2030-01-07T01:30:00.000Z";
 
-beforeEach(() => repository.clear());
+const token = "doctor-internal-test-token-with-32-bytes";
+beforeEach(() => { repository.clear(); process.env.DOCTOR_INTERNAL_API_TOKEN = token; });
 
 function appointment(status: "PENDING" | "CONFIRMED" | "CHECKED_IN" | "CANCELLED" | "COMPLETED" | "NO_SHOW",
   doctor = doctorId, from = startAt, to = endAt) {
@@ -28,7 +29,7 @@ describe("internal occupied doctor slots", () => {
 
     const response = await request(app).get("/internal/v1/appointments/occupied-slots")
       .query({ doctorId, from: "2030-01-07T00:00:00.000Z", to: "2030-01-07T03:00:00.000Z" })
-      .set("X-Request-Id", "occupied-test-1");
+      .set("X-Request-Id", "occupied-test-1").set("X-Internal-Token", token);
 
     expect(response.status).toBe(200);
     expect(response.headers["x-request-id"]).toBe("occupied-test-1");
@@ -43,7 +44,7 @@ describe("internal occupied doctor slots", () => {
   it("supports an open-ended query for all future occupied slots", async () => {
     appointment("PENDING");
     const response = await request(app).get("/internal/v1/appointments/occupied-slots")
-      .query({ doctorId, from: "2030-01-01T00:00:00.000Z" });
+      .query({ doctorId, from: "2030-01-01T00:00:00.000Z" }).set("X-Internal-Token", token);
     expect(response.status).toBe(200);
     expect(response.body.data).toEqual([{ startAt, endAt }]);
   });
@@ -53,7 +54,7 @@ describe("internal occupied doctor slots", () => {
     { doctorId, from: "not-a-date" },
     { doctorId, from: "2030-01-07T03:00:00.000Z", to: "2030-01-07T01:00:00.000Z" }
   ])("rejects an invalid query: %j", async (query) => {
-    const response = await request(app).get("/internal/v1/appointments/occupied-slots").query(query);
+    const response = await request(app).get("/internal/v1/appointments/occupied-slots").query(query).set("X-Internal-Token", token);
     expect(response.status).toBe(400);
     expect(response.body.error.code).toBe("VALIDATION_ERROR");
   });

@@ -1,4 +1,5 @@
 import cors from "cors";
+import { timingSafeEqual } from "node:crypto";
 import express, { type ErrorRequestHandler, type RequestHandler } from "express";
 import swaggerUi from "swagger-ui-express";
 import { z } from "zod";
@@ -9,6 +10,7 @@ import { createAppointmentPool, PostgresAppointmentRepository, SlotConflictError
   type BookingFingerprint } from "./postgres-repository.js";
 import { canReschedule, canTransition } from "./state-machine.js";
 import { appointmentOpenApi } from "./openapi.js";
+import { AppointmentOutboxWorker } from "./outbox-worker.js";
 
 export const app = express();
 export const repository = new AppointmentRepository();
@@ -17,6 +19,7 @@ const port = Number(process.env.APPOINTMENT_SERVICE_PORT ?? 3003);
 const doctorServiceUrl = process.env.DOCTOR_SERVICE_URL ?? "http://localhost:3002";
 const notificationServiceUrl = process.env.NOTIFICATION_SERVICE_URL ?? "http://localhost:3005";
 const userServiceUrl = process.env.USER_SERVICE_URL ?? "http://localhost:3001";
+const medicalRecordServiceUrl = process.env.MEDICAL_RECORD_SERVICE_URL ?? "http://localhost:3004";
 
 class UpstreamUnavailableError extends Error {}
 
@@ -39,6 +42,7 @@ const rescheduleSchema = z.object({ scheduledStartAt: z.string().datetime(),
   scheduledEndAt: z.string().datetime(), reason: z.string().trim().max(500).optional() }).strict();
 const transitionBodySchema = z.object({ reason: z.string().trim().max(500).optional() }).strict();
 const appointmentIdSchema = z.string().uuid();
+const completionSchema = z.object({ recordId: z.string().uuid() }).strict();
 
 function validInterval(start: string, end: string) { return Date.parse(start) < Date.parse(end); }
 function normalized(value: string) { return new Date(value).toISOString(); }
@@ -100,29 +104,16 @@ async function verifyDoctorSlot(doctorId: string, startAt: string, endAt: string
   }
 }
 
-async function publishNotificationEvent(eventType: string, appointment: { id: string; patientId: string; scheduledStartAt: string }, eventId: string) {
-  try {
-    const patientResponse = await fetch(`${userServiceUrl}/internal/v1/patients/${encodeURIComponent(appointment.patientId)}`, { signal: AbortSignal.timeout(4000) });
-    if (!patientResponse.ok) throw new Error(`Patient lookup returned ${patientResponse.status}`);
-    const patientBody = await patientResponse.json() as { success: boolean; data: { userId: string } };
-    if (!patientBody.success || !patientBody.data?.userId) throw new Error("Invalid patient response");
-    const payload = { appointmentId: appointment.id, patientId: appointment.patientId, recipientUserId: patientBody.data.userId, scheduledStartAt: appointment.scheduledStartAt };
-    for (let attempt = 0; attempt < 3; attempt++) {
-      try {
-        const response = await fetch(`${notificationServiceUrl}/internal/v1/notifications`, {
-          method: "POST", headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ eventId, type: eventType, payload }), signal: AbortSignal.timeout(4000)
-        });
-        if (response.ok) return;
-        throw new Error(`Notification returned ${response.status}`);
-      } catch (error) {
-        if (attempt === 2) throw error;
-        await new Promise((resolve) => setTimeout(resolve, 200 * (attempt + 1)));
-      }
-    }
-  } catch (error) {
-    console.warn(JSON.stringify({ eventId, eventType, error: String(error) }));
-  }
+function requireInternalToken(variable: string): RequestHandler {
+  return (req, res, next) => {
+    const expected = process.env[variable];
+    const received = req.header("X-Internal-Token") ?? "";
+    if (!expected || Buffer.byteLength(expected, "utf8") < 32 ||
+      Buffer.byteLength(expected, "utf8") !== Buffer.byteLength(received, "utf8") ||
+      !timingSafeEqual(Buffer.from(expected), Buffer.from(received)))
+      return res.status(401).json(error("INTERNAL_AUTH_REQUIRED", "Internal credential required"));
+    next();
+  };
 }
 
 function currentUserId(req: express.Request) {
@@ -230,16 +221,16 @@ function transition(toStatus: AppointmentStatus) {
     try { updated = await store.transition(id, toStatus, currentUserId(req), parsed.data.reason, appointment.status); }
     catch (caught) { return bookingError(res, caught); }
     if (!updated) return res.status(404).json(error("APPOINTMENT_NOT_FOUND", "Appointment not found"));
-    if (updated && ["CONFIRMED", "CANCELLED", "CHECKED_IN"].includes(toStatus)) {
-      await publishNotificationEvent(`appointment.${toStatus.toLowerCase()}`, updated, `appointment.${toStatus.toLowerCase()}:${updated.id}`);
-    }
     return res.json(success(updated));
   };
 }
 
 app.get("/health", async (_req, res) => {
   try {
-    if (store instanceof PostgresAppointmentRepository) await store.health();
+    if (store instanceof PostgresAppointmentRepository) {
+      await store.health();
+      return res.json(success({ service: "appointment-service", status: "ok", outbox: await store.outboxCounts() }));
+    }
     return res.json(success({ service: "appointment-service", status: "ok" }));
   } catch { return res.status(503).json(error("APPOINTMENT_STORAGE_UNAVAILABLE", "Appointment database is unavailable")); }
 });
@@ -306,7 +297,6 @@ app.post("/api/v1/appointments", requireRoles("PATIENT", "STAFF", "ADMIN"), asyn
   try {
     const result = await store.createBooking({ ...fingerprint, createdBy: currentUserId(req) },
       idempotencyKey, fingerprint);
-    if (result.eventId) await publishNotificationEvent("appointment.created", result.appointment, result.eventId);
     return res.status(result.replayed ? 200 : 201).json(success(result.appointment));
   } catch (caught) { return bookingError(res, caught); }
 });
@@ -347,16 +337,17 @@ app.patch("/api/v1/appointments/:id/reschedule", requireRoles("PATIENT", "STAFF"
       normalized(parsed.data.scheduledStartAt), normalized(parsed.data.scheduledEndAt),
       currentUserId(req), parsed.data.reason);
     if (!result) return res.status(404).json(error("APPOINTMENT_NOT_FOUND", "Appointment not found"));
-    if (result.eventId) await publishNotificationEvent("appointment.rescheduled", result.appointment, result.eventId);
     return res.json(success(result.appointment));
   } catch (caught) { return bookingError(res, caught); }
 });
 app.patch("/api/v1/appointments/:id/cancel", requireRoles("PATIENT", "STAFF", "ADMIN"), transition("CANCELLED"));
 app.patch("/api/v1/appointments/:id/confirm", requireRoles("STAFF", "ADMIN"), transition("CONFIRMED"));
 app.patch("/api/v1/appointments/:id/check-in", requireRoles("STAFF", "ADMIN"), transition("CHECKED_IN"));
-app.patch("/api/v1/appointments/:id/complete", requireRoles("DOCTOR"), transition("COMPLETED"));
+// Completion is reserved for the authenticated Medical Record callback below.
+app.patch("/api/v1/appointments/:id/complete", requireRoles("DOCTOR"), (_req, res) =>
+  res.status(409).json(error("MEDICAL_RECORD_REQUIRED", "Complete a final medical record first")));
 app.patch("/api/v1/appointments/:id/no-show", requireRoles("STAFF", "ADMIN"), transition("NO_SHOW"));
-app.get("/internal/v1/appointments/occupied-slots", async (req, res) => {
+app.get("/internal/v1/appointments/occupied-slots", requireInternalToken("DOCTOR_INTERNAL_API_TOKEN"), async (req, res) => {
   const parsed = occupiedSlotsQuerySchema.safeParse(req.query);
   if (!parsed.success || (parsed.data.to && Date.parse(parsed.data.to) <= Date.parse(parsed.data.from))) {
     return res.status(400).json(error("VALIDATION_ERROR", "Invalid occupied slots query",
@@ -367,14 +358,69 @@ app.get("/internal/v1/appointments/occupied-slots", async (req, res) => {
   try { return res.json(success(await store.occupiedSlots(parsed.data.doctorId, parsed.data.from, parsed.data.to))); }
   catch (caught) { return bookingError(res, caught); }
 });
-app.get("/internal/v1/appointments/:id/verify-for-medical-record", async (req, res) => {
+app.get("/internal/v1/appointments/:id/verify-for-medical-record", requireInternalToken("APPOINTMENT_RECORD_INTERNAL_API_TOKEN"), async (req, res) => {
   const id = String(req.params.id);
   if (!appointmentIdSchema.safeParse(id).success)
     return res.status(400).json(error("VALIDATION_ERROR", "Invalid appointment ID"));
   const appointment = await store.findById(id);
   if (!appointment) return res.status(404).json(error("APPOINTMENT_NOT_FOUND", "Appointment not found"));
-  return res.json(success({ valid: ["CHECKED_IN", "COMPLETED"].includes(appointment.status), appointment }));
+  return res.json(success({ valid: ["CHECKED_IN", "COMPLETED"].includes(appointment.status),
+    appointment: { id: appointment.id, patientId: appointment.patientId,
+      doctorId: appointment.doctorId, status: appointment.status } }));
 });
+
+app.get("/internal/v1/appointments/:id/reminder-context",
+  requireInternalToken("APPOINTMENT_NOTIFICATION_INTERNAL_API_TOKEN"), async (req, res) => {
+    const id = String(req.params.id);
+    if (!appointmentIdSchema.safeParse(id).success)
+      return res.status(400).json(error("VALIDATION_ERROR", "Invalid appointment ID"));
+    const item = await store.findById(id);
+    if (!item) return res.status(404).json(error("APPOINTMENT_NOT_FOUND", "Appointment not found"));
+    return res.json(success({ id: item.id, patientId: item.patientId,
+      status: item.status, scheduledStartAt: item.scheduledStartAt }));
+  });
+
+app.post("/internal/v1/appointments/:id/complete-from-record",
+  requireInternalToken("APPOINTMENT_RECORD_INTERNAL_API_TOKEN"), async (req, res) => {
+    const id = String(req.params.id);
+    const parsed = completionSchema.safeParse(req.body);
+    if (!appointmentIdSchema.safeParse(id).success || !parsed.success)
+      return res.status(400).json(error("VALIDATION_ERROR", "Invalid completion request"));
+    const recordId = parsed.data.recordId;
+    const existing = await store.findCompletion(id);
+    if (existing?.recordId === recordId) return res.json(success({ id, status: "COMPLETED", recordId }));
+    if (existing) return res.status(409).json(error("APPOINTMENT_INVALID_STATUS_TRANSITION", "Appointment already completed"));
+    const item = await store.findById(id);
+    if (!item) return res.status(404).json(error("APPOINTMENT_NOT_FOUND", "Appointment not found"));
+    if (item.status !== "CHECKED_IN")
+      return res.status(409).json(error("APPOINTMENT_INVALID_STATUS_TRANSITION", "Appointment must be checked in"));
+    let record: { id?: string; appointmentId?: string; patientId?: string; doctorId?: string;
+      status?: string; createdBy?: string; updatedBy?: string };
+    try {
+      const token = process.env.APPOINTMENT_RECORD_INTERNAL_API_TOKEN!;
+      const response = await fetch(`${medicalRecordServiceUrl}/internal/v1/medical-records/by-appointment/${id}`,
+        { headers: { "X-Internal-Token": token }, redirect: "error", signal: AbortSignal.timeout(4000) });
+      if (!response.ok) throw new UpstreamUnavailableError("Medical record lookup failed");
+      const body = await response.json() as { success?: boolean; data?: typeof record };
+      if (body.success !== true || !body.data) throw new UpstreamUnavailableError("Invalid medical record response");
+      record = body.data;
+    } catch { return res.status(503).json(error("DEPENDENCY_UNAVAILABLE", "Medical Record Service unavailable")); }
+    if (record.id !== recordId || record.appointmentId !== id || record.patientId !== item.patientId ||
+      record.doctorId !== item.doctorId || record.status !== "FINAL" ||
+      !appointmentIdSchema.safeParse(record.updatedBy ?? record.createdBy).success)
+      return res.status(422).json(error("RECORD_CONTEXT_MISMATCH", "Final record does not match appointment"));
+    const doctorUserId = record.updatedBy ?? record.createdBy!;
+    let doctorId: string | null;
+    try { doctorId = await doctorIdForUser(doctorUserId); }
+    catch { return res.status(503).json(error("DEPENDENCY_UNAVAILABLE", "Doctor Service unavailable")); }
+    if (doctorId !== item.doctorId)
+      return res.status(422).json(error("RECORD_CONTEXT_MISMATCH", "Record doctor does not match appointment"));
+    try {
+      const result = await store.completeFromRecord(id, recordId, doctorUserId);
+      if (!result) return res.status(404).json(error("APPOINTMENT_NOT_FOUND", "Appointment not found"));
+      return res.json(success({ id, status: result.appointment.status, recordId }));
+    } catch (caught) { return bookingError(res, caught); }
+  });
 
 app.use((req, res, next) => {
   if (req.path.startsWith("/api/v1/")) {
@@ -395,6 +441,13 @@ const onError: ErrorRequestHandler = (caught: unknown, _req, res, _next) => {
 app.use(onError);
 
 if (process.env.NODE_ENV !== "test") {
+  const worker = new AppointmentOutboxWorker(store as PostgresAppointmentRepository,
+    userServiceUrl, notificationServiceUrl);
+  void worker.dispatchBatch().catch(() => console.error("Appointment outbox poll failed"));
+  const configuredPollMs = Number(process.env.APPOINTMENT_OUTBOX_POLL_MS ?? 5000);
+  const pollMs = Number.isFinite(configuredPollMs) ? Math.max(1000, configuredPollMs) : 5000;
+  setInterval(() => void worker.dispatchBatch().catch(() => console.error("Appointment outbox poll failed")),
+    pollMs);
   app.listen(port, () => {
     console.log(`Appointment Service listening on port ${port}`);
   });

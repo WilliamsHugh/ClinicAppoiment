@@ -45,6 +45,19 @@ CREATE TABLE IF NOT EXISTS appointment_service.appointment_outbox_events (
   processed_at TIMESTAMPTZ
 );
 
+ALTER TABLE appointment_service.appointment_outbox_events
+  ADD COLUMN IF NOT EXISTS next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  ADD COLUMN IF NOT EXISTS lease_until TIMESTAMPTZ,
+  ADD COLUMN IF NOT EXISTS claim_token UUID,
+  ADD COLUMN IF NOT EXISTS last_error TEXT;
+
+CREATE TABLE IF NOT EXISTS appointment_service.appointment_completions (
+  appointment_id UUID PRIMARY KEY REFERENCES appointment_service.appointments(id),
+  record_id UUID NOT NULL UNIQUE,
+  doctor_user_id UUID NOT NULL,
+  completed_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE TABLE IF NOT EXISTS appointment_service.idempotency_requests (
   actor_id UUID NOT NULL,
   operation TEXT NOT NULL,
@@ -77,6 +90,9 @@ CREATE INDEX IF NOT EXISTS appointment_doctor_time_idx
   ON appointment_service.appointments (doctor_id, scheduled_start_at, id);
 CREATE INDEX IF NOT EXISTS appointment_outbox_pending_idx
   ON appointment_service.appointment_outbox_events (status, created_at) WHERE status = 'PENDING';
+CREATE INDEX IF NOT EXISTS appointment_outbox_due_idx
+  ON appointment_service.appointment_outbox_events (next_attempt_at, created_at, id)
+  WHERE status IN ('PENDING', 'PROCESSING');
 
 -- Preserve retries for rows written by the old scaffold before dropping its global key index.
 INSERT INTO appointment_service.idempotency_requests
@@ -96,4 +112,6 @@ DROP INDEX IF EXISTS appointment_service.unique_appointment_idempotency_key;
 
 INSERT INTO appointment_service.schema_migrations (version)
 VALUES ('001_booking_persistence') ON CONFLICT (version) DO NOTHING;
+INSERT INTO appointment_service.schema_migrations (version)
+VALUES ('002_durable_events_and_internal_api') ON CONFLICT (version) DO NOTHING;
 COMMIT;

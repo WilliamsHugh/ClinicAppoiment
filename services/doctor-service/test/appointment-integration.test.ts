@@ -15,8 +15,8 @@ const doctor = { id: doctorId, userId, specialtyId, displayName: "Dr A", bio: nu
 const schedule = { id: scheduleId, doctorId, weekday: 1, startTime: "08:00", endTime: "10:00",
   slotDurationMinutes: 30, isActive: true, createdAt: "", updatedAt: "" };
 
-beforeEach(() => appointmentRepository.clear());
-afterEach(() => vi.unstubAllGlobals());
+beforeEach(() => { appointmentRepository.clear(); vi.stubEnv("DOCTOR_INTERNAL_API_TOKEN", "doctor-internal-test-token-with-32-bytes"); });
+afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
 function bookSlot() {
   appointmentRepository.create({ doctorId, patientId: "private-patient", createdBy: "patient-user",

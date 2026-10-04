@@ -35,11 +35,13 @@ export class AppointmentRepository {
   private readonly appointments: Appointment[] = [];
   private readonly history: StatusHistory[] = [];
   private readonly requests = new Map<string, { fingerprint: string; id: string }>();
+  private readonly completions = new Map<string, { recordId: string; doctorUserId: string }>();
 
   clear() {
     this.appointments.length = 0;
     this.history.length = 0;
     this.requests.clear();
+    this.completions.clear();
   }
 
   findAll(filters: { patientId?: string; doctorId?: string; status?: AppointmentStatus }) {
@@ -169,5 +171,25 @@ export class AppointmentRepository {
       createdAt: new Date().toISOString()
     });
     return appointment;
+  }
+
+  findCompletion(id: string) { return this.completions.get(id) ?? null; }
+
+  completeFromRecord(id: string, recordId: string, doctorUserId: string) {
+    const item = this.findById(id);
+    if (!item) return null;
+    const prior = this.findCompletion(id);
+    if (item.status === "COMPLETED" && prior?.recordId === recordId)
+      return { appointment: item, replayed: true };
+    if (item.status !== "CHECKED_IN" || prior ||
+      [...this.completions.values()].some((value) => value.recordId === recordId))
+      throw new InvalidTransitionError();
+    this.completions.set(id, { recordId, doctorUserId });
+    item.status = "COMPLETED";
+    item.updatedBy = doctorUserId;
+    item.updatedAt = new Date().toISOString();
+    this.history.push({ id: randomUUID(), appointmentId: id, fromStatus: "CHECKED_IN",
+      toStatus: "COMPLETED", changedBy: doctorUserId, createdAt: new Date().toISOString() });
+    return { appointment: item, replayed: false };
   }
 }

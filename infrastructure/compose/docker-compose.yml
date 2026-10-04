@@ -106,13 +106,15 @@ services:
       DOCTOR_SERVICE_URL: http://doctor-service:3002
       DOCTOR_INTERNAL_API_TOKEN: ${DOCTOR_INTERNAL_API_TOKEN:?Set DOCTOR_INTERNAL_API_TOKEN for Doctor and Appointment services}
       NOTIFICATION_SERVICE_URL: http://notification-service:3005
+      NOTIFICATION_INTERNAL_API_TOKEN: ${NOTIFICATION_INTERNAL_API_TOKEN:?Set NOTIFICATION_INTERNAL_API_TOKEN for Appointment and Notification services}
+      APPOINTMENT_NOTIFICATION_INTERNAL_API_TOKEN: ${APPOINTMENT_NOTIFICATION_INTERNAL_API_TOKEN:?Set APPOINTMENT_NOTIFICATION_INTERNAL_API_TOKEN for Appointment and Notification services}
+      APPOINTMENT_RECORD_INTERNAL_API_TOKEN: ${APPOINTMENT_RECORD_INTERNAL_API_TOKEN:?Set APPOINTMENT_RECORD_INTERNAL_API_TOKEN for Appointment and Medical Record services}
+      MEDICAL_RECORD_SERVICE_URL: http://medical-record-service:3004
       USER_SERVICE_URL: http://user-service:3001
     expose:
       - "3003"
     depends_on:
       doctor-service:
-        condition: service_healthy
-      notification-service:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3003/health').then((response) => { if (!response.ok) process.exit(1); }).catch(() => process.exit(1));"]
@@ -136,6 +138,8 @@ services:
       USER_SERVICE_URL: http://user-service:3001
       DOCTOR_SERVICE_URL: http://doctor-service:3002
       NOTIFICATION_SERVICE_URL: http://notification-service:3005
+      APPOINTMENT_RECORD_INTERNAL_API_TOKEN: ${APPOINTMENT_RECORD_INTERNAL_API_TOKEN:?Set APPOINTMENT_RECORD_INTERNAL_API_TOKEN for Appointment and Medical Record services}
+      NOTIFICATION_INTERNAL_API_TOKEN: ${NOTIFICATION_INTERNAL_API_TOKEN:?Set NOTIFICATION_INTERNAL_API_TOKEN for event producers and Notification Service}
     expose:
       - "3004"
     depends_on:
@@ -163,6 +167,8 @@ services:
       DATABASE_SSL: ${NOTIFICATION_DATABASE_SSL:-true}
       DATABASE_SSL_REJECT_UNAUTHORIZED: ${NOTIFICATION_DATABASE_SSL_REJECT_UNAUTHORIZED:-false}
       APPOINTMENT_SERVICE_URL: http://appointment-service:3003
+      APPOINTMENT_NOTIFICATION_INTERNAL_API_TOKEN: ${APPOINTMENT_NOTIFICATION_INTERNAL_API_TOKEN:?Set APPOINTMENT_NOTIFICATION_INTERNAL_API_TOKEN for Appointment and Notification services}
+      NOTIFICATION_INTERNAL_API_TOKEN: ${NOTIFICATION_INTERNAL_API_TOKEN:?Set NOTIFICATION_INTERNAL_API_TOKEN for Appointment and Notification services}
     expose:
       - "3005"
     healthcheck:

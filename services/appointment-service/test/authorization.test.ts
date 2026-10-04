@@ -67,7 +67,7 @@ describe("appointment resource authorization", () => {
     expect((await request(app).patch(`/api/v1/appointments/${own.id}/cancel`).set(actor).send({})).status).toBe(200);
   });
 
-  it("scopes doctor list/detail/completion to the linked active profile", async () => {
+  it("scopes doctor list/detail and reserves completion for Medical Record", async () => {
     const own = fixture(patientA, doctorA, "CHECKED_IN");
     const other = fixture(patientB, doctorB, "CHECKED_IN");
     const actor = headers(userDoctorA, "DOCTOR");
@@ -75,12 +75,12 @@ describe("appointment resource authorization", () => {
     expect(list.status).toBe(200);
     expect(list.body.data.items.map((item: { id: string }) => item.id)).toEqual([own.id]);
     expect((await request(app).get(`/api/v1/appointments/${other.id}`).set(actor)).status).toBe(403);
-    expect((await request(app).patch(`/api/v1/appointments/${other.id}/complete`).set(actor).send({})).status).toBe(403);
+    expect((await request(app).patch(`/api/v1/appointments/${other.id}/complete`).set(actor).send({})).status).toBe(409);
     expect((await request(app).patch(`/api/v1/appointments/${own.id}/complete`)
       .set(headers(userAdmin, "ADMIN")).send({})).status).toBe(403);
     const completed = await request(app).patch(`/api/v1/appointments/${own.id}/complete`).set(actor).send({});
-    expect(completed.status).toBe(200);
-    expect(completed.body.data.status).toBe("COMPLETED");
+    expect(completed.status).toBe(409);
+    expect(repository.findById(own.id)?.status).toBe("CHECKED_IN");
     const lookup = vi.mocked(fetch).mock.calls.find(([url]) => String(url).includes(`/doctors/by-user/${userDoctorA}`));
     expect(new Headers(lookup?.[1]?.headers).get("X-Internal-Token"))
       .toBe("doctor-internal-test-token-with-32-bytes");
@@ -166,7 +166,7 @@ describe("appointment state and input policy", () => {
     });
     const inactive = await request(app).patch(`/api/v1/appointments/${item.id}/complete`)
       .set(headers(userDoctorA, "DOCTOR")).send({});
-    expect(inactive.status).toBe(403);
+    expect(inactive.status).toBe(409);
     expect(repository.findById(item.id)?.status).toBe("CHECKED_IN");
     expect((await request(app).get(`/api/v1/appointments/${item.id}`)
       .set(headers("bad-user-id", "ADMIN"))).status).toBe(401);

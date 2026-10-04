@@ -4,6 +4,7 @@ import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createAppointmentPool, ConcurrentChangeError, IdempotencyMismatchError,
   InvalidTransitionError, PostgresAppointmentRepository,
   SlotConflictError, type BookingFingerprint } from "../src/postgres-repository.js";
+import { AppointmentOutboxWorker } from "../src/outbox-worker.js";
 
 const databaseUrl = process.env.APPOINTMENT_TEST_DATABASE_URL;
 const enabled = Boolean(databaseUrl && process.env.APPOINTMENT_TEST_DATABASE_DISPOSABLE === "1");
@@ -26,7 +27,7 @@ suite("Appointment PostgreSQL integration (disposable database only)", () => {
     const sql = await readFile(migration, "utf8");
     await pool.query(sql);
     await pool.query(sql);
-    await pool.query("TRUNCATE appointment_service.appointment_outbox_events, appointment_service.appointment_status_history, appointment_service.idempotency_requests, appointment_service.appointments");
+    await pool.query("TRUNCATE appointment_service.appointment_completions, appointment_service.appointment_outbox_events, appointment_service.appointment_status_history, appointment_service.idempotency_requests, appointment_service.appointments");
   });
   afterAll(async () => { await pool.end(); });
 
@@ -107,5 +108,73 @@ suite("Appointment PostgreSQL integration (disposable database only)", () => {
     await expect(repo.transition(made.appointment.id, "COMPLETED", actorId))
       .rejects.toBeInstanceOf(InvalidTransitionError);
     expect((await repo.findById(made.appointment.id))?.status).toBe("CONFIRMED");
+  });
+
+  it("claims each event once across workers and retries after a lease expires", async () => {
+    const first = await repo.claimOutbox(1, 1);
+    expect(first).toHaveLength(1);
+    const second = await repo.claimOutbox(100, 1);
+    expect(second.some((event) => event.id === first[0].id)).toBe(false);
+    await pool.query(`UPDATE appointment_service.appointment_outbox_events SET lease_until = now() - interval '1 second'
+      WHERE id = $1`, [first[0].id]);
+    const reclaimed = await repo.claimOutbox(100, 60);
+    expect(reclaimed.some((event) => event.id === first[0].id)).toBe(true);
+    expect(await repo.markOutboxSent(first[0].id, first[0].claimToken)).toBe(false);
+    const current = reclaimed.find((event) => event.id === first[0].id)!;
+    expect(await repo.markOutboxSent(current.id, current.claimToken)).toBe(true);
+    expect(await repo.markOutboxSent(current.id, current.claimToken)).toBe(false);
+  });
+
+  it("commits final-record completion, history and outbox together with replay protection", async () => {
+    const interval = { ...base, scheduledStartAt: "2030-01-07T06:00:00.000Z",
+      scheduledEndAt: "2030-01-07T06:30:00.000Z" };
+    const made = await repo.createBooking({ ...interval, createdBy: actorId }, "completion-key", interval);
+    await repo.transition(made.appointment.id, "CONFIRMED", actorId);
+    await repo.transition(made.appointment.id, "CHECKED_IN", actorId);
+    const recordId = "00000000-0000-4000-8000-000000000024";
+    const result = await repo.completeFromRecord(made.appointment.id, recordId, actorId);
+    expect(result?.appointment.status).toBe("COMPLETED");
+    expect(result?.replayed).toBe(false);
+    expect((await repo.completeFromRecord(made.appointment.id, recordId, actorId))?.replayed).toBe(true);
+    await expect(repo.completeFromRecord(made.appointment.id,
+      "00000000-0000-4000-8000-000000000025", actorId)).rejects.toBeInstanceOf(InvalidTransitionError);
+    const rows = await pool.query(`SELECT (SELECT count(*) FROM appointment_service.appointment_completions
+      WHERE appointment_id = $1) AS completions,
+      (SELECT count(*) FROM appointment_service.appointment_status_history WHERE appointment_id = $1
+       AND to_status = 'COMPLETED') AS histories,
+      (SELECT count(*) FROM appointment_service.appointment_outbox_events WHERE aggregate_id = $1
+       AND event_type = 'appointment.completed') AS events`, [made.appointment.id]);
+    expect(rows.rows[0]).toMatchObject({ completions: "1", histories: "1", events: "1" });
+  });
+
+  it("retains an event during Notification outage and delivers its stable ID after recovery", async () => {
+    const interval = { ...base, scheduledStartAt: "2030-01-07T07:00:00.000Z",
+      scheduledEndAt: "2030-01-07T07:30:00.000Z" };
+    const made = await repo.createBooking({ ...interval, createdBy: actorId }, "outage-key", interval);
+    process.env.NOTIFICATION_INTERNAL_API_TOKEN = "notification-internal-test-token-with-32-bytes";
+    const sent: unknown[] = [];
+    let offline = true;
+    const send = async (input: string | URL | Request, init?: RequestInit) => {
+      if (String(input).includes("/patients/"))
+        return Response.json({ success: true, data: { userId: actorId } });
+      if (offline) return new Response(null, { status: 503 });
+      sent.push(JSON.parse(String(init?.body)));
+      return Response.json({ success: true, data: {} });
+    };
+    const worker = new AppointmentOutboxWorker(repo, "http://user", "http://notification", send as typeof fetch);
+    for (let i = 0; i < 20; i++) await worker.dispatchBatch();
+    const pending = await pool.query(`SELECT id, status, retry_count FROM appointment_service.appointment_outbox_events
+      WHERE aggregate_id = $1 AND event_type = 'appointment.created'`, [made.appointment.id]);
+    expect(pending.rows[0]).toMatchObject({ status: "PENDING", retry_count: 1 });
+    offline = false;
+    await pool.query(`UPDATE appointment_service.appointment_outbox_events SET next_attempt_at = now() - interval '1 second'
+      WHERE id = $1`, [pending.rows[0].id]);
+    const restarted = new AppointmentOutboxWorker(new PostgresAppointmentRepository(pool),
+      "http://user", "http://notification", send as typeof fetch);
+    for (let i = 0; i < 20; i++) await restarted.dispatchBatch();
+    expect(sent).toContainEqual(expect.objectContaining({ eventId: pending.rows[0].id, type: "appointment.created" }));
+    expect((await pool.query(`SELECT status FROM appointment_service.appointment_outbox_events WHERE id = $1`,
+      [pending.rows[0].id])).rows[0].status).toBe("SENT");
+    delete process.env.NOTIFICATION_INTERNAL_API_TOKEN;
   });
 });

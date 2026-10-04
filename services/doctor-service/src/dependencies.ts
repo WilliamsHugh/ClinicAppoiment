@@ -12,9 +12,11 @@ export interface AppointmentOccupancy {
   occupied(doctorId: string, from: string, to?: string, requestId?: string): Promise<Slot[]>;
 }
 
-async function jsonRequest(url: URL, service: "user" | "appointment", requestId?: string, timeoutMs = 3000): Promise<{ status: number; body: unknown }> {
+async function jsonRequest(url: URL, service: "user" | "appointment", requestId?: string, timeoutMs = 3000,
+  internalToken?: string): Promise<{ status: number; body: unknown }> {
   try {
-    const response = await fetch(url, { headers: { Accept: "application/json", ...(requestId ? { "X-Request-Id": requestId } : {}) },
+    const response = await fetch(url, { headers: { Accept: "application/json", ...(requestId ? { "X-Request-Id": requestId } : {}),
+      ...(internalToken ? { "X-Internal-Token": internalToken } : {}) },
       signal: AbortSignal.timeout(timeoutMs) });
     return { status: response.status, body: await response.json() };
   } catch { throw new DependencyError(service); }
@@ -54,7 +56,9 @@ export function createAppointmentOccupancy(baseUrl = process.env.APPOINTMENT_SER
       url.searchParams.set("doctorId", doctorId);
       url.searchParams.set("from", from);
       if (to) url.searchParams.set("to", to);
-      const result = await jsonRequest(url, "appointment", requestId, timeoutMs);
+      const token = process.env.DOCTOR_INTERNAL_API_TOKEN;
+      if (!token || Buffer.byteLength(token, "utf8") < 32) throw new DependencyError("appointment");
+      const result = await jsonRequest(url, "appointment", requestId, timeoutMs, token);
       const envelope = result.body as { success?: boolean; data?: unknown } | null;
       if (result.status !== 200 || envelope?.success !== true || !Array.isArray(envelope.data)) {
         throw new DependencyError("appointment");

@@ -19,7 +19,7 @@ const pagination = [parameter("page", "query", false, { type: "integer", minimum
 
 export const appointmentOpenApi = {
   openapi: "3.0.3",
-  info: { title: "Appointment Service API", version: "0.2.0" },
+  info: { title: "Appointment Service API", version: "0.3.0" },
   security: [{ bearerAuth: [] }],
   paths: {
     "/health": { get: { summary: "Check Appointment database and migration readiness", security: [],
@@ -46,19 +46,31 @@ export const appointmentOpenApi = {
     "/api/v1/appointments/{id}/cancel": { patch: transition("Cancel a PENDING or CONFIRMED booking", ["PATIENT", "STAFF", "ADMIN"]) },
     "/api/v1/appointments/{id}/confirm": { patch: transition("Confirm a PENDING booking", ["STAFF", "ADMIN"]) },
     "/api/v1/appointments/{id}/check-in": { patch: transition("Check in a CONFIRMED booking", ["STAFF", "ADMIN"]) },
-    "/api/v1/appointments/{id}/complete": { patch: transition("Complete an assigned CHECKED_IN booking", ["DOCTOR"]) },
+    "/api/v1/appointments/{id}/complete": { patch: { summary: "Deprecated: completion requires a final Medical Record", deprecated: true,
+      "x-roles": ["DOCTOR"], parameters: [id], responses: { "409": failure, "401": failure, "403": failure } } },
     "/api/v1/appointments/{id}/no-show": { patch: transition("Mark a CONFIRMED booking as no-show", ["STAFF", "ADMIN"]) },
     "/internal/v1/appointments/occupied-slots": { get: { summary: "List active occupied doctor slots",
-      security: [], parameters: [parameter("doctorId", "query", true, uuid), parameter("from", "query", true, dateTime),
+      security: [{ internalToken: [] }], parameters: [parameter("doctorId", "query", true, uuid), parameter("from", "query", true, dateTime),
         parameter("to", "query", false, dateTime)],
-      responses: { "200": response({ type: "array", items: ref("OccupiedSlot") }), "400": failure, "503": failure } } },
+      responses: { "200": response({ type: "array", items: ref("OccupiedSlot") }), "400": failure, "401": failure, "503": failure } } },
     "/internal/v1/appointments/{id}/verify-for-medical-record": { get: { summary: "Read appointment state for Medical Record Service",
-      security: [], parameters: [id], responses: { "200": response({ type: "object", required: ["valid", "appointment"],
-        properties: { valid: { type: "boolean" }, appointment: ref("Appointment") } }), "400": failure, "404": failure, "503": failure } } }
+      security: [{ internalToken: [] }], parameters: [id], responses: { "200": response({ type: "object", required: ["valid", "appointment"],
+        properties: { valid: { type: "boolean" }, appointment: ref("AppointmentContext") } }), "400": failure, "401": failure, "404": failure, "503": failure } } },
+    "/internal/v1/appointments/{id}/reminder-context": { get: {
+      summary: "Read minimal appointment context for Notification reminders", security: [{ internalToken: [] }],
+      parameters: [id], responses: { "200": response(ref("ReminderContext")), ...errors } } },
+    "/internal/v1/appointments/{id}/complete-from-record": { post: {
+      summary: "Complete a checked-in appointment from a verified final Medical Record", security: [{ internalToken: [] }],
+      parameters: [id], requestBody: json({ type: "object", required: ["recordId"], additionalProperties: false,
+        properties: { recordId: uuid } }),
+      responses: { "200": response({ type: "object", required: ["id", "status", "recordId"],
+        properties: { id: uuid, status: { type: "string", enum: ["COMPLETED"] }, recordId: uuid } }), ...errors } } }
   },
   components: {
     securitySchemes: { bearerAuth: { type: "http", scheme: "bearer", bearerFormat: "JWT",
-      description: "Verified by API Gateway; service receives trusted actor context" } },
+      description: "Verified by API Gateway; service receives trusted actor context" },
+      internalToken: { type: "apiKey", in: "header", name: "X-Internal-Token",
+        description: "Service-specific token; Doctor, Medical Record, and Notification use distinct credentials" } },
     schemas: {
       ApiError: { type: "object", required: ["success", "error"], properties: {
         success: { type: "boolean", enum: [false] }, error: { type: "object", required: ["code", "message", "details"],
@@ -79,7 +91,11 @@ export const appointmentOpenApi = {
       TransitionRequest: { type: "object", additionalProperties: false,
         properties: { reason: { type: "string", maxLength: 500 } } },
       OccupiedSlot: { type: "object", required: ["startAt", "endAt"],
-        properties: { startAt: dateTime, endAt: dateTime } }
+        properties: { startAt: dateTime, endAt: dateTime } },
+      AppointmentContext: { type: "object", required: ["id", "patientId", "doctorId", "status"],
+        properties: { id: uuid, patientId: uuid, doctorId: uuid, status: { type: "string" } } },
+      ReminderContext: { type: "object", required: ["id", "patientId", "status", "scheduledStartAt"],
+        properties: { id: uuid, patientId: uuid, status: { type: "string" }, scheduledStartAt: dateTime } }
     }
   }
 };

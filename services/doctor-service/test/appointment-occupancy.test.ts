@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { createAppointmentOccupancy, DependencyError } from "../src/dependencies.js";
 
 const doctorId = "00000000-0000-4000-8000-000000000001";
@@ -6,7 +6,8 @@ const from = "2030-01-07T00:00:00.000Z";
 const to = "2030-01-07T03:00:00.000Z";
 const slot = { startAt: "2030-01-07T01:00:00.000Z", endAt: "2030-01-07T01:30:00.000Z" };
 
-afterEach(() => vi.unstubAllGlobals());
+beforeEach(() => vi.stubEnv("DOCTOR_INTERNAL_API_TOKEN", "doctor-internal-test-token-with-32-bytes"));
+afterEach(() => { vi.unstubAllGlobals(); vi.unstubAllEnvs(); });
 
 describe("Appointment Service occupancy client", () => {
   it("uses the internal path, query and request ID, returning only UTC slot fields", async () => {
@@ -22,7 +23,8 @@ describe("Appointment Service occupancy client", () => {
     expect(url.searchParams.get("doctorId")).toBe(doctorId);
     expect(url.searchParams.get("from")).toBe(from);
     expect(url.searchParams.get("to")).toBe(to);
-    expect(options.headers).toEqual({ Accept: "application/json", "X-Request-Id": "occupancy-req-1" });
+    expect(options.headers).toEqual({ Accept: "application/json", "X-Request-Id": "occupancy-req-1",
+      "X-Internal-Token": "doctor-internal-test-token-with-32-bytes" });
     expect(options.signal).toBeInstanceOf(AbortSignal);
   });
 
