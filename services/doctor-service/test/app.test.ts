@@ -1,6 +1,7 @@
 import request from "supertest";
 import { describe, expect, it, vi } from "vitest";
 import { createDoctorApp } from "../src/app.js";
+import { DependencyError } from "../src/dependencies.js";
 import type { AppointmentOccupancy, UserDirectory } from "../src/dependencies.js";
 import type { DoctorRepository } from "../src/repository.js";
 
@@ -162,6 +163,26 @@ describe("Doctor API authorization and slot contract", () => {
     expect(response.status).toBe(200);
     expect(response.body.data).toHaveLength(3);
     expect(response.body.data).not.toContainEqual(booked);
+  });
+
+  it("does not advertise slots when Appointment occupancy is not configured", async () => {
+    const { repository, users } = fixture();
+    const app = createDoctorApp(repository as unknown as DoctorRepository, users, null, internalToken);
+    const response = await request(app).get(`/api/v1/doctors/${doctorId}/available-slots?date=2030-01-07`)
+      .set("X-User-Id", userId).set("X-Role", "PATIENT");
+    expect(response.status).toBe(503);
+    expect(response.body.error.code).toBe("APPOINTMENT_AVAILABILITY_UNAVAILABLE");
+    expect(response.body.data).toBeUndefined();
+  });
+
+  it("does not advertise slots when Appointment occupancy fails", async () => {
+    const { app, appointments } = fixture();
+    vi.mocked(appointments.occupied).mockRejectedValueOnce(new DependencyError("appointment"));
+    const response = await request(app).get(`/api/v1/doctors/${doctorId}/available-slots?date=2030-01-07`)
+      .set("X-User-Id", userId).set("X-Role", "PATIENT");
+    expect(response.status).toBe(502);
+    expect(response.body.error.code).toBe("UPSTREAM_SERVICE_UNAVAILABLE");
+    expect(response.body.data).toBeUndefined();
   });
 
   it("fails closed when a schedule edit cannot check Appointment Service", async () => {

@@ -278,7 +278,7 @@ export function createDoctorApp(repository: DoctorRepository, users: UserDirecto
     const schedules = await repository.allSchedules(id);
     const timeOffs = await repository.allTimeOffs(id, window.from, window.to);
     const candidates = candidateSlots(date, schedules, timeOffs);
-    const booked = appointments ? await appointments.occupied(id, window.from, window.to, String(res.getHeader("X-Request-Id"))) : [];
+    const booked = await occupied(id, window.from, window.to, String(res.getHeader("X-Request-Id")));
     ok(res, candidates.filter((slot) => !booked.some((occupiedSlot) => overlaps(slot, occupiedSlot))));
   }));
 

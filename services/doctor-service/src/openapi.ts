@@ -63,7 +63,7 @@ export const doctorOpenApi = {
     },
     "/api/v1/doctors/{doctorId}/time-offs/{timeOffId}": { patch: operation("Update time off owned by this doctor", response(ref("TimeOff")),
       { parameters: [parameter("doctorId", "path"), parameter("timeOffId", "path")], requestBody: body(ref("TimeOffUpdate")) }) },
-    "/api/v1/doctors/{id}/available-slots": { get: operation("List candidate slots, excluding occupied slots when Appointment integration is configured",
+    "/api/v1/doctors/{id}/available-slots": { get: operation("List available slots after a required Appointment occupancy check",
       response({ type: "array", items: ref("Slot") }), { parameters: [parameter("id", "path"), parameter("date", "query", true)] }) },
     "/internal/v1/doctors/by-user/{userId}": { get: { ...operation("Resolve a doctor's profile for an internal caller",
       response({ type: "object", required: ["id", "userId", "isActive"], properties: {

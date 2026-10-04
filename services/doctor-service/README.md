@@ -26,7 +26,7 @@ Doctor public routes require `X-User-Id` and `X-Role` supplied by the authentica
 
 ## Appointment integration
 
-`APPOINTMENT_SERVICE_URL` enables a read-only internal call to `GET /internal/v1/appointments/occupied-slots`. The response is `{ "success": true, "data": [{ "startAt": "...Z", "endAt": "...Z" }] }`, with active future appointments only and no patient data. The current Appointment Service route reads its in-memory repository; Booking must connect it to persistent appointments before production use. Without `APPOINTMENT_SERVICE_URL`, available-slots returns candidate schedule slots after time off is removed and cannot guarantee they are unbooked. Creating appointments remains the final decision in Appointment Service.
+`APPOINTMENT_SERVICE_URL` configures the required read-only call to `GET /internal/v1/appointments/occupied-slots`. The response is `{ "success": true, "data": [{ "startAt": "...Z", "endAt": "...Z" }] }`, with active appointments only and no patient data. Available-slots returns `503 APPOINTMENT_AVAILABILITY_UNAVAILABLE` when this URL is unset, or `502 UPSTREAM_SERVICE_UNAVAILABLE` when the occupancy request fails or returns an invalid response. Creating appointments remains the final decision in Appointment Service.
 
 Editing a schedule, adding/editing time off, or deactivating a doctor requires the occupancy check. These writes fail closed with `503` when `APPOINTMENT_SERVICE_URL` is unset, or `502` when the endpoint is unavailable. A `409 SCHEDULE_CONFLICT_WITH_APPOINTMENTS` response contains the number of future bookings that would become invalid. This cross-service check needs coordination with Booking for concurrent booking versus schedule changes before production use.
 
@@ -39,6 +39,12 @@ npm run lint -w @clinic/doctor-service
 npm run test -w @clinic/doctor-service
 npm run build -w @clinic/doctor-service
 ```
+
+For PostgreSQL integration tests, use a disposable Doctor database and set
+`DOCTOR_TEST_DATABASE_URL` and `DOCTOR_TEST_DATABASE_DISPOSABLE=1`. The test applies
+the migration twice and clears Doctor tables in that database before checking
+persistence, constraints, and concurrent schedule writes. Without these variables,
+the database tests are skipped.
 
 ## Live smoke test through Gateway
 
@@ -64,8 +70,7 @@ in the shell and run `npm run smoke:doctor`. Never commit tokens or database URL
 The smoke command creates specialties, two Doctor profiles, a schedule, a time off and
 an appointment through Gateway. It checks patient search/detail/slots, Doctor ownership,
 User eligibility, Appointment occupancy, and `409` responses that leave Doctor data
-unchanged. Doctor test records remain in the isolated database; the current Appointment
-repository is in-memory, so its test appointment lasts only for that service process.
+unchanged. Doctor and Appointment test records remain in their separate databases.
 Stop Appointment Service separately to verify dependent schedule/time-off writes return
 `502`/`503` without changing persisted Doctor data, then restart it; the automated
 smoke command does not stop services or alter their network settings.
