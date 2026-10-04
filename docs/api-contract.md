@@ -357,14 +357,16 @@ Public client không được tạo notification trực tiếp. Tạo notificati
 
 ## 6. API Nội Bộ Service-to-Service
 
-Các route này không được mount vào Gateway public router. Trong MVP gọi HTTP trên private Docker network; không expose port nội bộ ra internet. Mỗi request mang `X-Request-Id` và identity context tối thiểu cần thiết. Trước production cần xác thực workload/service identity.
+Các route này không được mount vào Gateway public router. Trong MVP gọi HTTP trên private Docker network; không expose port nội bộ ra internet. Mỗi request mang `X-Request-Id` và identity context tối thiểu cần thiết. Caller phải được xác thực trước khi service tin dữ liệu nội bộ; mạng riêng không thay thế credential.
 
 | Caller -> Owner | Method/path | Request | Response |
 |---|---|---|---|
 | Appointment -> Doctor | `POST /internal/v1/doctors/verify-slot` | Header `X-Internal-Token` chứa credential chung chỉ có ở hai backend; chuyển tiếp `X-Request-Id` nếu có; body `{ "doctorId": string, "startAt": ISODateTime, "endAt": ISODateTime }` | `200 { "success": true, "data": { "valid": boolean, "reason"?: string } }`; thiếu/sai credential trả `401 INTERNAL_AUTH_REQUIRED` |
 | Doctor -> User | `GET /internal/v1/users/{userId}/doctor-eligibility` | `userId` là UUID tài khoản cần liên kết; `X-Request-Id` được chuyển tiếp nếu có | `200 { "success": true, "data": { "id": UUID, "role": "PATIENT" \| "DOCTOR" \| "STAFF" \| "ADMIN", "status": "ACTIVE" \| "INACTIVE" \| "LOCKED" } }`; không có user trả `404 USER_NOT_FOUND` |
 | Doctor -> Appointment | `GET /internal/v1/appointments/occupied-slots?doctorId={id}&from={ISODateTime}&to={ISODateTime?}` | `doctorId` là UUID; `from` bắt buộc, `to` tùy chọn và phải sau `from`; khoảng truy vấn `[from, to)`; chuyển tiếp `X-Request-Id` | `200 { "success": true, "data": [{ "startAt": ISODateTime UTC, "endAt": ISODateTime UTC }] }`; chỉ gồm lịch tương lai `PENDING`, `CONFIRMED`, `CHECKED_IN`, không chứa dữ liệu bệnh nhân. Query sai trả `400 VALIDATION_ERROR`. Route đọc dùng PostgreSQL và chỉ trả về các khoảng giờ active đã lưu bền vững. |
-| Medical Record -> Appointment | `GET /internal/v1/appointments/{appointmentId}/verify-for-medical-record` | Không có | `{ "valid": boolean, "appointment"?: { "id", "patientId", "doctorId", "status" } }` |
+| Medical Record -> Appointment | `GET /internal/v1/appointments/{appointmentId}/verify-for-medical-record` | Header `X-Internal-Token` từ `APPOINTMENT_RECORD_INTERNAL_API_TOKEN`; appointment ID là UUID | `200 { "success": true, "data": { "valid": boolean, "appointment": { "id", "patientId", "doctorId", "status" } } }`; thiếu/sai token `401 INTERNAL_AUTH_REQUIRED` |
+| Medical Record -> Appointment | `POST /internal/v1/appointments/{appointmentId}/complete-from-record` | Header `X-Internal-Token` từ `APPOINTMENT_RECORD_INTERNAL_API_TOKEN`; body `{ "recordId": UUID }`, chỉ gửi sau khi FINAL đã commit | `200` cho lần đầu hoặc replay cùng record; `409` sai trạng thái/record khác; `422` record không khớp hoặc chưa FINAL; `503` dependency lỗi |
+| Appointment -> Medical Record | `GET /internal/v1/medical-records/by-appointment/{appointmentId}` | Header `X-Internal-Token` từ `APPOINTMENT_RECORD_INTERNAL_API_TOKEN` | Chỉ trả `id`, `appointmentId`, `patientId`, `doctorId`, `status`, `createdBy`, `updatedBy?`; thiếu/sai token `401 INTERNAL_AUTH_REQUIRED` |
 | Medical Record/Appointment -> User | `GET /internal/v1/patients/{patientId}` | Không có | `{ "id": string, "userId": string }` |
 
 | Medical Record -> User | `GET /internal/v1/patients/by-user/{userId}` | Không có | `{ "id": string, "userId": string }` |
@@ -378,7 +380,8 @@ Notification tối thiểu xử lý event types `appointment.created`, `appointm
 Payload Notification chỉ gồm ID logic và thời gian cần cho điều hướng/nhắc lịch:
 `recipientUserId`, `patientId?`, `appointmentId?`, `recordId?`, `scheduledStartAt?`.
 Không đưa chẩn đoán, triệu chứng, ghi chú hoặc đơn thuốc vào event. Medical Record
-ghi outbox cùng transaction tạo/cập nhật hồ sơ; worker gửi lại bằng `eventId` cố định.
+ghi outbox cùng transaction tạo/cập nhật hồ sơ; callback completion được xử lý trước khi
+event thông báo kết quả được gửi. Worker dùng `eventId` cố định và retry hữu hạn.
 
 ## 7. Error Code Tối Thiểu
 

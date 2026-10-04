@@ -138,6 +138,7 @@ services:
       USER_SERVICE_URL: http://user-service:3001
       DOCTOR_SERVICE_URL: http://doctor-service:3002
       NOTIFICATION_SERVICE_URL: http://notification-service:3005
+      DOCTOR_INTERNAL_API_TOKEN: ${DOCTOR_INTERNAL_API_TOKEN:?Set DOCTOR_INTERNAL_API_TOKEN for Doctor and Medical Record services}
       APPOINTMENT_RECORD_INTERNAL_API_TOKEN: ${APPOINTMENT_RECORD_INTERNAL_API_TOKEN:?Set APPOINTMENT_RECORD_INTERNAL_API_TOKEN for Appointment and Medical Record services}
       NOTIFICATION_INTERNAL_API_TOKEN: ${NOTIFICATION_INTERNAL_API_TOKEN:?Set NOTIFICATION_INTERNAL_API_TOKEN for event producers and Notification Service}
     expose:

@@ -11,16 +11,22 @@ const ids = {
 };
 const mocks = vi.hoisted(() => ({
   findById: vi.fn(), findAll: vi.fn(), create: vi.fn(), update: vi.fn(), findByAppointmentId: vi.fn(),
-  pendingOutbox: vi.fn(), markOutboxSent: vi.fn(), deferOutbox: vi.fn()
+  claimOutbox: vi.fn(), markOutboxSent: vi.fn(), deferOutbox: vi.fn(), outboxStatusCounts: vi.fn()
 }));
 vi.mock("pg", () => ({ Pool: class { query = vi.fn() } }));
 vi.mock("../src/repository.js", () => ({ MedicalRecordRepository: class {
   findById = mocks.findById; findAll = mocks.findAll; create = mocks.create; update = mocks.update;
-  findByAppointmentId = mocks.findByAppointmentId; pendingOutbox = mocks.pendingOutbox;
-  markOutboxSent = mocks.markOutboxSent; deferOutbox = mocks.deferOutbox;
+  findByAppointmentId = mocks.findByAppointmentId; claimOutbox = mocks.claimOutbox;
+  markOutboxSent = mocks.markOutboxSent; deferOutbox = mocks.deferOutbox; outboxStatusCounts = mocks.outboxStatusCounts;
 } }));
 
 vi.stubEnv("DATABASE_URL", "postgresql://fixture:fixture@localhost:5432/fixture");
+const internalToken = "record-appointment-boundary-test-token-123456";
+const notificationToken = "record-notification-boundary-test-token-123456";
+const doctorToken = "record-doctor-boundary-test-token-123456";
+vi.stubEnv("APPOINTMENT_RECORD_INTERNAL_API_TOKEN", internalToken);
+vi.stubEnv("NOTIFICATION_INTERNAL_API_TOKEN", notificationToken);
+vi.stubEnv("DOCTOR_INTERNAL_API_TOKEN", doctorToken);
 const { app, sendOutbox } = await import("../src/index.js");
 
 function lookup(doctorId = ids.doctor, bookingValid = true) {
@@ -81,7 +87,7 @@ describe("Medical Record API authorization", () => {
 describe("Medical Record outbox", () => {
   it("retains a failed notification event for retry", async () => {
     const event = { id: ids.record, eventType: "medical-record.created", payload: { recordId: ids.record, recipientUserId: ids.patient }, retryCount: 0 };
-    mocks.pendingOutbox.mockResolvedValue([event]);
+    mocks.claimOutbox.mockResolvedValue([event]);
     vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 503 })));
     await sendOutbox();
     expect(mocks.deferOutbox).toHaveBeenCalledWith(event.id, 0);
@@ -90,11 +96,63 @@ describe("Medical Record outbox", () => {
 
   it("marks a delivered event sent using its stable event id", async () => {
     const event = { id: ids.record, eventType: "medical-record.created", payload: { recordId: ids.record, recipientUserId: ids.patient }, retryCount: 0 };
-    mocks.pendingOutbox.mockResolvedValue([event]);
+    mocks.claimOutbox.mockResolvedValue([event]);
     const fetcher = vi.fn(async () => new Response("{}", { status: 201 }));
     vi.stubGlobal("fetch", fetcher);
     await sendOutbox();
     expect(JSON.parse(fetcher.mock.calls[0][1].body).eventId).toBe(event.id);
+    expect(fetcher.mock.calls[0][1].headers["X-Internal-Token"]).toBe(notificationToken);
     expect(mocks.markOutboxSent).toHaveBeenCalledWith(event.id);
+  });
+
+  it("calls the authenticated completion command with the committed record id", async () => {
+    const event = { id: ids.record, eventType: "appointment.complete", payload: { appointmentId: ids.appointment, recordId: ids.record }, retryCount: 0 };
+    mocks.claimOutbox.mockResolvedValue([event]);
+    const fetcher = vi.fn(async () => new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetcher);
+    await sendOutbox();
+    expect(fetcher.mock.calls[0][0]).toContain(`/internal/v1/appointments/${ids.appointment}/complete-from-record`);
+    expect(fetcher.mock.calls[0][1].method).toBe("POST");
+    expect(fetcher.mock.calls[0][1].headers["X-Internal-Token"]).toBe(internalToken);
+    expect(fetcher.mock.calls[0][1].headers["X-Role"]).toBeUndefined();
+    expect(JSON.parse(fetcher.mock.calls[0][1].body)).toEqual({ recordId: ids.record });
+    expect(mocks.markOutboxSent).toHaveBeenCalledWith(event.id);
+  });
+
+  it("replays an older completion event using its stored record aggregate ID", async () => {
+    const event = { id: ids.record, aggregateId: ids.record, eventType: "appointment.complete",
+      payload: { appointmentId: ids.appointment, doctorUserId: ids.doctor }, retryCount: 0 };
+    mocks.claimOutbox.mockResolvedValue([event]);
+    const fetcher = vi.fn(async () => new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetcher);
+    await sendOutbox();
+    expect(JSON.parse(fetcher.mock.calls[0][1].body)).toEqual({ recordId: ids.record });
+  });
+
+  it("does not mark a failed completion as sent", async () => {
+    mocks.claimOutbox.mockResolvedValue([{ id: ids.record, eventType: "appointment.complete", payload: { appointmentId: ids.appointment, recordId: ids.record }, retryCount: 0 }]);
+    vi.stubGlobal("fetch", vi.fn(async () => new Response("{}", { status: 503 })));
+    await sendOutbox();
+    expect(mocks.deferOutbox).toHaveBeenCalledWith(ids.record, 0);
+    expect(mocks.markOutboxSent).not.toHaveBeenCalled();
+  });
+});
+
+describe("Medical Record internal lookup", () => {
+  it("rejects missing and invalid caller tokens before reading the record", async () => {
+    expect((await request(app).get(`/internal/v1/medical-records/by-appointment/${ids.appointment}`)).status).toBe(401);
+    expect((await request(app).get(`/internal/v1/medical-records/by-appointment/${ids.appointment}`).set("X-Internal-Token", "invalid")).status).toBe(401);
+    expect(mocks.findByAppointmentId).not.toHaveBeenCalled();
+  });
+
+  it("returns only fields required for completion", async () => {
+    mocks.findByAppointmentId.mockResolvedValue({ id: ids.record, appointmentId: ids.appointment,
+      patientId: ids.patient, doctorId: ids.doctor, status: "FINAL", createdBy: ids.doctor,
+      diagnosis: "private diagnosis", prescription: [{ medicineName: "private" }] });
+    const response = await request(app).get(`/internal/v1/medical-records/by-appointment/${ids.appointment}`)
+      .set("X-Internal-Token", internalToken);
+    expect(response.status).toBe(200);
+    expect(response.body.data).toEqual({ id: ids.record, appointmentId: ids.appointment,
+      patientId: ids.patient, doctorId: ids.doctor, status: "FINAL", createdBy: ids.doctor });
   });
 });

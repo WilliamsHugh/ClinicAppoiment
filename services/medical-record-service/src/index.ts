@@ -1,9 +1,10 @@
-import { randomUUID } from "node:crypto";
-import express, { type Request } from "express";
+import { randomUUID, timingSafeEqual } from "node:crypto";
+import express, { type Request, type RequestHandler } from "express";
 import { Pool } from "pg";
 import swaggerUi from "swagger-ui-express";
 import { z } from "zod";
 import { MedicalRecordRepository } from "./repository.js";
+import { openapi } from "./openapi.js";
 
 const port = Number(process.env.MEDICAL_RECORD_SERVICE_PORT ?? 3004);
 const databaseUrl = process.env.DATABASE_URL;
@@ -33,15 +34,31 @@ app.use((req, res, next) => {
 });
 
 function fail(res: express.Response, status: number, code: string, message: string) {
-  return res.status(status).json({ success: false, error: { code, message, details: [] } });
+  return res.status(status).json({ success: false, error: { code, message, details: [] },
+    requestId: res.getHeader("X-Request-Id") });
 }
 function actor(req: Request): Actor | null {
   const userId = req.header("x-user-id");
   const role = req.header("x-role");
   return userId && (role === "PATIENT" || role === "DOCTOR" || role === "STAFF" || role === "ADMIN") ? { userId, role } : null;
 }
-async function internalGet<T>(url: string): Promise<T | null> {
-  const response = await fetch(url, { signal: AbortSignal.timeout(4000) });
+function requiredInternalToken(variable: string): string {
+  const token = process.env[variable];
+  if (!token || Buffer.byteLength(token, "utf8") < 32) throw new Error(`${variable} is not configured`);
+  return token;
+}
+const requireAppointmentToken: RequestHandler = (req, res, next) => {
+  const expected = process.env.APPOINTMENT_RECORD_INTERNAL_API_TOKEN ?? "";
+  const received = req.header("X-Internal-Token") ?? "";
+  if (Buffer.byteLength(expected, "utf8") < 32 ||
+      Buffer.byteLength(expected, "utf8") !== Buffer.byteLength(received, "utf8") ||
+      !timingSafeEqual(Buffer.from(expected), Buffer.from(received)))
+    return void fail(res, 401, "INTERNAL_AUTH_REQUIRED", "Internal credential required");
+  next();
+};
+async function internalGet<T>(url: string, token?: string): Promise<T | null> {
+  const response = await fetch(url, { headers: token ? { "X-Internal-Token": token } : undefined,
+    redirect: "error", signal: AbortSignal.timeout(4000) });
   if (response.status === 404) return null;
   if (!response.ok) throw new Error(`Internal lookup failed: ${response.status}`);
   const body = await response.json() as { success: boolean; data: T };
@@ -50,9 +67,11 @@ async function internalGet<T>(url: string): Promise<T | null> {
 }
 const patientByUser = (id: string) => internalGet<{ id: string; userId: string }>(`${userUrl}/internal/v1/patients/by-user/${encodeURIComponent(id)}`);
 const patientById = (id: string) => internalGet<{ id: string; userId: string }>(`${userUrl}/internal/v1/patients/${encodeURIComponent(id)}`);
-const doctorByUser = (id: string) => internalGet<{ id: string; userId: string; isActive: boolean }>(`${doctorUrl}/internal/v1/doctors/by-user/${encodeURIComponent(id)}`);
+const doctorByUser = (id: string) => internalGet<{ id: string; userId: string; isActive: boolean }>(
+  `${doctorUrl}/internal/v1/doctors/by-user/${encodeURIComponent(id)}`,
+  requiredInternalToken("DOCTOR_INTERNAL_API_TOKEN"));
 async function appointment(id: string) {
-  const result = await internalGet<{ valid: boolean; appointment: Appointment }>(`${appointmentUrl}/internal/v1/appointments/${encodeURIComponent(id)}/verify-for-medical-record`);
+  const result = await internalGet<{ valid: boolean; appointment: Appointment }>(`${appointmentUrl}/internal/v1/appointments/${encodeURIComponent(id)}/verify-for-medical-record`, requiredInternalToken("APPOINTMENT_RECORD_INTERNAL_API_TOKEN"));
   return result?.valid ? result.appointment : null;
 }
 async function allowedDoctor(userId: string, doctorId: string) {
@@ -61,23 +80,26 @@ async function allowedDoctor(userId: string, doctorId: string) {
 }
 
 export async function sendOutbox() {
-  const events = await repository.pendingOutbox();
+  const events = await repository.claimOutbox();
   for (const event of events) {
     try {
       if (event.eventType === "medical-record.created" || event.eventType === "medical-record.updated") {
         const response = await fetch(`${notificationUrl}/internal/v1/notifications`, {
-          method: "POST", headers: { "Content-Type": "application/json", "X-Request-Id": event.id },
+          method: "POST", headers: { "Content-Type": "application/json", "X-Request-Id": event.id,
+            "X-Internal-Token": requiredInternalToken("NOTIFICATION_INTERNAL_API_TOKEN") },
           body: JSON.stringify({ eventId: event.id, type: event.eventType, payload: event.payload }),
           signal: AbortSignal.timeout(4000)
         });
         if (!response.ok) throw new Error(`Notification returned ${response.status}`);
       } else if (event.eventType === "appointment.complete") {
         const id = String(event.payload.appointmentId);
-        const response = await fetch(`${appointmentUrl}/api/v1/appointments/${encodeURIComponent(id)}/complete`, {
-          method: "PATCH", headers: { "Content-Type": "application/json", "X-User-Id": String(event.payload.doctorUserId), "X-Role": "DOCTOR" },
-          body: "{}", signal: AbortSignal.timeout(4000)
+        const response = await fetch(`${appointmentUrl}/internal/v1/appointments/${encodeURIComponent(id)}/complete-from-record`, {
+          method: "POST", headers: { "Content-Type": "application/json", "X-Request-Id": event.id,
+            "X-Internal-Token": requiredInternalToken("APPOINTMENT_RECORD_INTERNAL_API_TOKEN") },
+          body: JSON.stringify({ recordId: event.payload.recordId ?? event.aggregateId }),
+          redirect: "error", signal: AbortSignal.timeout(4000)
         });
-        if (!response.ok && !(response.status === 409 && (await appointment(id))?.status === "COMPLETED")) throw new Error(`Appointment returned ${response.status}`);
+        if (!response.ok) throw new Error(`Appointment returned ${response.status}`);
       }
       await repository.markOutboxSent(event.id);
     } catch (error) {
@@ -88,13 +110,11 @@ export async function sendOutbox() {
 }
 
 app.get("/health", async (_req, res) => {
-  try { await pool.query("SELECT 1"); return res.json({ success: true, data: { service: "medical-record-service", status: "ok" } }); }
+  try { await pool.query("SELECT 1"); return res.json({ success: true, data: {
+    service: "medical-record-service", status: "ok", outbox: await repository.outboxStatusCounts()
+  } }); }
   catch { return fail(res, 503, "DATABASE_UNAVAILABLE", "Database is unavailable"); }
 });
-const openapi = { openapi: "3.0.3", info: { title: "Medical Record Service", version: "1.0.0" }, paths: {
-  "/api/v1/medical-records": { get: { summary: "List own records" }, post: { summary: "Create appointment record" } },
-  "/api/v1/medical-records/{id}": { get: { summary: "Get owned record" }, patch: { summary: "Update draft record" } }
-} };
 app.get("/openapi.json", (_req, res) => res.json(openapi));
 app.use("/docs", swaggerUi.serve, swaggerUi.setup(openapi));
 
@@ -168,9 +188,11 @@ app.patch("/api/v1/medical-records/:id", async (req, res) => {
   return res.json({ success: true, data: result.record });
 });
 
-app.get("/internal/v1/medical-records/by-appointment/:appointmentId", async (req, res) => {
-  const record = await repository.findByAppointmentId(req.params.appointmentId);
-  return record ? res.json({ success: true, data: record }) : fail(res, 404, "MEDICAL_RECORD_NOT_FOUND", "Record not found");
+app.get("/internal/v1/medical-records/by-appointment/:appointmentId", requireAppointmentToken, async (req, res) => {
+  const record = await repository.findByAppointmentId(String(req.params.appointmentId));
+  if (!record) return fail(res, 404, "MEDICAL_RECORD_NOT_FOUND", "Record not found");
+  const { id, appointmentId, patientId, doctorId, status, createdBy, updatedBy } = record;
+  return res.json({ success: true, data: { id, appointmentId, patientId, doctorId, status, createdBy, updatedBy } });
 });
 
 app.use((req, res, next) => {
