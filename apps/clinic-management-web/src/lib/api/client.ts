@@ -133,6 +133,7 @@ export class ApiClient {
     headers.delete("X-User-Id");
     headers.set("Accept", "application/json");
     headers.set("Authorization", `Bearer ${token}`);
+    if (!headers.has("X-Request-Id")) headers.set("X-Request-Id", crypto.randomUUID());
     if (options.body !== undefined) headers.set("Content-Type", "application/json");
     if (options.idempotencyKey) headers.set("Idempotency-Key", options.idempotencyKey);
 

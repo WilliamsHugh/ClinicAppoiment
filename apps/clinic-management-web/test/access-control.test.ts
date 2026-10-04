@@ -9,7 +9,7 @@ function session(role?: ClinicRole): Session {
     identity: role ? { id: "user-1", role } : null,
     getAccessToken: async () => role ? "test-only-token" : null,
     signIn: vi.fn(),
-    signOut: vi.fn(),
+    signOut: vi.fn()
   };
 }
 

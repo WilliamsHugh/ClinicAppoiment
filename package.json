@@ -14,12 +14,15 @@
     "build:patient": "scripts/with-env.sh scripts/flutter-patient.sh build",
     "dev:clinic": "npm run dev -w @clinic/clinic-management-web",
     "dev:user": "CLINIC_ENV_FILE=services/user-service/.env scripts/with-env.sh npm run dev -w @clinic/user-service",
-    "dev:doctor": "npm run dev -w @clinic/doctor-service",
-    "dev:appointment": "npm run dev -w @clinic/appointment-service",
-    "dev:medical-record": "npm run dev -w @clinic/medical-record-service",
+    "dev:doctor": "CLINIC_ENV_FILE=services/doctor-service/.env scripts/with-env.sh npm run dev -w @clinic/doctor-service",
+    "dev:appointment": "CLINIC_ENV_FILE=services/appointment-service/.env scripts/with-env.sh npm run dev -w @clinic/appointment-service",
+    "dev:medical-record": "CLINIC_ENV_FILE=services/medical-record-service/.env scripts/with-env.sh npm run dev -w @clinic/medical-record-service",
     "dev:notification": "CLINIC_ENV_FILE=services/notification-service/.env scripts/with-env.sh npm run dev -w @clinic/notification-service",
+    "analyze:patient": "scripts/with-env.sh scripts/flutter-patient.sh analyze",
+    "test:patient": "scripts/with-env.sh scripts/flutter-patient.sh test",
     "build": "npm run build --workspaces --if-present",
-    "lint": "npm run lint --workspaces --if-present"
+    "lint": "npm run lint --workspaces --if-present",
+    "test": "npm run test --workspaces --if-present"
   },
   "devDependencies": {
     "typescript": "^5.9.3"

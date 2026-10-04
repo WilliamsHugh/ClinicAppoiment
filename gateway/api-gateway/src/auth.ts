@@ -52,7 +52,7 @@ export function createAuthenticate(config: GatewayConfig, verifier: AccessTokenV
       if (match[1] !== "dev-token" || !userId || !role || !roles.includes(role)) {
         return sendError(res, 401, "AUTH_TOKEN_INVALID", "Development authentication is invalid", [], req.requestId);
       }
-      req.user = { id: userId, authUserId: `dev:${userId}`, role };
+      req.user = { id: userId, role };
       return next();
     }
 
@@ -64,7 +64,7 @@ export function createAuthenticate(config: GatewayConfig, verifier: AccessTokenV
       if (identity.status !== "ACTIVE") {
         return sendError(res, 403, "ACCOUNT_INACTIVE", "User account is not active", [], req.requestId);
       }
-      req.user = { id: identity.id, authUserId: identity.authUserId, role: identity.role };
+      req.user = { id: identity.id, role: identity.role };
       return next();
     } catch {
       return sendError(res, 503, "AUTH_SERVICE_UNAVAILABLE", "Authentication service is unavailable", [], req.requestId);

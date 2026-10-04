@@ -260,19 +260,17 @@ class _ProfilePageState extends State<ProfilePage> {
                                     );
                                   }
 
-                                  if (!ctx.mounted || !mounted) return;
+                                  if (!mounted || !ctx.mounted) return;
                                   Navigator.pop(ctx);
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     const SnackBar(
-                                      content: Text(
-                                        'Cập nhật hồ sơ thành công!',
-                                      ),
+                                      content: Text('Cập nhật hồ sơ thành công!'),
                                       backgroundColor: Colors.green,
                                     ),
                                   );
                                   _loadProfile();
                                 } catch (err) {
-                                  if (!ctx.mounted || !mounted) return;
+                                  if (!mounted || !ctx.mounted) return;
                                   setSheetState(() => saving = false);
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     SnackBar(
