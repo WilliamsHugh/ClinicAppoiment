@@ -80,8 +80,20 @@ describe("USER-001 & USER-004: UserRepository tests", () => {
 
     const dataQuery = queries.find((q) => q.sql.includes("ORDER BY p.created_at"));
     expect(dataQuery?.sql).toContain("LEFT JOIN user_service.users u ON p.user_id = u.id");
+    expect(dataQuery?.sql).toContain("u.role = 'PATIENT'");
     expect(dataQuery?.sql).toContain("u.full_name ILIKE $1");
     expect(dataQuery?.values).toEqual(["%Van A%", 20, 0]);
+  });
+
+  it("excludes retained patient profiles after the user changes to another role", async () => {
+    const { repo, queries } = createMockDb();
+    await repo.findPatients();
+
+    const patientQueries = queries.filter((query) =>
+      query.sql.includes("FROM user_service.patient_profiles p"),
+    );
+    expect(patientQueries).toHaveLength(2);
+    expect(patientQueries.every((query) => query.sql.includes("WHERE u.role = 'PATIENT'"))).toBe(true);
   });
 
   it("creates user and automatically creates patient profile when role is PATIENT", async () => {
@@ -107,6 +119,15 @@ describe("USER-001 & USER-004: UserRepository tests", () => {
     expect(updateQuery?.sql).toContain("full_name = $1");
     expect(updateQuery?.sql).toContain("phone = $2");
     expect(updateQuery?.values).toEqual(["New Name", "0999999999", sampleUser.id]);
+  });
+
+  it("idempotently provisions a patient profile when an admin assigns PATIENT", async () => {
+    const { repo, queries } = createMockDb();
+    await repo.updateUser(sampleUser.id, { role: "PATIENT" });
+
+    const insertPatient = queries.find((q) => q.sql.includes("INSERT INTO user_service.patient_profiles"));
+    expect(insertPatient?.sql).toContain("ON CONFLICT (user_id) DO NOTHING");
+    expect(insertPatient?.values).toEqual([sampleUser.id]);
   });
 
   it("updates patient fields safely", async () => {

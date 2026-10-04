@@ -226,11 +226,13 @@ Gateway không xử lý credential, còn frontend không nhận cấu hình Supa
 | `GET` | `/api/v1/users/{userId}` | `ADMIN` | Không có |
 | `PATCH` | `/api/v1/users/{userId}/status` | `ADMIN` | `{ "status": "ACTIVE" \| "INACTIVE" \| "LOCKED" }` |
 | `PATCH` | `/api/v1/users/{userId}/role` | `ADMIN` | `{ "role": "PATIENT" \| "DOCTOR" \| "STAFF" \| "ADMIN" }` |
-| `GET` | `/api/v1/patients` | `STAFF`, `ADMIN`; `DOCTOR` trong phạm vi lịch khám | `page`, `limit`, `q` |
-| `GET` | `/api/v1/patients/{patientId}` | Bệnh nhân chính mình; `DOCTOR`/`STAFF`/`ADMIN` theo phạm vi | Không có |
+| `GET` | `/api/v1/patients` | `STAFF`, `ADMIN`; `DOCTOR` trong phạm vi lịch khám | `page`, `limit`, `q`; `DOCTOR` bắt buộc gửi `appointmentId` |
+| `GET` | `/api/v1/patients/{patientId}` | Bệnh nhân chính mình; `DOCTOR` theo lịch khám; `STAFF`/`ADMIN` | `DOCTOR` bắt buộc gửi `appointmentId` |
 | `PATCH` | `/api/v1/patients/{patientId}` | Bệnh nhân chính mình hoặc `ADMIN` | Patient profile fields |
 
 `UserProfile` response gồm `id`, `supabaseAuthUserId` không trả cho frontend, `email`, `fullName`, `phone`, `role`, `status`, `createdAt`, `updatedAt`. `PatientProfile` gồm `id`, `userId`, `dateOfBirth`, `gender`, `address`, `emergencyContact`, `insuranceNumber`, timestamps. Chỉ trả field patient profile cần thiết cho actor; không đưa `insuranceNumber` vào màn hình/response không cần thiết.
+
+Khi actor là `DOCTOR`, User Service đối chiếu `appointmentId` với Doctor Service và Appointment Service qua API nội bộ. Patient của appointment phải đúng với tài nguyên được yêu cầu, doctor phải đang hoạt động và được phân công cho appointment; appointment `CANCELLED` hoặc `NO_SHOW` không cấp quyền truy cập.
 
 ### Doctor, Specialty Và Schedule
 

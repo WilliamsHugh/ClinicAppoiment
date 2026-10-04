@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { visibleRoutes, canAccessRoute } from "../src/lib/navigation/routes";
-import type { Session, ClinicRole } from "../src/lib/session/session";
+import { isClinicManagementRole, type Session, type ClinicRole } from "../src/lib/session/session";
 
 function createMockSession(role?: ClinicRole): Session {
   return {
@@ -13,6 +13,12 @@ function createMockSession(role?: ClinicRole): Session {
 }
 
 describe("USER-008 & USER-009: Next.js Session & Route Guards", () => {
+  it("only admits clinic workforce roles to the management web", () => {
+    expect(isClinicManagementRole("DOCTOR")).toBe(true);
+    expect(isClinicManagementRole("STAFF")).toBe(true);
+    expect(isClinicManagementRole("ADMIN")).toBe(true);
+    expect(isClinicManagementRole("PATIENT")).toBe(false);
+  });
   it("denies access to protected routes when unauthenticated", () => {
     const session = createMockSession();
     const usersRoute = { href: "/users", label: "Tài khoản", roles: ["ADMIN"] as const };
