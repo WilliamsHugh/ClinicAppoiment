@@ -93,7 +93,8 @@ export class NotificationRepository {
              recipient_user_id = EXCLUDED.recipient_user_id, scheduled_start_at = EXCLUDED.scheduled_start_at,
              remind_at = EXCLUDED.remind_at, status = 'PENDING', retry_count = 0,
              next_attempt_at = now(), lease_expires_at = NULL
-           WHERE appointment_reminders.scheduled_start_at IS DISTINCT FROM EXCLUDED.scheduled_start_at`,
+           WHERE appointment_reminders.scheduled_start_at IS DISTINCT FROM EXCLUDED.scheduled_start_at
+              OR appointment_reminders.status = 'CANCELLED'`,
           [reminder.appointmentId, reminder.patientId, reminder.recipientUserId, reminder.scheduledStartAt]);
       }
       await client.query("COMMIT");
@@ -128,7 +129,8 @@ export class NotificationRepository {
        ON CONFLICT (appointment_id) DO UPDATE SET patient_id = EXCLUDED.patient_id,
        recipient_user_id = EXCLUDED.recipient_user_id, scheduled_start_at = EXCLUDED.scheduled_start_at,
        remind_at = EXCLUDED.remind_at, status = 'PENDING', retry_count = 0, next_attempt_at = now()
-       WHERE appointment_reminders.scheduled_start_at IS DISTINCT FROM EXCLUDED.scheduled_start_at`,
+       WHERE appointment_reminders.scheduled_start_at IS DISTINCT FROM EXCLUDED.scheduled_start_at
+          OR appointment_reminders.status = 'CANCELLED'`,
       [reminder.appointmentId, reminder.patientId, reminder.recipientUserId, reminder.scheduledStartAt]
     );
   }

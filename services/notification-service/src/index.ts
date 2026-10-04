@@ -138,11 +138,14 @@ app.post("/internal/v1/notifications", requireEventToken, async (req, res) => {
       (type === "appointment.created" && current.status !== "PENDING") ||
       (type === "appointment.cancelled" && current.status !== "CANCELLED") ||
       (type === "appointment.checked_in" && current.status !== "CHECKED_IN") ||
+      (type === "appointment.confirmed" && current.status !== "CONFIRMED") ||
+      (type === "appointment.rescheduled" && !["PENDING", "CONFIRMED"].includes(current.status)) ||
       ((type === "appointment.confirmed" || type === "appointment.rescheduled") &&
-        (current.status !== "CONFIRMED" || Date.parse(current.scheduledStartAt) !== Date.parse(payload.scheduledStartAt!)));
+        Date.parse(current.scheduledStartAt) !== Date.parse(payload.scheduledStartAt!));
     if (!stale && (type === "appointment.cancelled" || type === "appointment.checked_in"))
       effect = { kind: "cancel", appointmentId: payload.appointmentId };
-    else if (!stale && payload.scheduledStartAt)
+    else if (!stale && current.status === "CONFIRMED" &&
+      (type === "appointment.confirmed" || type === "appointment.rescheduled") && payload.scheduledStartAt)
       effect = { kind: "schedule", reminder: { appointmentId: payload.appointmentId,
         patientId: payload.patientId, recipientUserId: payload.recipientUserId,
         scheduledStartAt: payload.scheduledStartAt } };

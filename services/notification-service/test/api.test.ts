@@ -86,6 +86,42 @@ describe("Notification API", () => {
     expect(mocks.applyEvent).toHaveBeenCalledWith("old-event", null, { kind: "none" });
   });
 
+  it("notifies a new pending booking without scheduling a reminder", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ success: true, data: {
+      id: appointmentId, patientId: userId, status: "PENDING", scheduledStartAt: "2026-10-01T08:00:00.000Z"
+    } }), { status: 200 })));
+    mocks.applyEvent.mockResolvedValue({ created: true, notification: { id: appointmentId } });
+    const response = await request(app).post("/internal/v1/notifications").set("X-Internal-Token", eventToken)
+      .send({ eventId: "created-pending", type: "appointment.created", payload: { recipientUserId: userId,
+        patientId: userId, appointmentId, scheduledStartAt: "2026-10-01T08:00:00.000Z" } });
+    expect(response.status).toBe(201);
+    expect(mocks.applyEvent).toHaveBeenCalledWith("created-pending", expect.objectContaining({ type: "appointment.created" }),
+      { kind: "none" });
+  });
+
+  it("notifies a pending reschedule without scheduling a reminder", async () => {
+    vi.stubGlobal("fetch", vi.fn(async () => new Response(JSON.stringify({ success: true, data: {
+      id: appointmentId, patientId: userId, status: "PENDING", scheduledStartAt: "2026-10-02T08:00:00.000Z"
+    } }), { status: 200 })));
+    mocks.applyEvent.mockResolvedValue({ created: true, notification: { id: appointmentId } });
+    const response = await request(app).post("/internal/v1/notifications").set("X-Internal-Token", eventToken)
+      .send({ eventId: "rescheduled-pending", type: "appointment.rescheduled", payload: { recipientUserId: userId,
+        patientId: userId, appointmentId, scheduledStartAt: "2026-10-02T08:00:00.000Z" } });
+    expect(response.status).toBe(201);
+    expect(mocks.applyEvent).toHaveBeenCalledWith("rescheduled-pending",
+      expect.objectContaining({ type: "appointment.rescheduled" }), { kind: "none" });
+  });
+
+  it("schedules a reminder for a confirmed reschedule", async () => {
+    mocks.applyEvent.mockResolvedValue({ created: true, notification: { id: appointmentId } });
+    const response = await request(app).post("/internal/v1/notifications").set("X-Internal-Token", eventToken)
+      .send({ eventId: "rescheduled-confirmed", type: "appointment.rescheduled", payload: { recipientUserId: userId,
+        patientId: userId, appointmentId, scheduledStartAt: "2026-10-01T08:00:00.000Z" } });
+    expect(response.status).toBe(201);
+    expect(mocks.applyEvent).toHaveBeenCalledWith("rescheduled-confirmed",
+      expect.objectContaining({ type: "appointment.rescheduled" }), expect.objectContaining({ kind: "schedule" }));
+  });
+
   it("acknowledges a processed event even if Appointment is unavailable", async () => {
     mocks.hasProcessedEvent.mockResolvedValue(true);
     vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("offline"); }));

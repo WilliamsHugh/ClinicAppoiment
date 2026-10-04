@@ -19,20 +19,29 @@ integration("Notification real PostgreSQL", () => {
   const sendAppointmentId = randomUUID();
   const sendEventId = randomUUID();
   const repeatEventId = randomUUID();
+  const lateAppointmentId = randomUUID();
+  const lateCreatedId = randomUUID();
+  const lateConfirmedId = randomUUID();
+  const lateCancelledId = randomUUID();
   const scheduledStartAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
 
   afterAll(async () => {
     await pool.query(`DELETE FROM notification_service.notification_deliveries WHERE notification_id IN
       (SELECT id FROM notification_service.notifications WHERE event_id = ANY($1::text[]))`,
     [[confirmedId, cancelledId, staleId, failedId, sendEventId, repeatEventId,
-      `reminder:${appointmentId}:${scheduledStartAt}`, `reminder:${sendAppointmentId}:${scheduledStartAt}`]]);
+      lateCreatedId, lateConfirmedId, lateCancelledId,
+      `reminder:${appointmentId}:${scheduledStartAt}`, `reminder:${sendAppointmentId}:${scheduledStartAt}`,
+      `reminder:${lateAppointmentId}:${scheduledStartAt}`]]);
     await pool.query("DELETE FROM notification_service.notifications WHERE event_id = ANY($1::text[])",
       [[confirmedId, cancelledId, staleId, failedId, sendEventId, repeatEventId,
-        `reminder:${appointmentId}:${scheduledStartAt}`, `reminder:${sendAppointmentId}:${scheduledStartAt}`]]);
+        lateCreatedId, lateConfirmedId, lateCancelledId,
+        `reminder:${appointmentId}:${scheduledStartAt}`, `reminder:${sendAppointmentId}:${scheduledStartAt}`,
+        `reminder:${lateAppointmentId}:${scheduledStartAt}`]]);
     await pool.query("DELETE FROM notification_service.processed_events WHERE event_id = ANY($1::text[])",
-      [[confirmedId, cancelledId, staleId, failedId, sendEventId, repeatEventId]]);
+      [[confirmedId, cancelledId, staleId, failedId, sendEventId, repeatEventId,
+        lateCreatedId, lateConfirmedId, lateCancelledId]]);
     await pool.query("DELETE FROM notification_service.appointment_reminders WHERE appointment_id = ANY($1::uuid[])",
-      [[appointmentId, sendAppointmentId]]);
+      [[appointmentId, sendAppointmentId, lateAppointmentId]]);
     await pool.end();
   });
 
@@ -79,5 +88,35 @@ integration("Notification real PostgreSQL", () => {
     const notification = await pool.query("SELECT id FROM notification_service.notifications WHERE event_id = $1",
       [`reminder:${sendAppointmentId}:${scheduledStartAt}`]);
     expect(notification.rowCount).toBe(1);
+  });
+
+  it("arms a late confirmation at the same slot after a pending reminder was cancelled", async () => {
+    const input = { recipientUserId, type: "appointment.created", title: "Created", message: "Pending",
+      payload: { appointmentId: lateAppointmentId } };
+    const reminder = { appointmentId: lateAppointmentId, patientId, recipientUserId, scheduledStartAt };
+    await repository.applyEvent(lateCreatedId, input, { kind: "none" });
+    const absent = await pool.query("SELECT status FROM notification_service.appointment_reminders WHERE appointment_id = $1",
+      [lateAppointmentId]);
+    expect(absent.rowCount).toBe(0);
+
+    // Simulate a reminder left by the earlier PENDING behavior during an upgrade.
+    await repository.scheduleReminder(reminder);
+    await repository.cancelReminder(lateAppointmentId);
+    await repository.applyEvent(lateConfirmedId, { ...input, type: "appointment.confirmed" },
+      { kind: "schedule", reminder });
+    const armed = await pool.query<{ status: string; scheduled_start_at: Date }>(
+      "SELECT status, scheduled_start_at FROM notification_service.appointment_reminders WHERE appointment_id = $1",
+      [lateAppointmentId]);
+    expect(armed.rows[0].status).toBe("PENDING");
+    expect(armed.rows[0].scheduled_start_at.toISOString()).toBe(scheduledStartAt);
+
+    await repository.applyEvent(lateCancelledId, { ...input, type: "appointment.cancelled" },
+      { kind: "cancel", appointmentId: lateAppointmentId });
+    expect((await repository.applyEvent(lateConfirmedId, { ...input, type: "appointment.confirmed" },
+      { kind: "schedule", reminder })).created).toBe(false);
+    const cancelled = await pool.query<{ status: string }>(
+      "SELECT status FROM notification_service.appointment_reminders WHERE appointment_id = $1",
+      [lateAppointmentId]);
+    expect(cancelled.rows[0].status).toBe("CANCELLED");
   });
 });
