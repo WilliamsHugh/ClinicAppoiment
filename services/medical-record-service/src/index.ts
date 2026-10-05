@@ -65,8 +65,12 @@ async function internalGet<T>(url: string, token?: string): Promise<T | null> {
   if (!body.success || !body.data) throw new Error("Invalid internal response");
   return body.data;
 }
-const patientByUser = (id: string) => internalGet<{ id: string; userId: string }>(`${userUrl}/internal/v1/patients/by-user/${encodeURIComponent(id)}`);
-const patientById = (id: string) => internalGet<{ id: string; userId: string }>(`${userUrl}/internal/v1/patients/${encodeURIComponent(id)}`);
+const patientByUser = (id: string) => internalGet<{ id: string; userId: string }>(
+  `${userUrl}/internal/v1/patients/by-user/${encodeURIComponent(id)}`,
+  requiredInternalToken("USER_RECORD_INTERNAL_API_TOKEN"));
+const patientById = (id: string) => internalGet<{ id: string; userId: string }>(
+  `${userUrl}/internal/v1/patients/${encodeURIComponent(id)}`,
+  requiredInternalToken("USER_RECORD_INTERNAL_API_TOKEN"));
 const doctorByUser = (id: string) => internalGet<{ id: string; userId: string; isActive: boolean }>(
   `${doctorUrl}/internal/v1/doctors/by-user/${encodeURIComponent(id)}`,
   requiredInternalToken("DOCTOR_INTERNAL_API_TOKEN"));

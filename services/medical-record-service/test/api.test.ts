@@ -24,20 +24,24 @@ vi.stubEnv("DATABASE_URL", "postgresql://fixture:fixture@localhost:5432/fixture"
 const internalToken = "record-appointment-boundary-test-token-123456";
 const notificationToken = "record-notification-boundary-test-token-123456";
 const doctorToken = "record-doctor-boundary-test-token-123456";
+const userRecordToken = "record-user-boundary-test-token-123456";
 vi.stubEnv("APPOINTMENT_RECORD_INTERNAL_API_TOKEN", internalToken);
 vi.stubEnv("NOTIFICATION_INTERNAL_API_TOKEN", notificationToken);
 vi.stubEnv("DOCTOR_INTERNAL_API_TOKEN", doctorToken);
+vi.stubEnv("USER_RECORD_INTERNAL_API_TOKEN", userRecordToken);
 const { app, sendOutbox } = await import("../src/index.js");
 
 function lookup(doctorId = ids.doctor, bookingValid = true) {
-  vi.stubGlobal("fetch", vi.fn(async (input: string) => {
+  const fetcher = vi.fn(async (input: string, _init?: RequestInit) => {
     let data: unknown;
     if (input.includes("verify-for-medical-record")) data = { valid: bookingValid, appointment: { id: ids.appointment, patientId: ids.patient, doctorId: ids.doctor, status: "CHECKED_IN" } };
     else if (input.includes("doctors/by-user")) data = { id: doctorId, userId: "doctor-user", isActive: true };
     else if (input.includes("patients/by-user")) data = { id: ids.patient, userId: "patient-user" };
     else if (input.includes("patients/")) data = { id: ids.patient, userId: "patient-user" };
     return new Response(JSON.stringify({ success: true, data }), { status: 200, headers: { "Content-Type": "application/json" } });
-  }));
+  });
+  vi.stubGlobal("fetch", fetcher);
+  return fetcher;
 }
 
 beforeEach(() => { vi.clearAllMocks(); lookup(); });
@@ -81,6 +85,36 @@ describe("Medical Record API authorization", () => {
       .send({ appointmentId: ids.appointment, patientId: ids.patient, doctorId: ids.doctor, diagnosis: "Demo" });
     expect(response.status).toBe(201);
     expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ createdBy: "doctor-user" }), "patient-user");
+  });
+
+  it("sends the Record-only User credential on both Patient lookups", async () => {
+    const fetcher = lookup();
+    mocks.findAll.mockResolvedValue({ items: [], page: 1, limit: 20, total: 0 });
+    mocks.create.mockResolvedValue({ id: ids.record });
+    const list = await request(app).get("/api/v1/medical-records")
+      .set("X-User-Id", "patient-user").set("X-Role", "PATIENT");
+    const create = await request(app).post("/api/v1/medical-records")
+      .set("X-User-Id", "doctor-user").set("X-Role", "DOCTOR")
+      .send({ appointmentId: ids.appointment, patientId: ids.patient, doctorId: ids.doctor });
+    expect(list.status).toBe(200);
+    expect(create.status).toBe(201);
+    const patientCalls = fetcher.mock.calls.filter(([url]) => url.includes("/internal/v1/patients/"));
+    expect(patientCalls).toHaveLength(2);
+    expect(patientCalls.map(([url]) => url)).toEqual([
+      expect.stringContaining("/internal/v1/patients/by-user/patient-user"),
+      expect.stringContaining(`/internal/v1/patients/${ids.patient}`)
+    ]);
+    expect(patientCalls.every(([, options]) => new Headers(options?.headers).get("X-Internal-Token") === userRecordToken)).toBe(true);
+  });
+
+  it("fails closed before a Patient lookup when the Record credential is missing", async () => {
+    const fetcher = lookup();
+    vi.stubEnv("USER_RECORD_INTERNAL_API_TOKEN", "");
+    const response = await request(app).get("/api/v1/medical-records")
+      .set("X-User-Id", "patient-user").set("X-Role", "PATIENT");
+    expect(response.status).toBe(503);
+    expect(fetcher).not.toHaveBeenCalled();
+    vi.stubEnv("USER_RECORD_INTERNAL_API_TOKEN", userRecordToken);
   });
 });
 
