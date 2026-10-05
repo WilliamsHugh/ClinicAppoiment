@@ -373,14 +373,14 @@ Các route này không được mount vào Gateway public router. Trong MVP gọ
 | Medical Record -> User | Same patient routes | `USER_RECORD_INTERNAL_API_TOKEN` | `{ id, userId }` |
 | User -> Doctor | `GET /internal/v1/doctors/by-user/{userId}` | `DOCTOR_USER_INTERNAL_API_TOKEN` | `{ id, userId, isActive }` |
 | User -> Appointment | `GET /internal/v1/appointments/{appointmentId}/patient-scope` | `APPOINTMENT_USER_INTERNAL_API_TOKEN` | `{ id, patientId, doctorId, status }` |
-| Appointment -> Doctor | `POST /internal/v1/doctors/verify-slot` | `DOCTOR_INTERNAL_API_TOKEN` | Body `{ doctorId, startAt, endAt }`; response `{ success, data: { valid, reason? } }` |
-| Doctor -> Appointment | `GET /internal/v1/appointments/occupied-slots?doctorId={id}&from={ISODateTime}&to={ISODateTime?}` | `DOCTOR_INTERNAL_API_TOKEN` | `200 { success: true, data: [{ startAt, endAt }] }`; query uses `[from,to)`, `to` optional; returns only active future slots, without patient data |
-| Appointment/Medical Record -> Doctor | `GET /internal/v1/doctors/by-user/{userId}` | `DOCTOR_INTERNAL_API_TOKEN` | `{ id, userId, isActive }`; this caller credential is distinct from User -> Doctor |
-| Medical Record -> Appointment | `GET /internal/v1/appointments/{appointmentId}/verify-for-medical-record` | `APPOINTMENT_RECORD_INTERNAL_API_TOKEN` | `{ valid, appointment? { id, patientId, doctorId, status } }` |
-| Medical Record -> Appointment | `POST /internal/v1/appointments/{appointmentId}/complete-from-record` | `APPOINTMENT_RECORD_INTERNAL_API_TOKEN` | `{ recordId }`; completes an eligible checked-in appointment |
-| Appointment -> Medical Record | `GET /internal/v1/medical-records/by-appointment/{appointmentId}` | `APPOINTMENT_RECORD_INTERNAL_API_TOKEN` | Minimal finalized record context |
-| Appointment/Medical Record -> Notification | `POST /internal/v1/notifications` | `NOTIFICATION_INTERNAL_API_TOKEN` | `{ eventId, type, payload }`; `201` first receipt, `200` duplicate |
-| Notification -> Appointment | `GET /internal/v1/appointments/{appointmentId}/reminder-context` | `APPOINTMENT_NOTIFICATION_INTERNAL_API_TOKEN` | Minimal appointment context for reminder validation |
+| Appointment -> Doctor | `POST /internal/v1/doctors/verify-slot` | `DOCTOR_INTERNAL_API_TOKEN` | Body `{ doctorId, startAt, endAt }`; response `{ success, data: { valid, reason? } }`; sai token trả `401 INTERNAL_AUTH_REQUIRED` |
+| Doctor -> Appointment | `GET /internal/v1/appointments/occupied-slots?doctorId={id}&from={ISODateTime}&to={ISODateTime?}` | `DOCTOR_INTERNAL_API_TOKEN` | Khoảng truy vấn `[from,to)`; trả các khoảng giờ active đã lưu, không có dữ liệu bệnh nhân |
+| Appointment/Medical Record -> Doctor | `GET /internal/v1/doctors/by-user/{userId}` | `DOCTOR_INTERNAL_API_TOKEN` | `{ id, userId, isActive }`; tách biệt credential User -> Doctor |
+| Medical Record -> Appointment | `GET /internal/v1/appointments/{appointmentId}/verify-for-medical-record` | `APPOINTMENT_RECORD_INTERNAL_API_TOKEN` | `{ valid, appointment?: { id, patientId, doctorId, status } }`; thiếu/sai token trả `401 INTERNAL_AUTH_REQUIRED` |
+| Medical Record -> Appointment | `POST /internal/v1/appointments/{appointmentId}/complete-from-record` | `APPOINTMENT_RECORD_INTERNAL_API_TOKEN` | Body `{ recordId }`; `200` lần đầu/replay cùng record, `409` trạng thái hoặc record khác, `422` record không hợp lệ/chưa FINAL |
+| Appointment -> Medical Record | `GET /internal/v1/medical-records/by-appointment/{appointmentId}` | `APPOINTMENT_RECORD_INTERNAL_API_TOKEN` | Chỉ trả ID, appointment/patient/doctor, status và thông tin audit tối thiểu; thiếu/sai token trả `401 INTERNAL_AUTH_REQUIRED` |
+| Appointment/Medical Record -> Notification | `POST /internal/v1/notifications` | `NOTIFICATION_INTERNAL_API_TOKEN` | `{ eventId, type, payload }`; `201` lần đầu, `200` duplicate |
+| Notification -> Appointment | `GET /internal/v1/appointments/{appointmentId}/reminder-context` | `APPOINTMENT_NOTIFICATION_INTERNAL_API_TOKEN` | Ngữ cảnh tối thiểu để kiểm tra reminder |
 
 Mỗi biến token là secret backend-only ngẫu nhiên riêng, tối thiểu 32 byte; cùng một biến
 được cấu hình ở các service tạo và xác minh credential tương ứng. Không dùng chung
@@ -405,7 +405,8 @@ Notification tối thiểu xử lý event types `appointment.created`, `appointm
 Payload Notification chỉ gồm ID logic và thời gian cần cho điều hướng/nhắc lịch:
 `recipientUserId`, `patientId?`, `appointmentId?`, `recordId?`, `scheduledStartAt?`.
 Không đưa chẩn đoán, triệu chứng, ghi chú hoặc đơn thuốc vào event. Medical Record
-ghi outbox cùng transaction tạo/cập nhật hồ sơ; worker gửi lại bằng `eventId` cố định.
+ghi outbox cùng transaction tạo/cập nhật hồ sơ; callback completion được xử lý trước khi
+event thông báo kết quả được gửi. Worker dùng `eventId` cố định và retry hữu hạn.
 
 ## 7. Error Code Tối Thiểu
 

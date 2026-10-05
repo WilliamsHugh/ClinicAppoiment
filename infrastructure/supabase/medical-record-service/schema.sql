@@ -50,8 +50,17 @@ CREATE TABLE IF NOT EXISTS medical_record_service.outbox_events (
   event_type TEXT NOT NULL,
   aggregate_id UUID NOT NULL,
   payload JSONB NOT NULL,
-  status TEXT NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'SENT')),
+  status TEXT NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'PROCESSING', 'SENT', 'FAILED')),
   retry_count INT NOT NULL DEFAULT 0,
   next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  lease_expires_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
+
+ALTER TABLE medical_record_service.outbox_events
+ADD COLUMN IF NOT EXISTS lease_expires_at TIMESTAMPTZ;
+ALTER TABLE medical_record_service.outbox_events
+DROP CONSTRAINT IF EXISTS outbox_events_status_check;
+ALTER TABLE medical_record_service.outbox_events
+ADD CONSTRAINT outbox_events_status_check
+CHECK (status IN ('PENDING', 'PROCESSING', 'SENT', 'FAILED'));
