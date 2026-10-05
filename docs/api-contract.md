@@ -40,7 +40,7 @@ Express mount path có biên segment nên `/api/v1/doctors` và mọi đường 
 Doctor Service, nhưng `/api/v1/doctors-other` không match. Gateway tái tạo nguyên đường dẫn public;
 service nhận đúng path, query và method mà frontend gửi. Không có quy ước strip prefix. Request body,
 `Authorization`, `Idempotency-Key`, content headers và response phù hợp được proxy chuyển tiếp.
-Gateway luôn xóa `X-User-Id`, `X-Role`, `X-Supabase-Auth-User-Id` do client gửi, sau đó chỉ thêm
+Gateway luôn xóa `X-User-Id`, `X-Role`, `X-Supabase-Auth-User-Id`, `X-Internal-Token` do client gửi, sau đó chỉ thêm
 `X-User-Id` và `X-Role` từ danh tính đã xác minh. Supabase Auth user ID không được chuyển sang service nghiệp vụ.
 
 Mặc định mọi nhóm nghiệp vụ yêu cầu đăng nhập. Ngoại lệ public hiện chỉ gồm `GET /health`, tài liệu
@@ -174,7 +174,7 @@ Danh sách luôn đặt trong `data.items` và có metadata phân trang:
 
 - Supabase Auth chịu trách nhiệm lưu thông tin đăng nhập và phát hành token, nhưng chỉ User Service giao tiếp với Supabase Auth. Hai frontend gọi `/api/v1/auth/register`, `/login`, `/refresh` và `/logout` qua Gateway; Gateway proxy request nguyên vẹn tới User Service.
 - Với API nghiệp vụ, frontend gửi Supabase access token tới Gateway.
-- Gateway gọi `User Service /internal/v1/auth/verify`; User Service xác minh token với Supabase Auth và trả profile/role có thẩm quyền. Không lấy role có thể tự sửa từ user metadata làm nguồn phân quyền.
+- Gateway gọi `User Service /internal/v1/auth/verify` với bearer token của người dùng và `X-Internal-Token` lấy từ biến backend-only `USER_GATEWAY_INTERNAL_API_TOKEN` (cùng giá trị tại Gateway và User Service, tối thiểu 32 byte). User Service xác minh token với Supabase Auth và trả profile/role có thẩm quyền. Không lấy role có thể tự sửa từ user metadata làm nguồn phân quyền. Gateway không chuyển `X-Internal-Token` của client tới bất kỳ public service route nào. Thiếu/sai credential Gateway -> User là lỗi phụ thuộc `503 AUTH_SERVICE_UNAVAILABLE`, không phải lỗi token của người dùng; bearer token người dùng không hợp lệ trả `401 AUTH_TOKEN_INVALID`.
 - Gateway truyền danh tính đã xác minh tới service nội bộ qua header do Gateway tự ghi đè: `X-User-Id`, `X-Role`, `X-Request-Id`.
 - Các service vẫn kiểm tra quyền nghiệp vụ nhạy cảm, đặc biệt quyền sở hữu patient, doctor phụ trách và trạng thái appointment.
 - Trong development chỉ được phép có auth giả lập bằng header khi bật chế độ dev rõ ràng. Tuyệt đối không bật fallback này trong production.
@@ -353,16 +353,37 @@ Public client không được tạo notification trực tiếp. Tạo notificati
 
 ## 6. API Nội Bộ Service-to-Service
 
-Các route này không được mount vào Gateway public router. Trong MVP gọi HTTP trên private Docker network; không expose port nội bộ ra internet. Mỗi request mang `X-Request-Id` và identity context tối thiểu cần thiết. Trước production cần xác thực workload/service identity.
+Các route này không được mount vào Gateway public router. Trong MVP gọi HTTP trên private Docker network; không expose port nội bộ ra internet. Mỗi request mang `X-Request-Id` và credential riêng của caller trong `X-Internal-Token`; private network không thay thế xác thực. Gateway không proxy các route `/internal/v1/*`.
 
-| Caller -> Owner | Method/path | Request | Response |
+| Caller -> Owner | Method/path | Credential (`X-Internal-Token`) | Request/response |
 |---|---|---|---|
-| Appointment -> Doctor | `POST /internal/v1/doctors/verify-slot` | `{ "doctorId": string, "startAt": ISODateTime, "endAt": ISODateTime }` | `{ "valid": boolean, "reason"?: string }` |
-| Medical Record -> Appointment | `GET /internal/v1/appointments/{appointmentId}/verify-for-medical-record` | Không có | `{ "valid": boolean, "appointment"?: { "id", "patientId", "doctorId", "status" } }` |
-| Medical Record/Appointment -> User | `GET /internal/v1/patients/{patientId}` | Không có | `{ "id": string, "userId": string }` |
-| Medical Record -> User | `GET /internal/v1/patients/by-user/{userId}` | Không có | `{ "id": string, "userId": string }` |
-| Medical Record -> Doctor | `GET /internal/v1/doctors/by-user/{userId}` | Không có | `{ "id": string, "userId": string, "isActive": boolean }` |
-| Appointment/Medical Record -> Notification | `POST /internal/v1/notifications` | `{ "eventId": string, "type": string, "payload": object }` | `201` khi nhận lần đầu; `200` khi event đã nhận trước đó |
+| Gateway -> User | `GET /internal/v1/auth/verify` | `USER_GATEWAY_INTERNAL_API_TOKEN` | Bearer access token; `{ id, authUserId, role, status }` |
+| Doctor -> User | `GET /internal/v1/users/{userId}/doctor-eligibility` | `USER_DOCTOR_INTERNAL_API_TOKEN` | `{ id, role, status }` |
+| Appointment -> User | `GET /internal/v1/patients/{patientId}` and `/by-user/{userId}` | `USER_APPOINTMENT_INTERNAL_API_TOKEN` | `{ id, userId }` |
+| Medical Record -> User | Same patient routes | `USER_RECORD_INTERNAL_API_TOKEN` | `{ id, userId }` |
+| User -> Doctor | `GET /internal/v1/doctors/by-user/{userId}` | `DOCTOR_USER_INTERNAL_API_TOKEN` | `{ id, userId, isActive }` |
+| User -> Appointment | `GET /internal/v1/appointments/{appointmentId}/patient-scope` | `APPOINTMENT_USER_INTERNAL_API_TOKEN` | `{ id, patientId, doctorId, status }` |
+| Appointment -> Doctor | `POST /internal/v1/doctors/verify-slot` | `DOCTOR_INTERNAL_API_TOKEN` | Request `{ doctorId, startAt, endAt }`; response `{ valid, reason? }` |
+| Doctor -> Appointment | `GET /internal/v1/appointments/occupied-slots` | `DOCTOR_INTERNAL_API_TOKEN` | Occupied intervals for the requested doctor and time range |
+| Medical Record -> Appointment | `GET /internal/v1/appointments/{appointmentId}/verify-for-medical-record` | `APPOINTMENT_RECORD_INTERNAL_API_TOKEN` | `{ valid, appointment? { id, patientId, doctorId, status } }` |
+| Medical Record -> Appointment | `POST /internal/v1/appointments/{appointmentId}/complete-from-record` | `APPOINTMENT_RECORD_INTERNAL_API_TOKEN` | `{ recordId }`; completes an eligible checked-in appointment |
+| Appointment -> Medical Record | `GET /internal/v1/medical-records/by-appointment/{appointmentId}` | `APPOINTMENT_RECORD_INTERNAL_API_TOKEN` | Minimal finalized record context |
+| Appointment/Medical Record -> Notification | `POST /internal/v1/notifications` | `NOTIFICATION_INTERNAL_API_TOKEN` | `{ eventId, type, payload }`; `201` first receipt, `200` duplicate |
+| Notification -> Appointment | `GET /internal/v1/appointments/{appointmentId}/reminder-context` | `APPOINTMENT_NOTIFICATION_INTERNAL_API_TOKEN` | Minimal appointment context for reminder validation |
+
+Mỗi biến token là secret backend-only ngẫu nhiên riêng, tối thiểu 32 byte; cùng một biến
+được cấu hình ở các service tạo và xác minh credential tương ứng. Không dùng chung
+`APPOINTMENT_USER_INTERNAL_API_TOKEN` với credential dành cho Medical Record. Compose lấy
+các biến từ `.env` gốc; `.env.example` chỉ liệt kê tên và placeholder, không chứa secret thật.
+
+User patient-scope gọi Doctor trước để xác minh hồ sơ bác sĩ đang hoạt động, sau đó gọi
+Appointment để lấy phạm vi tối thiểu. User đối chiếu appointment thuộc bác sĩ đó và trạng thái
+không phải `CANCELLED` hoặc `NO_SHOW`. Timeout, credential bị từ chối hoặc DTO sai trả
+`503 PATIENT_SCOPE_UNAVAILABLE`; tài nguyên không tồn tại hoặc ngoài phạm vi trả
+`403 PATIENT_SCOPE_DENIED`. Route `patient-scope` dành riêng cho User, không thay thế route
+`verify-for-medical-record`. Doctor dùng `DOCTOR_USER_INTERNAL_API_TOKEN` cho lookup của User;
+Appointment dùng `APPOINTMENT_USER_INTERNAL_API_TOKEN` cho route này. Hai token phải khác nhau
+và tách biệt với credential User dùng để gọi Doctor/Appointment.
 
 Notification tối thiểu xử lý event types `appointment.created`, `appointment.rescheduled`, `appointment.cancelled`, `appointment.confirmed`, `medical-record.created`, `medical-record.updated`. `eventId` dùng để deduplicate retry. Gửi HTTP đồng bộ không phải durable queue; caller cần timeout, retry có giới hạn và idempotency. Lỗi notification không được rollback appointment/medical record đã commit.
 

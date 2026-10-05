@@ -32,6 +32,10 @@ Supabase Auth thuộc project của User Service. Chỉ User Service nhận `SUP
 `SUPABASE_ANON_KEY` ở môi trường backend để đăng ký, đăng nhập, refresh và xác minh token.
 API Gateway proxy `/api/v1/auth/*` tới User Service và dùng API nội bộ của User Service để
 xác minh danh tính trước khi chuyển tiếp request nghiệp vụ.
+Đặt các credential nội bộ trong `.env` theo `.env.example`. Mỗi biến token phải có giá trị
+ngẫu nhiên riêng, tối thiểu 32 byte; Compose chuyển cùng biến tới caller và provider tương ứng.
+Khi chạy service trên host, đặt credential tương ứng trong file `.env` của mỗi service theo
+`.env.example` riêng. Không đưa các credential này vào frontend hoặc commit file `.env`.
 Flutter và Next.js chỉ nhận URL của API Gateway; hai frontend không nhận Supabase key,
 database URL và không gọi trực tiếp service nội bộ. User, Medical Record và Notification
 Service cần database để khởi động; Doctor và Appointment hiện vẫn là scaffold in-memory.

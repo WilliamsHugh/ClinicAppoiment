@@ -44,6 +44,7 @@ function proxyTo(target: string, upstreamPrefix: string, timeoutMs: number, cors
         proxyReq.removeHeader("x-user-id");
         proxyReq.removeHeader("x-role");
         proxyReq.removeHeader("x-supabase-auth-user-id");
+        proxyReq.removeHeader("x-internal-token");
         if (req.user) {
           proxyReq.setHeader("X-User-Id", req.user.id);
           proxyReq.setHeader("X-Role", req.user.role);

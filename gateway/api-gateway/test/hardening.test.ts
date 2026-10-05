@@ -39,6 +39,7 @@ function configFor(target: string, overrides: Partial<GatewayConfig> = {}): Gate
     rateLimitWindowMs: 60_000,
     rateLimitMax: 1_000,
     authTimeoutMs: 50,
+    userGatewayInternalApiToken: "gateway-test-credential-at-least-32-bytes",
     healthTimeoutMs: 50,
     proxyTimeoutMs: 50,
     serviceTargets: {
@@ -66,6 +67,54 @@ function sendJson(res: ServerResponse, status: number, body: unknown) {
 }
 
 describe("Gateway authentication dependency handling", () => {
+  it("fails closed when the Gateway credential is missing", async () => {
+    const upstream = await startUpstream((_req, res) => sendJson(res, 200, { success: true, data: {} }));
+    const app = createGatewayApp({
+      config: configFor(upstream.url, { userGatewayInternalApiToken: undefined }),
+      logger: { info: vi.fn(), error: vi.fn() }
+    });
+    const response = await request(app).get("/api/v1/users/me").set("Authorization", "Bearer valid-token");
+
+    expect(response.status).toBe(503);
+    expect(response.body.error.code).toBe("AUTH_SERVICE_UNAVAILABLE");
+  });
+
+  it("treats a rejected Gateway credential as an unavailable auth dependency", async () => {
+    const upstream = await startUpstream((_req, res) => sendJson(res, 401, {
+      success: false, error: { code: "INTERNAL_AUTH_REQUIRED", message: "Internal credential required", details: [] }
+    }));
+    const app = createGatewayApp({
+      config: configFor(upstream.url, { userGatewayInternalApiToken: "wrong-gateway-credential-at-least-32-bytes" }),
+      logger: { info: vi.fn(), error: vi.fn() }
+    });
+    const response = await request(app).get("/api/v1/users/me").set("Authorization", "Bearer valid-token");
+
+    expect(response.status).toBe(503);
+    expect(response.body.error.code).toBe("AUTH_SERVICE_UNAVAILABLE");
+  });
+
+  it("keeps an invalid patient access token distinct from service authentication failure", async () => {
+    const upstream = await startUpstream((_req, res) => sendJson(res, 401, {
+      success: false, error: { code: "AUTH_TOKEN_INVALID", message: "Access token is invalid", details: [] }
+    }));
+    const app = createGatewayApp({ config: configFor(upstream.url), logger: { info: vi.fn(), error: vi.fn() } });
+    const response = await request(app).get("/api/v1/users/me").set("Authorization", "Bearer invalid-token");
+
+    expect(response.status).toBe(401);
+    expect(response.body.error.code).toBe("AUTH_TOKEN_INVALID");
+  });
+
+  it("rejects a token with no application profile without treating User Service as unavailable", async () => {
+    const upstream = await startUpstream((_req, res) => sendJson(res, 404, {
+      success: false, error: { code: "USER_PROFILE_NOT_FOUND", message: "Profile not found", details: [] }
+    }));
+    const app = createGatewayApp({ config: configFor(upstream.url), logger: { info: vi.fn(), error: vi.fn() } });
+    const response = await request(app).get("/api/v1/users/me").set("Authorization", "Bearer valid-token");
+
+    expect(response.status).toBe(401);
+    expect(response.body.error.code).toBe("AUTH_TOKEN_INVALID");
+  });
+
   it("times out token verification with a controlled 503 response", async () => {
     const app = createGatewayApp({
       config: configFor("http://127.0.0.1:1", { authTimeoutMs: 15 }),
@@ -111,6 +160,7 @@ describe("Gateway authentication dependency handling", () => {
 describe("Gateway prefix routing", () => {
   it("proxies public auth endpoints to User Service without handling credentials", async () => {
     const upstream = await startUpstream((req, res) => {
+      expect(req.headers["x-internal-token"]).toBeUndefined();
       let body = "";
       req.setEncoding("utf8");
       req.on("data", (chunk) => { body += chunk; });
@@ -127,6 +177,7 @@ describe("Gateway prefix routing", () => {
 
     const response = await request(app)
       .post("/api/v1/auth/register")
+      .set("X-Internal-Token", "spoofed-service-credential")
       .send({ fullName: "Patient One", email: "patient@example.com", password: "secret12" });
 
     expect(response.status).toBe(201);
@@ -140,6 +191,7 @@ describe("Gateway prefix routing", () => {
       paths.push(req.url ?? "");
       if (req.url === "/internal/v1/auth/verify") {
         expect(req.headers.authorization).toBe("Bearer valid-token");
+        expect(req.headers["x-internal-token"]).toBe("gateway-test-credential-at-least-32-bytes");
         return sendJson(res, 200, {
           success: true,
           data: { id: "verified-user", authUserId: "auth-user", role: "PATIENT", status: "ACTIVE" }
@@ -222,6 +274,7 @@ describe("Gateway proxy boundary", () => {
       .set("X-User-Id", "spoofed-user")
       .set("X-Role", "PATIENT")
       .set("X-Supabase-Auth-User-Id", "spoofed-auth-user")
+      .set("X-Internal-Token", "spoofed-service-credential")
       .set("X-Request-Id", "request-123");
 
     expect(response.status).toBe(200);
@@ -230,6 +283,7 @@ describe("Gateway proxy boundary", () => {
     expect(response.body.data.headers["x-user-id"]).toBe("verified-user");
     expect(response.body.data.headers["x-role"]).toBe("ADMIN");
     expect(response.body.data.headers["x-supabase-auth-user-id"]).toBeUndefined();
+    expect(response.body.data.headers["x-internal-token"]).toBeUndefined();
     expect(response.body.data.headers["x-request-id"]).toBe("request-123");
   });
 
