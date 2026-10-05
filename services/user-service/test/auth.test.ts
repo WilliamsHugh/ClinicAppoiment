@@ -16,6 +16,8 @@ const user: UserProfile = {
 beforeAll(async () => {
   process.env.DATABASE_URL = "postgresql://postgres:postgres@127.0.0.1:1/postgres";
   process.env.NODE_ENV = "test";
+  process.env.DOCTOR_USER_INTERNAL_API_TOKEN = "";
+  process.env.APPOINTMENT_USER_INTERNAL_API_TOKEN = "";
   ({ app } = await import("../src/index.js"));
 });
 
@@ -68,5 +70,15 @@ describe("User Service authorization", () => {
 
     expect(response.status).toBe(400);
     expect(response.body.error.code).toBe("VALIDATION_ERROR");
+  });
+
+  it("returns a dependency error when doctor patient scope cannot be verified", async () => {
+    const response = await request(app)
+      .get("/api/v1/patients?appointmentId=30000000-0000-4000-8000-000000000001")
+      .set("X-User-Id", "50000000-0000-4000-8000-000000000001")
+      .set("X-Role", "DOCTOR");
+
+    expect(response.status).toBe(503);
+    expect(response.body.error.code).toBe("PATIENT_SCOPE_UNAVAILABLE");
   });
 });

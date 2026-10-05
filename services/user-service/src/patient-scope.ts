@@ -1,25 +1,30 @@
-type SuccessEnvelope<T> = { success: true; data: T };
+import { z } from "zod";
 
-type DoctorReference = {
-  id: string;
-  userId: string;
-  isActive: boolean;
-};
+const doctorReference = z.object({
+  id: z.string().uuid(), userId: z.string().uuid(), isActive: z.boolean(),
+}).strict();
+const appointmentReference = z.object({
+  id: z.string().uuid(), patientId: z.string().uuid(), doctorId: z.string().uuid(),
+  status: z.enum(["PENDING", "CONFIRMED", "CHECKED_IN", "COMPLETED", "CANCELLED", "NO_SHOW"]),
+}).strict();
 
-type AppointmentReference = {
-  id: string;
-  patientId: string;
-  doctorId: string;
-  status: string;
-};
+export class PatientScopeUnavailableError extends Error {
+  constructor() {
+    super("Patient scope dependencies are unavailable");
+    this.name = "PatientScopeUnavailableError";
+  }
+}
 
 export type PatientScopeVerifier = {
-  patientIdForDoctorAppointment(userId: string, appointmentId: string): Promise<string | null>;
+  patientIdForDoctorAppointment(userId: string, appointmentId: string, requestId?: string): Promise<string | null>;
 };
 
 export function createPatientScopeVerifier(options: {
   doctorServiceUrl: string;
   appointmentServiceUrl: string;
+  doctorInternalToken?: string;
+  appointmentInternalToken?: string;
+  reservedTokens?: string[];
   fetcher?: typeof fetch;
   timeoutMs?: number;
 }): PatientScopeVerifier {
@@ -28,33 +33,52 @@ export function createPatientScopeVerifier(options: {
   const doctorBaseUrl = options.doctorServiceUrl.replace(/\/$/, "");
   const appointmentBaseUrl = options.appointmentServiceUrl.replace(/\/$/, "");
 
-  async function read<T>(url: string): Promise<T | null> {
+  async function read<T>(url: string, token: string, schema: z.ZodType<T>, requestId?: string): Promise<T | null> {
     try {
-      const response = await fetcher(url, { signal: AbortSignal.timeout(timeoutMs) });
-      if (!response.ok) return null;
-      const body = await response.json() as SuccessEnvelope<T>;
-      return body.success === true ? body.data : null;
+      const forwardedRequestId = requestId && /^[a-zA-Z0-9-]{1,80}$/.test(requestId) ? requestId : undefined;
+      const response = await fetcher(url, {
+        headers: { Accept: "application/json", "X-Internal-Token": token,
+          ...(forwardedRequestId ? { "X-Request-Id": forwardedRequestId } : {}) },
+        redirect: "error",
+        signal: AbortSignal.timeout(timeoutMs),
+      });
+      if (response.status === 404) return null;
+      if (!response.ok) throw new PatientScopeUnavailableError();
+      const parsed = z.object({ success: z.literal(true), data: schema }).safeParse(await response.json());
+      if (!parsed.success) throw new PatientScopeUnavailableError();
+      return parsed.data.data;
     } catch {
-      return null;
+      throw new PatientScopeUnavailableError();
     }
   }
 
   return {
-    async patientIdForDoctorAppointment(userId, appointmentId) {
-      const [doctor, verification] = await Promise.all([
-        read<DoctorReference>(`${doctorBaseUrl}/internal/v1/doctors/by-user/${encodeURIComponent(userId)}`),
-        read<{ valid: boolean; appointment?: AppointmentReference }>(
-          `${appointmentBaseUrl}/internal/v1/appointments/${encodeURIComponent(appointmentId)}/verify-for-medical-record`,
-        ),
-      ]);
-      const appointment = verification?.appointment;
-      const inScope = Boolean(
-        doctor?.isActive &&
-        appointment &&
-        appointment.doctorId === doctor.id &&
-        !["CANCELLED", "NO_SHOW"].includes(appointment.status),
+    async patientIdForDoctorAppointment(userId, appointmentId, requestId) {
+      const doctorToken = options.doctorInternalToken;
+      const appointmentToken = options.appointmentInternalToken;
+      if (!doctorToken || Buffer.byteLength(doctorToken, "utf8") < 32 ||
+        !appointmentToken || Buffer.byteLength(appointmentToken, "utf8") < 32 ||
+        doctorToken === appointmentToken || options.reservedTokens?.includes(doctorToken) ||
+        options.reservedTokens?.includes(appointmentToken)) {
+        throw new PatientScopeUnavailableError();
+      }
+
+      const doctor = await read(
+        `${doctorBaseUrl}/internal/v1/doctors/by-user/${encodeURIComponent(userId)}`,
+        doctorToken, doctorReference, requestId,
       );
-      return inScope && appointment ? appointment.patientId : null;
+      if (!doctor) return null;
+      if (doctor.userId !== userId) throw new PatientScopeUnavailableError();
+      if (!doctor.isActive) return null;
+
+      const appointment = await read(
+        `${appointmentBaseUrl}/internal/v1/appointments/${encodeURIComponent(appointmentId)}/patient-scope`,
+        appointmentToken, appointmentReference, requestId,
+      );
+      if (!appointment) return null;
+      if (appointment.id !== appointmentId) throw new PatientScopeUnavailableError();
+      if (appointment.doctorId !== doctor.id || ["CANCELLED", "NO_SHOW"].includes(appointment.status)) return null;
+      return appointment.patientId;
     },
   };
 }

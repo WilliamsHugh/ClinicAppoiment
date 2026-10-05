@@ -27,7 +27,8 @@ function dependencies() {
     verify: vi.fn(async (token) => token === "valid-token" ? profile.supabaseAuthUserId : null)
   };
   const repository = {
-    findUserByAuthId: vi.fn(async (id: string) => id === profile.supabaseAuthUserId ? profile : null)
+    findUserByAuthId: vi.fn(async (id: string) => id === profile.supabaseAuthUserId ? profile : null),
+    createUser: vi.fn(async () => profile),
   } as unknown as UserRepository;
   const app = express();
   app.use(express.json());
@@ -52,6 +53,46 @@ describe("User Service authentication ownership", () => {
     expect(response.body.data).toEqual({ requiresEmailConfirmation: true });
   });
 
+  it("provisions only a PATIENT application account after a new Auth signup", async () => {
+    const { app, provider, repository } = dependencies();
+    vi.mocked(provider.signUp).mockResolvedValue({
+      authUserId: profile.supabaseAuthUserId,
+      tokens: { authUserId: profile.supabaseAuthUserId, accessToken: "access-token",
+        refreshToken: "refresh-token", expiresIn: 3600 },
+    });
+    vi.mocked(repository.findUserByAuthId).mockResolvedValue(null);
+    const response = await request(app).post("/api/v1/auth/register")
+      .send({ fullName: "Patient One", email: "patient@example.com", password: "secret12" });
+
+    expect(response.status).toBe(201);
+    expect(repository.createUser).toHaveBeenCalledWith({
+      supabaseAuthUserId: profile.supabaseAuthUserId,
+      email: "patient@example.com", fullName: "Patient One", role: "PATIENT", status: "ACTIVE",
+    });
+    expect(response.body.data.user).toEqual({ id: profile.id, role: "PATIENT" });
+    const elevated = await request(app).post("/api/v1/auth/register")
+      .send({ fullName: "Patient One", email: "patient@example.com", password: "secret12", role: "ADMIN" });
+    expect(elevated.status).toBe(400);
+    expect(repository.createUser).toHaveBeenCalledTimes(1);
+  });
+
+  it("returns a retryable error when application profile provisioning fails", async () => {
+    const { app, provider, repository } = dependencies();
+    vi.mocked(provider.signUp).mockResolvedValue({
+      authUserId: profile.supabaseAuthUserId,
+      tokens: { authUserId: profile.supabaseAuthUserId, accessToken: "access-token",
+        refreshToken: "refresh-token", expiresIn: 3600 },
+    });
+    vi.mocked(repository.findUserByAuthId).mockResolvedValue(null);
+    vi.mocked(repository.createUser).mockRejectedValue(new Error("database unavailable"));
+    const response = await request(app).post("/api/v1/auth/register")
+      .send({ fullName: "Patient One", email: "patient@example.com", password: "secret12" });
+
+    expect(response.status).toBe(503);
+    expect(response.body.error.code).toBe("USER_PROFILE_PROVISIONING_PENDING");
+    expect(JSON.stringify(response.body)).not.toContain("database unavailable");
+  });
+
   it("validates credentials and returns the application profile session", async () => {
     const { app, provider } = dependencies();
     const response = await request(app)
@@ -65,6 +106,30 @@ describe("User Service authentication ownership", () => {
       refreshToken: "refresh-token",
       user: { id: profile.id, role: "PATIENT" }
     });
+  });
+
+  it("refreshes a session using the authoritative application profile", async () => {
+    const { app, provider } = dependencies();
+    vi.mocked(provider.refresh).mockResolvedValue({
+      authUserId: profile.supabaseAuthUserId, accessToken: "new-access-token",
+      refreshToken: "new-refresh-token", expiresIn: 3600,
+    });
+    const response = await request(app).post("/api/v1/auth/refresh")
+      .send({ refreshToken: "old-refresh-token" });
+
+    expect(response.status).toBe(200);
+    expect(provider.refresh).toHaveBeenCalledWith("old-refresh-token");
+    expect(response.body.data.user).toEqual({ id: profile.id, role: "PATIENT" });
+  });
+
+  it("passes both session tokens to the User-owned logout provider", async () => {
+    const { app, provider } = dependencies();
+    const response = await request(app).post("/api/v1/auth/logout")
+      .set("Authorization", "Bearer access-token")
+      .send({ refreshToken: "refresh-token" });
+
+    expect(response.status).toBe(200);
+    expect(provider.signOut).toHaveBeenCalledWith("access-token", "refresh-token");
   });
 
   it("owns auth payload validation instead of relying on Gateway", async () => {

@@ -5,7 +5,9 @@ import swaggerUi from "swagger-ui-express";
 import { z } from "zod";
 import { createAuthRouter, createInternalVerifyHandler, createSupabaseAuthProvider } from "./auth.js";
 import { createDoctorEligibilityHandler } from "./doctor-eligibility.js";
-import { createPatientScopeVerifier } from "./patient-scope.js";
+import { internalCredentialsFromEnv, requireInternalCaller } from "./internal-auth.js";
+import { createPatientLookupHandler } from "./internal-patients.js";
+import { createPatientScopeVerifier, PatientScopeUnavailableError } from "./patient-scope.js";
 import { UserRepository } from "./repository.js";
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -30,9 +32,13 @@ const authProvider = createSupabaseAuthProvider(
   authProviderTimeoutMs
 );
 const port = Number(process.env.USER_SERVICE_PORT ?? 3001);
+const internalCredentials = internalCredentialsFromEnv();
 const patientScope = createPatientScopeVerifier({
   doctorServiceUrl: process.env.DOCTOR_SERVICE_URL ?? "http://localhost:3002",
   appointmentServiceUrl: process.env.APPOINTMENT_SERVICE_URL ?? "http://localhost:3003",
+  doctorInternalToken: process.env.DOCTOR_USER_INTERNAL_API_TOKEN,
+  appointmentInternalToken: process.env.APPOINTMENT_USER_INTERNAL_API_TOKEN,
+  reservedTokens: Object.values(internalCredentials).filter((token): token is string => Boolean(token)),
 });
 
 const idSchema = z.string().uuid();
@@ -66,9 +72,53 @@ const listPatientsQuerySchema = z.object({
   appointmentId: idSchema.optional(),
 });
 
+const internalTokenSecurity = [{ internalToken: [] }];
+const errorResponse = (description: string) => ({ description, content: {
+  "application/json": { schema: { $ref: "#/components/schemas/Error" } },
+} });
+const uuidParameter = (name: string) => ({ name, in: "path", required: true,
+  schema: { type: "string", format: "uuid" } });
+const internalErrorResponses = {
+  "400": { description: "Invalid UUID", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
+  "401": { description: "Missing or invalid caller credential", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
+  "404": { description: "User or patient not found", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
+  "503": { description: "Internal authentication is not configured", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
+};
+const internalSuccess = (schemaName: string) => ({ description: "Found", content: {
+  "application/json": { schema: { type: "object", required: ["success", "data"], properties: {
+    success: { type: "boolean", enum: [true] }, data: { $ref: `#/components/schemas/${schemaName}` },
+  } } },
+} });
+
 const swaggerDocument = {
   openapi: "3.0.3",
   info: { title: "User Service API", version: "0.1.0", description: "Quản lý xác thực, người dùng và hồ sơ bệnh nhân" },
+  components: {
+    securitySchemes: { internalToken: { type: "apiKey", in: "header", name: "X-Internal-Token",
+      description: "Distinct backend-only credential for each caller" } },
+    schemas: {
+      Error: { type: "object", required: ["success", "error"], properties: {
+        success: { type: "boolean", enum: [false] },
+        error: { type: "object", required: ["code", "message", "details"], properties: {
+          code: { type: "string" }, message: { type: "string" }, details: { type: "array", items: {} },
+        } },
+      } },
+      DoctorEligibility: { type: "object", required: ["id", "role", "status"], properties: {
+        id: { type: "string", format: "uuid", description: "Application User ID, not Supabase Auth ID" },
+        role: { type: "string", enum: ["PATIENT", "DOCTOR", "STAFF", "ADMIN"] },
+        status: { type: "string", enum: ["ACTIVE", "INACTIVE", "LOCKED"] },
+      } },
+      PatientReference: { type: "object", required: ["id", "userId"], properties: {
+        id: { type: "string", format: "uuid", description: "Patient profile ID" },
+        userId: { type: "string", format: "uuid", description: "Application User ID" },
+      } },
+      VerifiedIdentity: { type: "object", required: ["id", "authUserId", "role", "status"], properties: {
+        id: { type: "string", format: "uuid" }, authUserId: { type: "string", format: "uuid" },
+        role: { type: "string", enum: ["PATIENT", "DOCTOR", "STAFF", "ADMIN"] },
+        status: { type: "string", enum: ["ACTIVE", "INACTIVE", "LOCKED"] },
+      } },
+    },
+  },
   paths: {
     "/health": { get: { summary: "Kiểm tra tình trạng service" } },
     "/api/v1/auth/register": { post: { summary: "Đăng ký tài khoản bệnh nhân (PATIENT)" } },
@@ -84,15 +134,42 @@ const swaggerDocument = {
       get: { summary: "Xem hồ sơ cá nhân của người dùng hiện tại" },
       patch: { summary: "Cập nhật hồ sơ cá nhân của người dùng hiện tại" }
     },
-    "/api/v1/patients": { get: { summary: "Tìm kiếm danh sách bệnh nhân (DOCTOR, STAFF, ADMIN)" } },
+    "/api/v1/patients": { get: {
+      summary: "Search patients; Doctor access requires an appointment scope check",
+      responses: { "503": errorResponse("Doctor or Appointment scope verification is unavailable") },
+    } },
     "/api/v1/patients/{id}": {
-      get: { summary: "Xem chi tiết hồ sơ bệnh nhân" },
+      get: { summary: "Xem chi tiết hồ sơ bệnh nhân",
+        parameters: [uuidParameter("id"), { name: "appointmentId", in: "query", required: false,
+          description: "Required for DOCTOR; checks assignment through Doctor and Appointment services",
+          schema: { type: "string", format: "uuid" } }],
+        responses: { "503": errorResponse("Doctor or Appointment scope verification is unavailable") },
+      },
       patch: { summary: "Cập nhật hồ sơ bệnh nhân (Bệnh nhân chính mình hoặc ADMIN)" }
     },
-    "/internal/v1/auth/verify": { get: { summary: "Xác minh token nội bộ cho API Gateway" } },
-    "/internal/v1/users/{userId}/doctor-eligibility": { get: { summary: "Lấy vai trò và trạng thái tài khoản cho Doctor Service (Nội bộ)" } },
-    "/internal/v1/patients/by-user/{userId}": { get: { summary: "Lấy thông tin bệnh nhân qua User ID (Nội bộ)" } },
-    "/internal/v1/patients/{id}": { get: { summary: "Lấy thông tin bệnh nhân qua Patient ID (Nội bộ)" } }
+    "/internal/v1/auth/verify": { get: {
+      summary: "Xác minh access token cho API Gateway", security: internalTokenSecurity,
+      parameters: [{ name: "Authorization", in: "header", required: true,
+        schema: { type: "string", example: "Bearer <access token>" } }],
+      responses: { "200": internalSuccess("VerifiedIdentity"),
+        "401": internalErrorResponses["401"], "404": internalErrorResponses["404"],
+        "503": internalErrorResponses["503"] },
+    } },
+    "/internal/v1/users/{userId}/doctor-eligibility": { get: {
+      summary: "Application role and status for Doctor account linking", security: internalTokenSecurity,
+      parameters: [uuidParameter("userId")],
+      responses: { "200": internalSuccess("DoctorEligibility"), ...internalErrorResponses },
+    } },
+    "/internal/v1/patients/by-user/{userId}": { get: {
+      summary: "Current PATIENT profile ID by application User ID", security: internalTokenSecurity,
+      parameters: [uuidParameter("userId")],
+      responses: { "200": internalSuccess("PatientReference"), ...internalErrorResponses },
+    } },
+    "/internal/v1/patients/{id}": { get: {
+      summary: "Patient profile ID and User ID by Patient ID, including historical profiles",
+      security: internalTokenSecurity, parameters: [uuidParameter("id")],
+      responses: { "200": internalSuccess("PatientReference"), ...internalErrorResponses },
+    } }
   }
 };
 
@@ -105,8 +182,10 @@ app.use((req, _res, next) => {
 app.get("/openapi.json", (_req, res) => res.json(swaggerDocument));
 app.use("/docs", swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 app.use("/api/v1/auth", createAuthRouter(authProvider, repository));
-app.get("/internal/v1/auth/verify", createInternalVerifyHandler(authProvider, repository));
-app.get("/internal/v1/users/:userId/doctor-eligibility", createDoctorEligibilityHandler(repository));
+app.get("/internal/v1/auth/verify", requireInternalCaller(["gateway"], internalCredentials),
+  createInternalVerifyHandler(authProvider, repository));
+app.get("/internal/v1/users/:userId/doctor-eligibility",
+  requireInternalCaller(["doctor"], internalCredentials), createDoctorEligibilityHandler(repository));
 
 function success<T>(data: T) {
   return { success: true, data };
@@ -216,7 +295,8 @@ app.get("/api/v1/patients", requireRoles("DOCTOR", "STAFF", "ADMIN"), async (req
     if (!parsed.data.appointmentId) {
       return res.status(400).json(error("APPOINTMENT_SCOPE_REQUIRED", "appointmentId is required for doctor patient access"));
     }
-    const patientId = await patientScope.patientIdForDoctorAppointment(who.userId, parsed.data.appointmentId);
+    const patientId = await patientScope.patientIdForDoctorAppointment(who.userId, parsed.data.appointmentId,
+      req.header("X-Request-Id"));
     if (!patientId) {
       return res.status(403).json(error("PATIENT_SCOPE_DENIED", "Patient is outside the doctor's appointment scope"));
     }
@@ -240,7 +320,8 @@ app.get("/api/v1/patients/:id", requireRoles("PATIENT", "DOCTOR", "STAFF", "ADMI
     if (!appointmentId.success) {
       return res.status(400).json(error("APPOINTMENT_SCOPE_REQUIRED", "A valid appointmentId is required for doctor patient access"));
     }
-    const scopedPatientId = await patientScope.patientIdForDoctorAppointment(who.userId, appointmentId.data);
+    const scopedPatientId = await patientScope.patientIdForDoctorAppointment(who.userId, appointmentId.data,
+      req.header("X-Request-Id"));
     if (scopedPatientId !== patient.id) {
       return res.status(403).json(error("PATIENT_SCOPE_DENIED", "Patient is outside the doctor's appointment scope"));
     }
@@ -248,17 +329,13 @@ app.get("/api/v1/patients/:id", requireRoles("PATIENT", "DOCTOR", "STAFF", "ADMI
   return res.json(success(patient));
 });
 
-app.get("/internal/v1/patients/by-user/:userId", async (req, res) => {
-  const patient = await repository.findPatientByUserId(req.params.userId);
-  if (!patient) return res.status(404).json(error("PATIENT_NOT_FOUND", "Patient not found"));
-  return res.json(success({ id: patient.id, userId: patient.userId }));
-});
+app.get("/internal/v1/patients/by-user/:userId",
+  requireInternalCaller(["appointment", "record"], internalCredentials),
+  createPatientLookupHandler(repository, "userId"));
 
-app.get("/internal/v1/patients/:id", async (req, res) => {
-  const patient = await repository.findPatientById(req.params.id);
-  if (!patient) return res.status(404).json(error("PATIENT_NOT_FOUND", "Patient not found"));
-  return res.json(success({ id: patient.id, userId: patient.userId }));
-});
+app.get("/internal/v1/patients/:id",
+  requireInternalCaller(["appointment", "record"], internalCredentials),
+  createPatientLookupHandler(repository, "id"));
 
 app.patch("/api/v1/patients/:id", requireRoles("PATIENT", "ADMIN"), async (req, res) => {
   const patientId = String(req.params.id);
@@ -283,6 +360,9 @@ app.use((req, res, next) => {
 });
 
 app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  if (err instanceof PatientScopeUnavailableError) {
+    return res.status(503).json(error("PATIENT_SCOPE_UNAVAILABLE", "Patient scope verification is unavailable"));
+  }
   console.error("User Service request failed", err instanceof Error ? err.message : "Unknown error");
   return res.status(503).json(error("SERVICE_UNAVAILABLE", "User Service is temporarily unavailable"));
 });
