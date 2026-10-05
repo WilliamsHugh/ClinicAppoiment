@@ -104,10 +104,14 @@ async function verifyDoctorSlot(doctorId: string, startAt: string, endAt: string
   }
 }
 
-function requireInternalToken(variable: string): RequestHandler {
+function requireInternalToken(variable: string, distinctFrom: string[] = []): RequestHandler {
   return (req, res, next) => {
     const expected = process.env[variable];
     const received = req.header("X-Internal-Token") ?? "";
+    if (distinctFrom.length && (!expected || Buffer.byteLength(expected, "utf8") < 32))
+      return res.status(503).json(error("INTERNAL_AUTH_NOT_CONFIGURED", "Internal credential is unavailable"));
+    if (expected && distinctFrom.some((other) => process.env[other] === expected))
+      return res.status(503).json(error("INTERNAL_AUTH_NOT_CONFIGURED", "Internal credentials must be distinct"));
     if (!expected || Buffer.byteLength(expected, "utf8") < 32 ||
       Buffer.byteLength(expected, "utf8") !== Buffer.byteLength(received, "utf8") ||
       !timingSafeEqual(Buffer.from(expected), Buffer.from(received)))
@@ -375,6 +379,20 @@ app.get("/internal/v1/appointments/:id/verify-for-medical-record", requireIntern
     appointment: { id: appointment.id, patientId: appointment.patientId,
       doctorId: appointment.doctorId, status: appointment.status } }));
 });
+
+app.get("/internal/v1/appointments/:id/verify-for-user-patient-scope",
+  requireInternalToken("APPOINTMENT_USER_INTERNAL_API_TOKEN", ["APPOINTMENT_RECORD_INTERNAL_API_TOKEN",
+    "APPOINTMENT_NOTIFICATION_INTERNAL_API_TOKEN", "DOCTOR_INTERNAL_API_TOKEN",
+    "USER_APPOINTMENT_INTERNAL_API_TOKEN", "NOTIFICATION_INTERNAL_API_TOKEN"]), async (req, res) => {
+    const id = String(req.params.id);
+    if (!appointmentIdSchema.safeParse(id).success)
+      return res.status(400).json(error("VALIDATION_ERROR", "Invalid appointment ID"));
+    const appointment = await store.findById(id);
+    if (!appointment) return res.status(404).json(error("APPOINTMENT_NOT_FOUND", "Appointment not found"));
+    const valid = ["PENDING", "CONFIRMED", "CHECKED_IN", "COMPLETED"].includes(appointment.status);
+    return res.json(success({ valid, ...(valid ? { appointment: { id: appointment.id,
+      patientId: appointment.patientId, doctorId: appointment.doctorId } } : {}) }));
+  });
 
 app.get("/internal/v1/appointments/:id/reminder-context",
   requireInternalToken("APPOINTMENT_NOTIFICATION_INTERNAL_API_TOKEN"), async (req, res) => {

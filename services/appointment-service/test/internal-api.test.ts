@@ -1,11 +1,13 @@
 import request from "supertest";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { randomUUID } from "node:crypto";
+import type { AppointmentStatus } from "@clinic/shared-types";
 import { app, repository } from "../src/index.js";
 
 const recordToken = "record-internal-test-token-with-32-bytes";
 const notificationToken = "notification-internal-test-token-with-32-bytes";
 const doctorToken = "doctor-internal-test-token-with-32-bytes";
+const userScopeToken = "user-to-appointment-patient-scope-test-token-32-bytes";
 const doctorId = randomUUID();
 const doctorUserId = randomUUID();
 const patientId = randomUUID();
@@ -16,15 +18,71 @@ beforeEach(() => {
   vi.stubEnv("APPOINTMENT_RECORD_INTERNAL_API_TOKEN", recordToken);
   vi.stubEnv("APPOINTMENT_NOTIFICATION_INTERNAL_API_TOKEN", notificationToken);
   vi.stubEnv("DOCTOR_INTERNAL_API_TOKEN", doctorToken);
+  vi.stubEnv("APPOINTMENT_USER_INTERNAL_API_TOKEN", userScopeToken);
 });
 afterEach(() => { vi.unstubAllEnvs(); vi.unstubAllGlobals(); });
 
-function fixture(status: "CHECKED_IN" | "PENDING" = "CHECKED_IN") {
+function fixture(status: AppointmentStatus = "CHECKED_IN") {
   return repository.create({ patientId, doctorId, status, createdBy: randomUUID(),
     scheduledStartAt: "2030-01-07T01:00:00.000Z", scheduledEndAt: "2030-01-07T01:30:00.000Z" });
 }
 
 describe("internal appointment callers", () => {
+  it("reserves a separate patient-scope route and credential for User Service", async () => {
+    const item = fixture("PENDING");
+    const path = `/internal/v1/appointments/${item.id}/verify-for-user-patient-scope`;
+    for (const token of [undefined, recordToken, doctorToken, notificationToken]) {
+      const call = request(app).get(path);
+      const response = await (token ? call.set("X-Internal-Token", token) : call);
+      expect(response.status).toBe(401);
+    }
+    const allowed = await request(app).get(path).set("X-Internal-Token", userScopeToken);
+    expect(allowed.status).toBe(200);
+    expect(allowed.body.data).toEqual({ valid: true,
+      appointment: { id: item.id, patientId, doctorId } });
+    const recordView = await request(app).get(`/internal/v1/appointments/${item.id}/verify-for-medical-record`)
+      .set("X-Internal-Token", recordToken);
+    expect(recordView.body.data.valid).toBe(false);
+    expect((await request(app).get(`/internal/v1/appointments/${item.id}/verify-for-medical-record`)
+      .set("X-Internal-Token", userScopeToken)).status).toBe(401);
+    expect((await request(app).get("/internal/v1/appointments/not-a-uuid/verify-for-user-patient-scope")
+      .set("X-Internal-Token", userScopeToken)).status).toBe(400);
+    expect((await request(app).get(`/internal/v1/appointments/${randomUUID()}/verify-for-user-patient-scope`)
+      .set("X-Internal-Token", userScopeToken)).status).toBe(404);
+  });
+
+  it.each(["PENDING", "CONFIRMED", "CHECKED_IN", "COMPLETED", "CANCELLED", "NO_SHOW"] as const)
+  ("applies patient-scope semantics for %s and hides terminal context", async (status) => {
+    const item = fixture(status);
+    const response = await request(app).get(`/internal/v1/appointments/${item.id}/verify-for-user-patient-scope`)
+      .set("X-Internal-Token", userScopeToken);
+    expect(response.status).toBe(200);
+    const valid = !["CANCELLED", "NO_SHOW"].includes(status);
+    expect(response.body.data).toEqual(valid
+      ? { valid: true, appointment: { id: item.id, patientId, doctorId } }
+      : { valid: false });
+  });
+
+  it("fails closed if the User patient-scope credential is absent or shared with Record", async () => {
+    const item = fixture();
+    const path = `/internal/v1/appointments/${item.id}/verify-for-user-patient-scope`;
+    vi.stubEnv("APPOINTMENT_USER_INTERNAL_API_TOKEN", "");
+    expect((await request(app).get(path).set("X-Internal-Token", userScopeToken)).status).toBe(503);
+    vi.stubEnv("APPOINTMENT_USER_INTERNAL_API_TOKEN", recordToken);
+    const duplicate = await request(app).get(path).set("X-Internal-Token", recordToken);
+    expect(duplicate.status).toBe(503);
+    expect(duplicate.body.error.code).toBe("INTERNAL_AUTH_NOT_CONFIGURED");
+  });
+
+  it("documents the separate User patient-scope route and credential", async () => {
+    const document = (await request(app).get("/openapi.json")).body;
+    const route = document.paths["/internal/v1/appointments/{id}/verify-for-user-patient-scope"].get;
+    expect(route.security).toEqual([{ internalToken: [] }]);
+    expect(route["x-internal-caller"]).toBe("User Service");
+    expect(route["x-token-env"]).toBe("APPOINTMENT_USER_INTERNAL_API_TOKEN");
+    expect(route.responses["200"]).toBeDefined();
+    expect(route.responses["401"]).toBeDefined();
+  });
   it("rejects missing and wrong tokens before exposing occupancy or record context", async () => {
     const item = fixture();
     expect((await request(app).get("/internal/v1/appointments/occupied-slots")).status).toBe(401);

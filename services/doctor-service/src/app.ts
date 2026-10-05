@@ -126,6 +126,19 @@ export function createDoctorApp(repository: DoctorRepository, users: UserDirecto
     }
   }
 
+  function requireUserPatientScopeCaller(req: Request) {
+    const configured = process.env.DOCTOR_USER_INTERNAL_API_TOKEN;
+    const credential = Buffer.from(configured ?? "", "utf8");
+    if (credential.length < 32 || configured === internalToken ||
+      configured === process.env.USER_DOCTOR_INTERNAL_API_TOKEN) {
+      throw new ApiError(503, "INTERNAL_AUTH_NOT_CONFIGURED", "User patient-scope credential is unavailable");
+    }
+    const supplied = Buffer.from(req.header("X-Internal-Token") ?? "", "utf8");
+    if (supplied.length !== credential.length || !timingSafeEqual(supplied, credential)) {
+      throw new ApiError(401, "INTERNAL_AUTH_REQUIRED", "Internal service credential is required");
+    }
+  }
+
   async function occupied(doctorId: string, from: string, to?: string, requestId?: string): Promise<Slot[]> {
     if (!appointments) throw new ApiError(503, "APPOINTMENT_AVAILABILITY_UNAVAILABLE", "Appointment occupancy check is not configured");
     return appointments.occupied(doctorId, from, to, requestId);
@@ -296,6 +309,14 @@ export function createDoctorApp(repository: DoctorRepository, users: UserDirecto
 
   app.get("/internal/v1/doctors/by-user/:userId", wrap(async (req, res) => {
     requireInternalCaller(req);
+    const userId = parse(uuid, req.params.userId);
+    const doctor = await repository.findDoctorByUser(userId);
+    if (!doctor) throw new ApiError(404, "DOCTOR_NOT_FOUND", "Doctor profile not found");
+    ok(res, { id: doctor.id, userId: doctor.userId, isActive: doctor.isActive });
+  }));
+
+  app.get("/internal/v1/doctors/by-user/:userId/patient-scope", wrap(async (req, res) => {
+    requireUserPatientScopeCaller(req);
     const userId = parse(uuid, req.params.userId);
     const doctor = await repository.findDoctorByUser(userId);
     if (!doctor) throw new ApiError(404, "DOCTOR_NOT_FOUND", "Doctor profile not found");

@@ -69,6 +69,14 @@ export const doctorOpenApi = {
       response({ type: "object", required: ["id", "userId", "isActive"], properties: {
         id: { type: "string", format: "uuid" }, userId: { type: "string", format: "uuid" }, isActive: { type: "boolean" }
       } }), { parameters: [parameter("userId", "path")], internal: true }), security: [{ internalToken: [] }] } },
+    "/internal/v1/doctors/by-user/{userId}/patient-scope": { get: {
+      ...operation("Resolve doctor identity for User Service patient-scope checks",
+        response({ type: "object", required: ["id", "userId", "isActive"], properties: {
+          id: { type: "string", format: "uuid" }, userId: { type: "string", format: "uuid" }, isActive: { type: "boolean" }
+        } }), { parameters: [parameter("userId", "path")], internal: true }),
+      security: [{ internalToken: [] }], "x-internal-caller": "User Service",
+      "x-token-env": "DOCTOR_USER_INTERNAL_API_TOKEN"
+    } },
     "/internal/v1/doctors/verify-slot": { post: { ...operation("Verify active doctor and exact schedule slot",
       response({ type: "object", required: ["valid"], properties: { valid: { type: "boolean" }, reason: { type: "string" } } }),
       { requestBody: body(ref("VerifySlot")), internal: true }), security: [{ internalToken: [] }] } }

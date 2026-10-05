@@ -56,6 +56,14 @@ export const appointmentOpenApi = {
     "/internal/v1/appointments/{id}/verify-for-medical-record": { get: { summary: "Read appointment state for Medical Record Service",
       security: [{ internalToken: [] }], parameters: [id], responses: { "200": response({ type: "object", required: ["valid", "appointment"],
         properties: { valid: { type: "boolean" }, appointment: ref("AppointmentContext") } }), "400": failure, "401": failure, "404": failure, "503": failure } } },
+    "/internal/v1/appointments/{id}/verify-for-user-patient-scope": { get: {
+      summary: "Check appointment eligibility for User Service doctor patient-scope checks",
+      security: [{ internalToken: [] }], "x-internal-caller": "User Service",
+      "x-token-env": "APPOINTMENT_USER_INTERNAL_API_TOKEN", parameters: [id],
+      responses: { "200": response({ type: "object", required: ["valid"], properties: {
+        valid: { type: "boolean" }, appointment: { type: "object", required: ["id", "patientId", "doctorId"],
+          properties: { id: uuid, patientId: uuid, doctorId: uuid } }
+      } }), "400": failure, "401": failure, "404": failure, "503": failure } } },
     "/internal/v1/appointments/{id}/reminder-context": { get: {
       summary: "Read minimal appointment context for Notification reminders", security: [{ internalToken: [] }],
       parameters: [id], responses: { "200": response(ref("ReminderContext")), ...errors } } },
@@ -70,7 +78,7 @@ export const appointmentOpenApi = {
     securitySchemes: { bearerAuth: { type: "http", scheme: "bearer", bearerFormat: "JWT",
       description: "Verified by API Gateway; service receives trusted actor context" },
       internalToken: { type: "apiKey", in: "header", name: "X-Internal-Token",
-        description: "Service-specific token; Doctor, Medical Record, and Notification use distinct credentials" } },
+        description: "Service-specific token; Doctor, User, Medical Record, and Notification use distinct credentials" } },
     schemas: {
       ApiError: { type: "object", required: ["success", "error"], properties: {
         success: { type: "boolean", enum: [false] }, error: { type: "object", required: ["code", "message", "details"],
