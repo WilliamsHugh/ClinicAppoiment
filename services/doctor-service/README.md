@@ -18,7 +18,7 @@ Generate a random secret of at least 32 bytes, for example with `node -e "consol
 
 `USER_SERVICE_URL` defaults to `http://localhost:3001`. Doctor creation reads User Service's internal `GET /internal/v1/users/{userId}/doctor-eligibility` with `USER_DOCTOR_INTERNAL_API_TOKEN` and requires an active account with role `DOCTOR`. The User Service team owns that API and the account lifecycle. Missing, weak, rejected, or timed-out credentials fail closed as a User dependency error. Set the same private 32+ byte token on User Service; never expose it to a frontend.
 
-User Service's doctor-to-patient authorization check has its own read-only `GET /internal/v1/doctors/by-user/{userId}/patient-scope` endpoint and `DOCTOR_USER_INTERNAL_API_TOKEN`. The endpoint returns only Doctor profile ID, application User ID and active flag; it does not accept the existing Appointment/Record caller token. The reverse-direction `USER_DOCTOR_INTERNAL_API_TOKEN` is separate.
+User Service's doctor-to-patient authorization check uses the existing read-only `GET /internal/v1/doctors/by-user/{userId}` endpoint with its own `DOCTOR_USER_INTERNAL_API_TOKEN`. Appointment and Medical Record continue using `DOCTOR_INTERNAL_API_TOKEN`; the reverse-direction `USER_DOCTOR_INTERNAL_API_TOKEN` is separate. The minimal response contains only Doctor profile ID, application User ID and active flag.
 
 Docker Compose passes `USER_SERVICE_URL=http://user-service:3001` and `APPOINTMENT_SERVICE_URL=http://appointment-service:3003` on its private network. Doctor Service waits for User Service health at startup. It cannot wait for Appointment Service health because Appointment Service already waits for Doctor Service; its calls to Appointment Service happen only when needed.
 

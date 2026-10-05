@@ -95,8 +95,10 @@ describe("Doctor API authorization and slot contract", () => {
   it("reserves patient-scope doctor lookup for User Service's distinct credential", async () => {
     vi.stubEnv("DOCTOR_USER_INTERNAL_API_TOKEN", userScopeToken);
     const { app, repository } = fixture();
-    const path = `/internal/v1/doctors/by-user/${userId}/patient-scope`;
-    for (const token of [undefined, internalToken, "wrong-token"]) {
+    const path = `/internal/v1/doctors/by-user/${userId}`;
+    const reverseToken = "doctor-to-user-reverse-direction-token-32-bytes";
+    vi.stubEnv("USER_DOCTOR_INTERNAL_API_TOKEN", reverseToken);
+    for (const token of [undefined, reverseToken, "wrong-token"]) {
       const call = request(app).get(path);
       const response = await (token ? call.set("X-Internal-Token", token) : call);
       expect(response.status).toBe(401);
@@ -108,20 +110,20 @@ describe("Doctor API authorization and slot contract", () => {
     vi.mocked(repository.findDoctorByUser).mockResolvedValueOnce({ ...doctor, isActive: false });
     const inactive = await request(app).get(path).set("X-Internal-Token", userScopeToken);
     expect(inactive.body.data).toEqual({ id: doctorId, userId, isActive: false });
-    expect((await request(app).get(`/internal/v1/doctors/by-user/${userId}`)
-      .set("X-Internal-Token", userScopeToken)).status).toBe(401);
+    expect((await request(app).get(path).set("X-Internal-Token", internalToken)).status).toBe(200);
     vi.mocked(repository.findDoctorByUser).mockResolvedValueOnce(null);
     expect((await request(app).get(path).set("X-Internal-Token", userScopeToken)).status).toBe(404);
-    expect((await request(app).get("/internal/v1/doctors/by-user/not-a-uuid/patient-scope")
+    expect((await request(app).get("/internal/v1/doctors/by-user/not-a-uuid")
       .set("X-Internal-Token", userScopeToken)).status).toBe(400);
   });
 
   it("fails closed if User patient-scope credential is missing or reused", async () => {
     const { app, repository } = fixture();
-    const path = `/internal/v1/doctors/by-user/${userId}/patient-scope`;
+    const path = `/internal/v1/doctors/by-user/${userId}`;
     expect((await request(app).get(path).set("X-Internal-Token", userScopeToken)).status).toBe(503);
-    vi.stubEnv("DOCTOR_USER_INTERNAL_API_TOKEN", internalToken);
-    const duplicate = await request(app).get(path).set("X-Internal-Token", internalToken);
+    vi.stubEnv("USER_DOCTOR_INTERNAL_API_TOKEN", "doctor-to-user-reverse-direction-token-32-bytes");
+    vi.stubEnv("DOCTOR_USER_INTERNAL_API_TOKEN", "doctor-to-user-reverse-direction-token-32-bytes");
+    const duplicate = await request(app).get(path).set("X-Internal-Token", userScopeToken);
     expect(duplicate.status).toBe(503);
     expect(duplicate.body.error.code).toBe("INTERNAL_AUTH_NOT_CONFIGURED");
     expect(repository.findDoctorByUser).not.toHaveBeenCalled();
@@ -143,8 +145,8 @@ describe("Doctor API authorization and slot contract", () => {
     expect(response.body.paths["/internal/v1/doctors/verify-slot"].post).toBeDefined();
     expect(response.body.paths["/internal/v1/doctors/verify-slot"].post.security).toEqual([{ internalToken: [] }]);
     expect(response.body.paths["/internal/v1/doctors/by-user/{userId}"].get.security).toEqual([{ internalToken: [] }]);
-    expect(response.body.paths["/internal/v1/doctors/by-user/{userId}/patient-scope"].get["x-token-env"])
-      .toBe("DOCTOR_USER_INTERNAL_API_TOKEN");
+    expect(response.body.paths["/internal/v1/doctors/by-user/{userId}"].get["x-token-envs"])
+      .toContain("DOCTOR_USER_INTERNAL_API_TOKEN");
     expect(response.body.components.securitySchemes.internalToken.name).toBe("X-Internal-Token");
     expect(response.body.paths["/health"].get.responses["503"]).toBeDefined();
   });

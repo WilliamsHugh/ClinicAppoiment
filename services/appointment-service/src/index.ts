@@ -380,7 +380,7 @@ app.get("/internal/v1/appointments/:id/verify-for-medical-record", requireIntern
       doctorId: appointment.doctorId, status: appointment.status } }));
 });
 
-app.get("/internal/v1/appointments/:id/verify-for-user-patient-scope",
+app.get("/internal/v1/appointments/:id/patient-scope",
   requireInternalToken("APPOINTMENT_USER_INTERNAL_API_TOKEN", ["APPOINTMENT_RECORD_INTERNAL_API_TOKEN",
     "APPOINTMENT_NOTIFICATION_INTERNAL_API_TOKEN", "DOCTOR_INTERNAL_API_TOKEN",
     "USER_APPOINTMENT_INTERNAL_API_TOKEN", "NOTIFICATION_INTERNAL_API_TOKEN"]), async (req, res) => {
@@ -389,9 +389,8 @@ app.get("/internal/v1/appointments/:id/verify-for-user-patient-scope",
       return res.status(400).json(error("VALIDATION_ERROR", "Invalid appointment ID"));
     const appointment = await store.findById(id);
     if (!appointment) return res.status(404).json(error("APPOINTMENT_NOT_FOUND", "Appointment not found"));
-    const valid = ["PENDING", "CONFIRMED", "CHECKED_IN", "COMPLETED"].includes(appointment.status);
-    return res.json(success({ valid, ...(valid ? { appointment: { id: appointment.id,
-      patientId: appointment.patientId, doctorId: appointment.doctorId } } : {}) }));
+    return res.json(success({ id: appointment.id, patientId: appointment.patientId,
+      doctorId: appointment.doctorId, status: appointment.status }));
   });
 
 app.get("/internal/v1/appointments/:id/reminder-context",

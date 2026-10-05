@@ -126,15 +126,23 @@ export function createDoctorApp(repository: DoctorRepository, users: UserDirecto
     }
   }
 
-  function requireUserPatientScopeCaller(req: Request) {
+  function requireDoctorByUserCaller(req: Request) {
     const configured = process.env.DOCTOR_USER_INTERNAL_API_TOKEN;
+    const supplied = Buffer.from(req.header("X-Internal-Token") ?? "", "utf8");
+    if (!supplied.length)
+      throw new ApiError(401, "INTERNAL_AUTH_REQUIRED", "Internal service credential is required");
+    if (configured && (configured === internalToken ||
+      configured === process.env.USER_DOCTOR_INTERNAL_API_TOKEN)) {
+      throw new ApiError(503, "INTERNAL_AUTH_NOT_CONFIGURED", "User patient-scope credential is unavailable");
+    }
+    if (supplied.length === internalCredential.length && timingSafeEqual(supplied, internalCredential)) return;
     const credential = Buffer.from(configured ?? "", "utf8");
     if (credential.length < 32 || configured === internalToken ||
       configured === process.env.USER_DOCTOR_INTERNAL_API_TOKEN) {
       throw new ApiError(503, "INTERNAL_AUTH_NOT_CONFIGURED", "User patient-scope credential is unavailable");
     }
-    const supplied = Buffer.from(req.header("X-Internal-Token") ?? "", "utf8");
-    if (supplied.length !== credential.length || !timingSafeEqual(supplied, credential)) {
+    const actualUserToken = Buffer.from(req.header("X-Internal-Token") ?? "", "utf8");
+    if (actualUserToken.length !== credential.length || !timingSafeEqual(actualUserToken, credential)) {
       throw new ApiError(401, "INTERNAL_AUTH_REQUIRED", "Internal service credential is required");
     }
   }
@@ -308,15 +316,7 @@ export function createDoctorApp(repository: DoctorRepository, users: UserDirecto
   }));
 
   app.get("/internal/v1/doctors/by-user/:userId", wrap(async (req, res) => {
-    requireInternalCaller(req);
-    const userId = parse(uuid, req.params.userId);
-    const doctor = await repository.findDoctorByUser(userId);
-    if (!doctor) throw new ApiError(404, "DOCTOR_NOT_FOUND", "Doctor profile not found");
-    ok(res, { id: doctor.id, userId: doctor.userId, isActive: doctor.isActive });
-  }));
-
-  app.get("/internal/v1/doctors/by-user/:userId/patient-scope", wrap(async (req, res) => {
-    requireUserPatientScopeCaller(req);
+    requireDoctorByUserCaller(req);
     const userId = parse(uuid, req.params.userId);
     const doctor = await repository.findDoctorByUser(userId);
     if (!doctor) throw new ApiError(404, "DOCTOR_NOT_FOUND", "Doctor profile not found");

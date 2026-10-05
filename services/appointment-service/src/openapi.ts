@@ -56,14 +56,12 @@ export const appointmentOpenApi = {
     "/internal/v1/appointments/{id}/verify-for-medical-record": { get: { summary: "Read appointment state for Medical Record Service",
       security: [{ internalToken: [] }], parameters: [id], responses: { "200": response({ type: "object", required: ["valid", "appointment"],
         properties: { valid: { type: "boolean" }, appointment: ref("AppointmentContext") } }), "400": failure, "401": failure, "404": failure, "503": failure } } },
-    "/internal/v1/appointments/{id}/verify-for-user-patient-scope": { get: {
-      summary: "Check appointment eligibility for User Service doctor patient-scope checks",
+    "/internal/v1/appointments/{id}/patient-scope": { get: {
+      summary: "Read minimal appointment scope for User Service doctor patient-scope checks",
       security: [{ internalToken: [] }], "x-internal-caller": "User Service",
       "x-token-env": "APPOINTMENT_USER_INTERNAL_API_TOKEN", parameters: [id],
-      responses: { "200": response({ type: "object", required: ["valid"], properties: {
-        valid: { type: "boolean" }, appointment: { type: "object", required: ["id", "patientId", "doctorId"],
-          properties: { id: uuid, patientId: uuid, doctorId: uuid } }
-      } }), "400": failure, "401": failure, "404": failure, "503": failure } } },
+      responses: { "200": response(ref("PatientScopeContext")),
+        "400": failure, "401": failure, "404": failure, "503": failure } } },
     "/internal/v1/appointments/{id}/reminder-context": { get: {
       summary: "Read minimal appointment context for Notification reminders", security: [{ internalToken: [] }],
       parameters: [id], responses: { "200": response(ref("ReminderContext")), ...errors } } },
@@ -102,6 +100,9 @@ export const appointmentOpenApi = {
         properties: { startAt: dateTime, endAt: dateTime } },
       AppointmentContext: { type: "object", required: ["id", "patientId", "doctorId", "status"],
         properties: { id: uuid, patientId: uuid, doctorId: uuid, status: { type: "string" } } },
+      PatientScopeContext: { type: "object", required: ["id", "patientId", "doctorId", "status"],
+        properties: { id: uuid, patientId: uuid, doctorId: uuid,
+          status: { type: "string", enum: ["PENDING", "CONFIRMED", "CHECKED_IN", "COMPLETED", "CANCELLED", "NO_SHOW"] } } },
       ReminderContext: { type: "object", required: ["id", "patientId", "status", "scheduledStartAt"],
         properties: { id: uuid, patientId: uuid, status: { type: "string" }, scheduledStartAt: dateTime } }
     }
