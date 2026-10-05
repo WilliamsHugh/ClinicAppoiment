@@ -49,11 +49,11 @@ not as a valid user/patient or an empty schedule.
    any future lookup needs a separate caller credential and provider review.
 4. TV1 coordinates runtime secret injection/Compose and the shared
    `docs/api-contract.md` update. These files are outside TV2 ownership.
-5. The User-to-Doctor and User-to-Appointment patient-scope caller contract
-   below needs TV3 provider review and implementation. User does not reuse
-   Medical Record's verification route or credential.
+5. The User-to-Doctor and User-to-Appointment patient-scope contract below is
+   implemented in local TV2 and TV3 branches. It is not integrated or accepted;
+   TV1 still needs to wire runtime secrets and review the shared caller matrix.
 
-## User -> Doctor / Appointment patient scope (TV2 proposal; TV3 provider PLANNED)
+## User -> Doctor / Appointment patient scope (M2-USER-001)
 
 This lookup is used only when a public `DOCTOR` asks User Service for a patient
 list or patient detail with `appointmentId`. Gateway supplies the authenticated
@@ -63,46 +63,49 @@ data. Neither internal route is exposed through Gateway.
 
 | Caller -> provider | Method/path | Shared backend secret | `200 data` |
 | --- | --- | --- | --- |
-| User -> Doctor | `GET /internal/v1/doctors/by-user/{doctorUserId}` (existing route; User credential support PLANNED) | `DOCTOR_USER_INTERNAL_API_TOKEN` | `{ id: doctorId, userId: doctorUserId, isActive: boolean }` |
-| User -> Appointment | `GET /internal/v1/appointments/{appointmentId}/patient-scope` (new route PLANNED) | `APPOINTMENT_USER_INTERNAL_API_TOKEN` | `{ id: appointmentId, patientId, doctorId, status }` |
+| User -> Doctor | `GET /internal/v1/doctors/by-user/{userId}` | `DOCTOR_USER_INTERNAL_API_TOKEN` | `{ id: doctorId, userId, isActive }` |
+| User -> Appointment | `GET /internal/v1/appointments/{id}/patient-scope` | `APPOINTMENT_USER_INTERNAL_API_TOKEN` | `{ id, patientId, doctorId, status }` |
 
 The two secrets must differ from each other and from `USER_DOCTOR_INTERNAL_API_TOKEN`
-(Doctor -> User), `DOCTOR_INTERNAL_API_TOKEN` (other Doctor callers), and
+(Doctor -> User), `USER_APPOINTMENT_INTERNAL_API_TOKEN` (Appointment -> User),
+`DOCTOR_INTERNAL_API_TOKEN` (other Doctor callers), and
 `APPOINTMENT_RECORD_INTERNAL_API_TOKEN` (Record -> Appointment). Each is a
 distinct random secret of at least 32 UTF-8 bytes. User sends it in
 `X-Internal-Token`; Doctor and Appointment compare it before reading data.
-User forwards a valid `X-Request-Id` (`[A-Za-z0-9-]{1,80}`), sends
-`Accept: application/json`, rejects redirects and uses a four-second timeout
-per call. Both providers use the standard success/error envelope. They return
-`400 VALIDATION_ERROR` for malformed UUID, `401 INTERNAL_AUTH_REQUIRED` for
-missing/wrong token, `404` for unknown ID and `503` for dependency/database
-failure. The Appointment route returns no patient demographics, booking reason,
-symptoms or clinical data.
+User sends `Accept: application/json`, rejects redirects and forwards a
+validated `X-Request-Id` (`[A-Za-z0-9-]{1,80}`) when present. Each request has
+a four-second timeout. Both providers use the standard success/error
+envelope. Invalid UUID returns `400 VALIDATION_ERROR`; missing/wrong token
+returns `401 INTERNAL_AUTH_REQUIRED`; missing/weak/reused provider secret
+returns `503 INTERNAL_AUTH_NOT_CONFIGURED`; unknown User/appointment returns
+`404 DOCTOR_NOT_FOUND` or `404 APPOINTMENT_NOT_FOUND`. Appointment returns no
+patient demographics, booking reason, symptoms or clinical data.
 
-TV3 local commit `093d061` already sends `USER_DOCTOR_INTERNAL_API_TOKEN`
-(Doctor -> User) and `USER_APPOINTMENT_INTERNAL_API_TOKEN` (Appointment ->
-User). Those are the reverse direction and do not authenticate User to either
-provider. The two new secrets above must be configured independently.
+Doctor's existing `by-user` route accepts `DOCTOR_INTERNAL_API_TOKEN` for its
+Appointment/Medical Record callers and `DOCTOR_USER_INTERNAL_API_TOKEN` for
+User. Appointment's new `patient-scope` route accepts only
+`APPOINTMENT_USER_INTERNAL_API_TOKEN`; the Record-specific
+`verify-for-medical-record` route and `APPOINTMENT_RECORD_INTERNAL_API_TOKEN`
+remain separate.
 
-User first resolves Doctor. If the doctor is absent or inactive, access is
-denied without querying Appointment. User then checks that the appointment ID
-matches the requested ID, its doctor ID matches the resolved doctor, and its
-status is one of `PENDING`, `CONFIRMED`, `CHECKED_IN`, `COMPLETED`. `CANCELLED`
-and `NO_SHOW` do not grant access. A missing Doctor or Appointment, inactive
-doctor, different assigned doctor, or excluded status produces the existing
-public `403 PATIENT_SCOPE_DENIED`. A missing/weak credential, upstream `401`
-or `5xx`, timeout, network error, or malformed/mismatched DTO produces public
-`503 PATIENT_SCOPE_UNAVAILABLE`. Patient detail also checks that the resolved
-`patientId` equals the requested patient ID.
+User resolves Doctor first and skips Appointment when the doctor is missing or
+inactive. It validates the returned IDs/status and allows access only when the
+appointment matches the requested ID, its doctor ID matches the resolved doctor,
+and status is `PENDING`, `CONFIRMED`, `CHECKED_IN`, or `COMPLETED`. `CANCELLED`
+and `NO_SHOW` are outside scope. Missing doctor or appointment, inactive doctor,
+different assigned doctor or excluded status returns public
+`403 PATIENT_SCOPE_DENIED`. Missing/weak credentials, upstream `401`/`503`,
+timeout, network failure, redirect or invalid/mismatched DTO returns public
+`503 PATIENT_SCOPE_UNAVAILABLE`. Patient detail also requires the resolved
+`patientId` to match the requested patient ID.
 
-TV3 must add `DOCTOR_USER_INTERNAL_API_TOKEN` only to Doctor's `by-user`
-route and add the dedicated Appointment `patient-scope` route guarded by
-`APPOINTMENT_USER_INTERNAL_API_TOKEN`, with OpenAPI/env/test for missing and
-wrong token and minimal DTO. Do not grant User the Record credential. TV1 must
-review the caller matrix and inject both secrets into the appropriate backend
-containers. Until TV3 implements these provider changes, User's public doctor
-patient-scope path returns `503` when the protected provider rejects the call;
-this contract is not yet accepted.
+TV2 caller implementation is commit `622dda4`; TV3 provider implementation is
+commit `c15e8f9`. The provider contract is also in
+`services/appointment-service/USER-PATIENT-SCOPE-CONTRACT.md` on the TV3 branch.
+Both commits are local and ready for integration review, not merged or accepted.
+TV1 must inject both new secrets into the correct backend containers and review
+the shared `docs/api-contract.md` caller matrix. Cross-service smoke through
+Gateway with distinct databases remains required for acceptance.
 
 ## Local verification
 
