@@ -7,7 +7,7 @@ import { createAuthRouter, createInternalVerifyHandler, createSupabaseAuthProvid
 import { createDoctorEligibilityHandler } from "./doctor-eligibility.js";
 import { internalCredentialsFromEnv, requireInternalCaller } from "./internal-auth.js";
 import { createPatientLookupHandler } from "./internal-patients.js";
-import { createPatientScopeVerifier } from "./patient-scope.js";
+import { createPatientScopeVerifier, PatientScopeUnavailableError } from "./patient-scope.js";
 import { UserRepository } from "./repository.js";
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -32,11 +32,14 @@ const authProvider = createSupabaseAuthProvider(
   authProviderTimeoutMs
 );
 const port = Number(process.env.USER_SERVICE_PORT ?? 3001);
+const internalCredentials = internalCredentialsFromEnv();
 const patientScope = createPatientScopeVerifier({
   doctorServiceUrl: process.env.DOCTOR_SERVICE_URL ?? "http://localhost:3002",
   appointmentServiceUrl: process.env.APPOINTMENT_SERVICE_URL ?? "http://localhost:3003",
+  doctorInternalToken: process.env.DOCTOR_USER_INTERNAL_API_TOKEN,
+  appointmentInternalToken: process.env.APPOINTMENT_USER_INTERNAL_API_TOKEN,
+  reservedTokens: Object.values(internalCredentials).filter((token): token is string => Boolean(token)),
 });
-const internalCredentials = internalCredentialsFromEnv();
 
 const idSchema = z.string().uuid();
 const optionalText = (max: number) => z.string().trim().max(max).nullable().optional();
@@ -70,6 +73,9 @@ const listPatientsQuerySchema = z.object({
 });
 
 const internalTokenSecurity = [{ internalToken: [] }];
+const errorResponse = (description: string) => ({ description, content: {
+  "application/json": { schema: { $ref: "#/components/schemas/Error" } },
+} });
 const uuidParameter = (name: string) => ({ name, in: "path", required: true,
   schema: { type: "string", format: "uuid" } });
 const internalErrorResponses = {
@@ -128,9 +134,17 @@ const swaggerDocument = {
       get: { summary: "Xem hồ sơ cá nhân của người dùng hiện tại" },
       patch: { summary: "Cập nhật hồ sơ cá nhân của người dùng hiện tại" }
     },
-    "/api/v1/patients": { get: { summary: "Tìm kiếm danh sách bệnh nhân (DOCTOR, STAFF, ADMIN)" } },
+    "/api/v1/patients": { get: {
+      summary: "Search patients; Doctor access requires an appointment scope check",
+      responses: { "503": errorResponse("Doctor or Appointment scope verification is unavailable") },
+    } },
     "/api/v1/patients/{id}": {
-      get: { summary: "Xem chi tiết hồ sơ bệnh nhân" },
+      get: { summary: "Xem chi tiết hồ sơ bệnh nhân",
+        parameters: [uuidParameter("id"), { name: "appointmentId", in: "query", required: false,
+          description: "Required for DOCTOR; checks assignment through Doctor and Appointment services",
+          schema: { type: "string", format: "uuid" } }],
+        responses: { "503": errorResponse("Doctor or Appointment scope verification is unavailable") },
+      },
       patch: { summary: "Cập nhật hồ sơ bệnh nhân (Bệnh nhân chính mình hoặc ADMIN)" }
     },
     "/internal/v1/auth/verify": { get: {
@@ -281,7 +295,8 @@ app.get("/api/v1/patients", requireRoles("DOCTOR", "STAFF", "ADMIN"), async (req
     if (!parsed.data.appointmentId) {
       return res.status(400).json(error("APPOINTMENT_SCOPE_REQUIRED", "appointmentId is required for doctor patient access"));
     }
-    const patientId = await patientScope.patientIdForDoctorAppointment(who.userId, parsed.data.appointmentId);
+    const patientId = await patientScope.patientIdForDoctorAppointment(who.userId, parsed.data.appointmentId,
+      req.header("X-Request-Id"));
     if (!patientId) {
       return res.status(403).json(error("PATIENT_SCOPE_DENIED", "Patient is outside the doctor's appointment scope"));
     }
@@ -305,7 +320,8 @@ app.get("/api/v1/patients/:id", requireRoles("PATIENT", "DOCTOR", "STAFF", "ADMI
     if (!appointmentId.success) {
       return res.status(400).json(error("APPOINTMENT_SCOPE_REQUIRED", "A valid appointmentId is required for doctor patient access"));
     }
-    const scopedPatientId = await patientScope.patientIdForDoctorAppointment(who.userId, appointmentId.data);
+    const scopedPatientId = await patientScope.patientIdForDoctorAppointment(who.userId, appointmentId.data,
+      req.header("X-Request-Id"));
     if (scopedPatientId !== patient.id) {
       return res.status(403).json(error("PATIENT_SCOPE_DENIED", "Patient is outside the doctor's appointment scope"));
     }
@@ -344,6 +360,9 @@ app.use((req, res, next) => {
 });
 
 app.use((err: unknown, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  if (err instanceof PatientScopeUnavailableError) {
+    return res.status(503).json(error("PATIENT_SCOPE_UNAVAILABLE", "Patient scope verification is unavailable"));
+  }
   console.error("User Service request failed", err instanceof Error ? err.message : "Unknown error");
   return res.status(503).json(error("SERVICE_UNAVAILABLE", "User Service is temporarily unavailable"));
 });
