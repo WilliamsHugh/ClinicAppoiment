@@ -157,6 +157,26 @@ describe("Gateway authentication dependency handling", () => {
   });
 });
 
+describe("Gateway health aggregation", () => {
+  it("marks Doctor unavailable when its database health endpoint returns 503", async () => {
+    const healthy = await startUpstream((_req, res) => sendJson(res, 200, { success: true, data: { status: "ok" } }));
+    const unavailable = await startUpstream((_req, res) => sendJson(res, 503, {
+      success: false, error: { code: "DATABASE_UNAVAILABLE", message: "Database is unavailable", details: [] }
+    }));
+    const targets = configFor(healthy.url).serviceTargets;
+    const app = appFor(healthy.url, "ADMIN", {
+      healthTimeoutMs: 1000,
+      serviceTargets: { ...targets, doctors: unavailable.url }
+    });
+
+    const response = await request(app).get("/api/v1/system/health").set("Authorization", "Bearer token");
+    expect(response.status).toBe(200);
+    expect(response.body.data.status).toBe("degraded");
+    expect(response.body.data.services.doctors).toBe("unavailable");
+    expect(JSON.stringify(response.body)).not.toContain(unavailable.url);
+  });
+});
+
 describe("Gateway prefix routing", () => {
   it("proxies public auth endpoints to User Service without handling credentials", async () => {
     const upstream = await startUpstream((req, res) => {
@@ -239,6 +259,25 @@ describe("Gateway prefix routing", () => {
 });
 
 describe("Gateway proxy boundary", () => {
+  it("forwards the doctors root and nested time-off update through the existing prefix", async () => {
+    const upstream = await startUpstream((req, res) => {
+      let body = "";
+      req.on("data", (chunk) => { body += chunk; });
+      req.on("end", () => sendJson(res, 200, { success: true,
+        data: { method: req.method, url: req.url, body: body ? JSON.parse(body) : null } }));
+    });
+    const app = appFor(upstream.url, "ADMIN");
+    const root = await request(app).get("/api/v1/doctors").set("Authorization", "Bearer token");
+    const update = await request(app).patch("/api/v1/doctors/doctor-1/time-offs/off-1")
+      .set("Authorization", "Bearer token").send({ reason: "Training" });
+
+    expect(root.status).toBe(200);
+    expect(root.body.data).toEqual({ method: "GET", url: "/api/v1/doctors/", body: null });
+    expect(update.status).toBe(200);
+    expect(update.body.data).toEqual({ method: "PATCH",
+      url: "/api/v1/doctors/doctor-1/time-offs/off-1", body: { reason: "Training" } });
+  });
+
   it("forwards method, JSON body, query, and authorization to a new endpoint inside an owned prefix", async () => {
     const upstream = await startUpstream((req, res) => {
       let body = "";
@@ -285,6 +324,21 @@ describe("Gateway proxy boundary", () => {
     expect(response.body.data.headers["x-supabase-auth-user-id"]).toBeUndefined();
     expect(response.body.data.headers["x-internal-token"]).toBeUndefined();
     expect(response.body.data.headers["x-request-id"]).toBe("request-123");
+  });
+
+  it("does not expose Doctor internal routes through Gateway", async () => {
+    const paths: string[] = [];
+    const upstream = await startUpstream((req, res) => {
+      paths.push(req.url ?? "");
+      sendJson(res, 200, { success: true, data: {} });
+    });
+    const response = await request(appFor(upstream.url))
+      .post("/internal/v1/doctors/verify-slot")
+      .set("Authorization", "Bearer token")
+      .set("X-Internal-Token", "spoofed-internal-token")
+      .send({ doctorId: "doctor-1" });
+    expect(response.status).toBe(404);
+    expect(paths).toEqual([]);
   });
 
   it("redacts resource identifiers from structured request logs", async () => {

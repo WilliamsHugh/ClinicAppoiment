@@ -40,8 +40,9 @@ Express mount path có biên segment nên `/api/v1/doctors` và mọi đường 
 Doctor Service, nhưng `/api/v1/doctors-other` không match. Gateway tái tạo nguyên đường dẫn public;
 service nhận đúng path, query và method mà frontend gửi. Không có quy ước strip prefix. Request body,
 `Authorization`, `Idempotency-Key`, content headers và response phù hợp được proxy chuyển tiếp.
-Gateway luôn xóa `X-User-Id`, `X-Role`, `X-Supabase-Auth-User-Id`, `X-Internal-Token` do client gửi, sau đó chỉ thêm
-`X-User-Id` và `X-Role` từ danh tính đã xác minh. Supabase Auth user ID không được chuyển sang service nghiệp vụ.
+Gateway luôn xóa `X-User-Id`, `X-Role`, `X-Supabase-Auth-User-Id` và `X-Internal-Token`
+do client gửi, sau đó chỉ thêm `X-User-Id` và `X-Role` từ danh tính đã xác minh.
+Supabase Auth user ID và credential nội bộ không được chuyển sang service nghiệp vụ.
 
 Mặc định mọi nhóm nghiệp vụ yêu cầu đăng nhập. Ngoại lệ public hiện chỉ gồm `GET /health`, tài liệu
 Gateway và `POST /api/v1/auth/login|register|refresh`; logout cần access token và refresh token.
@@ -238,19 +239,26 @@ Khi actor là `DOCTOR`, User Service đối chiếu `appointmentId` với Doctor
 
 | Method | Path | Quyền | Query/body |
 |---|---|---|---|
-| `GET` | `/api/v1/specialties` | Bất kỳ role đã đăng nhập | `page`, `limit`, `q`, `isActive` |
+| `GET` | `/api/v1/specialties` | Bất kỳ role đã đăng nhập | `page`, `limit`, `q`; `isActive` chỉ có hiệu lực với `ADMIN`, role khác chỉ thấy bản ghi active |
 | `POST` | `/api/v1/specialties` | `ADMIN` | `{ "name": string, "description"?: string }` |
 | `PATCH` | `/api/v1/specialties/{specialtyId}` | `ADMIN` | `{ "name"?: string, "description"?: string, "isActive"?: boolean }` |
-| `GET` | `/api/v1/doctors` | Bất kỳ role đã đăng nhập | `page`, `limit`, `specialtyId`, `q`, `isActive` |
+| `GET` | `/api/v1/doctors` | Bất kỳ role đã đăng nhập | `page`, `limit`, `specialtyId`, `q`; `isActive` chỉ có hiệu lực với `ADMIN`, role khác chỉ thấy bác sĩ active |
 | `POST` | `/api/v1/doctors` | `ADMIN` | `{ "userId": string, "specialtyId": string, "displayName": string, "bio"?: string }` |
 | `GET` | `/api/v1/doctors/{doctorId}` | Bất kỳ role đã đăng nhập | Không có |
 | `PATCH` | `/api/v1/doctors/{doctorId}` | `ADMIN` | Doctor fields có thể cập nhật |
-| `GET` | `/api/v1/doctors/{doctorId}/schedules` | Bất kỳ role đã đăng nhập | `page`, `limit` nếu danh sách có phân trang |
+| `GET` | `/api/v1/doctors/{doctorId}/schedules` | Bất kỳ role đã đăng nhập | `page`, `limit`; trả `{ items, page, limit, total }` |
 | `POST` | `/api/v1/doctors/{doctorId}/schedules` | Bác sĩ chính mình, `STAFF`, `ADMIN` | `{ "weekday": 0..6, "startTime": "HH:mm", "endTime": "HH:mm", "slotDurationMinutes": integer }` |
 | `PATCH` | `/api/v1/schedules/{scheduleId}` | Bác sĩ sở hữu lịch, `STAFF`, `ADMIN` | Các trường lịch có thể cập nhật |
 | `GET` | `/api/v1/doctors/{doctorId}/available-slots?date=YYYY-MM-DD` | Bất kỳ role đã đăng nhập | `date` bắt buộc; trả `[{ "startAt": ISODateTime, "endAt": ISODateTime }]` |
+| `GET` | `/api/v1/doctors/{doctorId}/time-offs` | Bác sĩ chính mình, `STAFF`, `ADMIN` | `page`, `limit`; `PATIENT` không được truy cập |
+| `POST` | `/api/v1/doctors/{doctorId}/time-offs` | Bác sĩ chính mình, `STAFF`, `ADMIN` | `{ "startAt": ISODateTime, "endAt": ISODateTime, "reason"?: string }` |
+| `PATCH` | `/api/v1/doctors/{doctorId}/time-offs/{timeOffId}` | Bác sĩ sở hữu, `STAFF`, `ADMIN` | Các trường thời gian nghỉ có thể cập nhật; `timeOffId` phải thuộc `doctorId`, nếu không trả `404 TIME_OFF_NOT_FOUND` |
 
-`weekday`: Chủ Nhật `0`, Thứ Hai `1`, ..., Thứ Bảy `6`. `startTime`/`endTime` là giờ địa phương của phòng khám; response slot luôn là UTC. Doctor phải tồn tại và `isActive=true`; slot phải nằm trọn trong schedule và ngoài time-off.
+`weekday`: Chủ Nhật `0`, Thứ Hai `1`, ..., Thứ Bảy `6`. `startTime`/`endTime` là giờ địa phương của phòng khám theo `Asia/Ho_Chi_Minh` (UTC+7); response slot luôn là UTC. `date` trong truy vấn slot là ngày ở Việt Nam. Khoảng thời gian dùng quy ước `[startAt, endAt)`. Doctor phải tồn tại và `isActive=true`; slot phải nằm trọn trong schedule và ngoài time-off. Schedule không qua nửa đêm và các schedule đang hoạt động của cùng bác sĩ không chồng nhau.
+
+Doctor Service sinh slot từ lịch làm việc, trừ thời gian nghỉ, sau đó trừ các khoảng đã đặt còn hiệu lực do Appointment Service cung cấp qua API nội bộ. API nội bộ này đã có nhưng hiện đọc repository in-memory của Appointment Service. Nếu `APPOINTMENT_SERVICE_URL` chưa cấu hình, endpoint chỉ trả slot theo schedule/time-off và không thể bảo đảm slot chưa được đặt; các thao tác sửa lịch phụ thuộc occupancy sẽ trả `503`. Danh sách slot chỉ phản ánh thời điểm đọc, không giữ chỗ. API tạo/đổi lịch của Appointment Service kiểm tra lại slot; ràng buộc database chống double booking vẫn thuộc phạm vi Booking và chưa được triển khai.
+
+Khi thay đổi lịch làm việc, thời gian nghỉ hoặc ngừng hoạt động bác sĩ, Doctor Service phải kiểm tra các lịch hẹn tương lai còn hiệu lực. Thay đổi làm lịch hẹn mất hiệu lực trả `409 SCHEDULE_CONFLICT_WITH_APPOINTMENTS` kèm số lịch bị ảnh hưởng, không tự động hủy/đổi lịch. Nếu không thể kiểm tra Appointment Service, thao tác này từ chối an toàn (`502` hoặc `503`). Các thao tác này cần quy trình phối hợp để xử lý đặt lịch đồng thời với thay đổi lịch làm việc; chưa được coi là bảo đảm nguyên tử xuyên service.
 
 ### Appointment
 
@@ -305,6 +313,8 @@ COMPLETED, CANCELLED, NO_SHOW -> không chuyển tiếp
 ```
 
 Chuyển trạng thái không hợp lệ trả `409 APPOINTMENT_INVALID_STATUS_TRANSITION`. Appointment response gồm `id`, `patientId`, `doctorId`, `specialtyId?`, `scheduledStartAt`, `scheduledEndAt`, `reason?`, `status`, `createdAt`, `updatedAt`.
+
+Appointment Service đối chiếu PATIENT qua User Service và DOCTOR qua Doctor Service; DOCTOR chỉ xem/hoàn tất lịch gắn với doctor profile đang active của mình. STAFF/ADMIN xem và vận hành lịch theo các route ghi trong bảng, nhưng không hoàn tất lịch thay bác sĩ. Reschedule chỉ áp dụng cho `PENDING`/`CONFIRMED` và phải chọn thời gian tương lai. Khi lookup profile bắt buộc bị lỗi, service trả `503 DEPENDENCY_UNAVAILABLE`; ID appointment sai định dạng trả `400 VALIDATION_ERROR`.
 
 ### Medical Record
 
@@ -363,8 +373,9 @@ Các route này không được mount vào Gateway public router. Trong MVP gọ
 | Medical Record -> User | Same patient routes | `USER_RECORD_INTERNAL_API_TOKEN` | `{ id, userId }` |
 | User -> Doctor | `GET /internal/v1/doctors/by-user/{userId}` | `DOCTOR_USER_INTERNAL_API_TOKEN` | `{ id, userId, isActive }` |
 | User -> Appointment | `GET /internal/v1/appointments/{appointmentId}/patient-scope` | `APPOINTMENT_USER_INTERNAL_API_TOKEN` | `{ id, patientId, doctorId, status }` |
-| Appointment -> Doctor | `POST /internal/v1/doctors/verify-slot` | `DOCTOR_INTERNAL_API_TOKEN` | Request `{ doctorId, startAt, endAt }`; response `{ valid, reason? }` |
-| Doctor -> Appointment | `GET /internal/v1/appointments/occupied-slots` | `DOCTOR_INTERNAL_API_TOKEN` | Occupied intervals for the requested doctor and time range |
+| Appointment -> Doctor | `POST /internal/v1/doctors/verify-slot` | `DOCTOR_INTERNAL_API_TOKEN` | Body `{ doctorId, startAt, endAt }`; response `{ success, data: { valid, reason? } }` |
+| Doctor -> Appointment | `GET /internal/v1/appointments/occupied-slots?doctorId={id}&from={ISODateTime}&to={ISODateTime?}` | `DOCTOR_INTERNAL_API_TOKEN` | `200 { success: true, data: [{ startAt, endAt }] }`; query uses `[from,to)`, `to` optional; returns only active future slots, without patient data |
+| Appointment/Medical Record -> Doctor | `GET /internal/v1/doctors/by-user/{userId}` | `DOCTOR_INTERNAL_API_TOKEN` | `{ id, userId, isActive }`; this caller credential is distinct from User -> Doctor |
 | Medical Record -> Appointment | `GET /internal/v1/appointments/{appointmentId}/verify-for-medical-record` | `APPOINTMENT_RECORD_INTERNAL_API_TOKEN` | `{ valid, appointment? { id, patientId, doctorId, status } }` |
 | Medical Record -> Appointment | `POST /internal/v1/appointments/{appointmentId}/complete-from-record` | `APPOINTMENT_RECORD_INTERNAL_API_TOKEN` | `{ recordId }`; completes an eligible checked-in appointment |
 | Appointment -> Medical Record | `GET /internal/v1/medical-records/by-appointment/{appointmentId}` | `APPOINTMENT_RECORD_INTERNAL_API_TOKEN` | Minimal finalized record context |
@@ -384,6 +395,10 @@ không phải `CANCELLED` hoặc `NO_SHOW`. Timeout, credential bị từ chối
 `verify-for-medical-record`. Doctor dùng `DOCTOR_USER_INTERNAL_API_TOKEN` cho lookup của User;
 Appointment dùng `APPOINTMENT_USER_INTERNAL_API_TOKEN` cho route này. Hai token phải khác nhau
 và tách biệt với credential User dùng để gọi Doctor/Appointment.
+
+Endpoint xác minh khung giờ của Doctor Service yêu cầu `DOCTOR_INTERNAL_API_TOKEN`; Appointment gửi token này khi xác minh slot. Response occupancy chỉ gồm các khoảng lịch active đã lưu cho bác sĩ và thời gian được yêu cầu. User eligibility và patient-scope dùng credential riêng, không dùng lại credential callback của Medical Record.
+
+Doctor Service yêu cầu `DOCTOR_INTERNAL_API_TOKEN` tối thiểu 32 byte khi khởi động. Appointment Service gửi token này khi xác minh slot và trả `503 DOCTOR_VERIFICATION_UNAVAILABLE` nếu credential thiếu hoặc Doctor Service không thể xác minh. Token chỉ nằm trong cấu hình backend, không gửi tới Gateway hay frontend. `GET /health` của Doctor Service trả `200` khi Doctor database sẵn sàng, hoặc `503 DATABASE_UNAVAILABLE` với envelope lỗi chung khi truy vấn database thất bại.
 
 Notification tối thiểu xử lý event types `appointment.created`, `appointment.rescheduled`, `appointment.cancelled`, `appointment.confirmed`, `medical-record.created`, `medical-record.updated`. `eventId` dùng để deduplicate retry. Gửi HTTP đồng bộ không phải durable queue; caller cần timeout, retry có giới hạn và idempotency. Lỗi notification không được rollback appointment/medical record đã commit.
 
@@ -412,6 +427,12 @@ ghi outbox cùng transaction tạo/cập nhật hồ sơ; worker gửi lại b�
 | `ROUTE_NOT_FOUND` | 404 | Không tồn tại route |
 | `USER_NOT_FOUND` | 404 | Không tìm thấy profile |
 | `DOCTOR_NOT_FOUND` | 404 | Không tìm thấy bác sĩ |
+| `DOCTOR_ACCOUNT_INVALID` | 422 | Tài khoản liên kết không phải bác sĩ đang hoạt động |
+| `SPECIALTY_INVALID` | 422 | Chuyên khoa không tồn tại hoặc ngừng hoạt động |
+| `SCHEDULE_OVERLAP` | 409 | Lịch làm việc của cùng bác sĩ chồng nhau |
+| `SCHEDULE_CONFLICT_WITH_APPOINTMENTS` | 409 | Thay đổi lịch/thời gian nghỉ làm mất hiệu lực appointment tương lai |
+| `APPOINTMENT_AVAILABILITY_UNAVAILABLE` | 503 | Chưa cấu hình kiểm tra slot đã đặt từ Appointment Service |
+| `DATABASE_UNAVAILABLE` | 503 | Doctor database không khả dụng tại `/health` |
 | `APPOINTMENT_NOT_FOUND` | 404 | Không tìm thấy lịch |
 | `MEDICAL_RECORD_NOT_FOUND` | 404 | Không tìm thấy record |
 | `NOTIFICATION_NOT_FOUND` | 404 | Không tìm thấy notification |
@@ -442,20 +463,15 @@ Gateway chịu trách nhiệm xác thực, rate limit, request ID, CORS, routing
 
 Các mục dưới đây là gap giữa scaffold hiện tại và contract; không phải ngoại lệ của contract:
 
-- Doctor và Appointment Service trên baseline hiện còn dùng in-memory arrays; User,
-  Medical Record và Notification Service đã có PostgreSQL repository.
-- Doctor list/specialty/available slot và một số list endpoint hiện chưa áp dụng pagination/filter đầy đủ.
-- Appointment hiện chỉ kiểm tra conflict bằng memory trước khi insert; `BOOK-004` phải dùng transaction và constraint PostgreSQL.
-- Notification Service đã chặn client tạo notification và đã deduplicate internal event
-  bằng `eventId`; vẫn cần kiểm thử tích hợp với producer và PostgreSQL thật.
-- Reminder worker hiện cần chuyển sang internal Appointment lookup có xác thực thay vì gọi
-  endpoint public thiếu access token.
-- Medical Record completion hiện cần chuyển sang internal Appointment command có xác thực;
-  không tự dựng `X-User-Id`/`X-Role` để gọi endpoint public.
-- Các internal route hiện chủ yếu dựa vào private network. Cần hoàn thành service identity
-  và caller authorization theo milestone M2 trước nghiệm thu liên service.
-- OpenAPI của một số service mới liệt kê route/summary, chưa mô tả đầy đủ request,
-  response, error schema và security requirement.
+- Doctor và Appointment Service trên nhánh PR #14 đã dùng PostgreSQL; Appointment dùng
+  transaction và exclusion constraint để chặn các khoảng giờ active chồng lấn. Cần smoke
+  qua Gateway trên cây tích hợp trước nghiệm thu.
+- Notification Service đã deduplicate event theo `eventId`; receiver và reminder worker
+  còn cần tích hợp xác thực caller và internal Appointment lookup trên cây mã chung.
+- Medical Record completion còn cần dùng internal Appointment command có xác thực trên
+  cây mã chung; không tự dựng `X-User-Id`/`X-Role` để gọi endpoint public.
+- Các internal User/Patient lookup còn cần service identity và caller authorization theo M2.
+- OpenAPI của một số service chưa mô tả đầy đủ request, response, error và security.
 - Một số route được liệt kê trong `system-design.md` chưa được code. Triển khai route theo bảng trong tài liệu này và bổ sung Swagger/OpenAPI.
 - Patient App lấy danh tính actor từ phiên do Gateway cấp và không gửi `patientId` cố định khi bệnh nhân tự đặt lịch.
 

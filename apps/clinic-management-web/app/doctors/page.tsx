@@ -1,5 +1,5 @@
-import { PagePlaceholder } from "../../src/components/page-placeholder";
+import { DoctorPanel } from "../../src/features/doctors/doctor-panel";
 
 export default function DoctorsPage() {
-  return <PagePlaceholder eyebrow="Doctor Service" title="Bác sĩ và lịch làm việc" description="Điểm vào cho chuyên khoa, hồ sơ bác sĩ và lịch làm việc." />;
+  return <DoctorPanel />;
 }

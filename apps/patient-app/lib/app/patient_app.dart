@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../core/api/clinic_api_client.dart';
 import '../core/session/session.dart';
 import '../core/theme/app_theme.dart';
 import '../features/auth/auth_page.dart';
@@ -10,9 +11,11 @@ class PatientApp extends StatefulWidget {
   const PatientApp({
     super.key,
     this.sessionProvider = const UnauthenticatedSessionProvider(),
+    this.doctorApiClient,
   });
 
   final SessionProvider sessionProvider;
+  final ClinicApiClient? doctorApiClient;
 
   @override
   State<PatientApp> createState() => _PatientAppState();
@@ -49,6 +52,7 @@ class _PatientAppState extends State<PatientApp> {
           SessionStatus.authenticated => PatientShell(
               session: _sessionController.session!,
               onSignOut: _sessionController.signOut,
+              doctorApiClient: widget.doctorApiClient,
             ),
           SessionStatus.unauthenticated => AuthPage(
               onLogin: _sessionController.signIn,

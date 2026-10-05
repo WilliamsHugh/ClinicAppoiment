@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
+import '../core/api/clinic_api_client.dart';
 import '../core/session/session.dart';
+import '../features/appointments/booking_selection.dart';
 import '../shared/widgets/async_states.dart';
 import 'app_routes.dart';
 
@@ -8,11 +10,13 @@ class PatientShell extends StatefulWidget {
   const PatientShell({
     required this.session,
     required this.onSignOut,
+    this.doctorApiClient,
     super.key,
   });
 
   final AuthSession session;
   final Future<void> Function() onSignOut;
+  final ClinicApiClient? doctorApiClient;
 
   @override
   State<PatientShell> createState() => _PatientShellState();
@@ -20,6 +24,7 @@ class PatientShell extends StatefulWidget {
 
 class _PatientShellState extends State<PatientShell> {
   int _selectedIndex = 0;
+  BookingSelection? _bookingSelection;
 
   @override
   Widget build(BuildContext context) {
@@ -34,13 +39,20 @@ class _PatientShellState extends State<PatientShell> {
       );
     }
     final selectedRoute = routes[_selectedIndex];
-    // Các page đã tự có AppBar/header theo Figma (Home có custom header,
-    // Appointments/Records/Notifications có AppBar riêng với TabBar/banner),
-    // nên ẩn AppBar mặc định của Shell để không bị 2 AppBar chồng.
+    // Các page Doctor/Appointments/Records/Notifications tự có AppBar,
+    // nên ẩn AppBar của Shell để không hiển thị hai thanh tiêu đề.
     final hideAppBar = selectedRoute.path == AppRoutes.doctors ||
         selectedRoute.path == AppRoutes.appointments ||
         selectedRoute.path == AppRoutes.records ||
         selectedRoute.path == AppRoutes.notifications;
+
+    final routeContext = PatientRouteContext(
+      navigate: (path) => _selectPath(routes, path),
+      onBookingSelection: (selection) =>
+          setState(() => _bookingSelection = selection),
+      bookingSelection: _bookingSelection,
+      doctorApiClient: widget.doctorApiClient,
+    );
 
     return Scaffold(
       appBar: hideAppBar
@@ -66,8 +78,8 @@ class _PatientShellState extends State<PatientShell> {
       body: IndexedStack(
         index: _selectedIndex,
         children: routes
-            .map((route) => route.builder(
-                context, widget.session, (path) => _selectPath(routes, path)))
+            .map(
+                (route) => route.builder(context, widget.session, routeContext))
             .toList(),
       ),
       bottomNavigationBar: Container(

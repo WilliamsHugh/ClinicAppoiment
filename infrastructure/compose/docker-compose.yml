@@ -83,14 +83,19 @@ services:
         APP_PATH: services/doctor-service
     environment:
       DOCTOR_SERVICE_PORT: 3002
-      DATABASE_URL: ${DOCTOR_DATABASE_URL:-}
+      DATABASE_URL: ${DOCTOR_DATABASE_URL:?DOCTOR_DATABASE_URL is required for Doctor Service}
       DATABASE_SSL: ${DOCTOR_DATABASE_SSL:-true}
       DATABASE_SSL_REJECT_UNAUTHORIZED: ${DOCTOR_DATABASE_SSL_REJECT_UNAUTHORIZED:-false}
       DOCTOR_INTERNAL_API_TOKEN: ${DOCTOR_INTERNAL_API_TOKEN:?DOCTOR_INTERNAL_API_TOKEN is required by Doctor Service}
       USER_DOCTOR_INTERNAL_API_TOKEN: ${USER_DOCTOR_INTERNAL_API_TOKEN:?USER_DOCTOR_INTERNAL_API_TOKEN is required by Doctor Service}
       DOCTOR_USER_INTERNAL_API_TOKEN: ${DOCTOR_USER_INTERNAL_API_TOKEN:?DOCTOR_USER_INTERNAL_API_TOKEN is required by Doctor Service}
+      USER_SERVICE_URL: http://user-service:3001
+      APPOINTMENT_SERVICE_URL: http://appointment-service:3003
     expose:
       - "3002"
+    depends_on:
+      user-service:
+        condition: service_healthy
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3002/health').then((response) => { if (!response.ok) process.exit(1); }).catch(() => process.exit(1));"]
       interval: 10s
@@ -107,11 +112,12 @@ services:
         APP_PATH: services/appointment-service
     environment:
       APPOINTMENT_SERVICE_PORT: 3003
-      DATABASE_URL: ${APPOINTMENT_DATABASE_URL:-}
+      DATABASE_URL: ${APPOINTMENT_DATABASE_URL:?APPOINTMENT_DATABASE_URL is required by Appointment Service}
       DATABASE_SSL: ${APPOINTMENT_DATABASE_SSL:-true}
       DATABASE_SSL_REJECT_UNAUTHORIZED: ${APPOINTMENT_DATABASE_SSL_REJECT_UNAUTHORIZED:-false}
       DOCTOR_SERVICE_URL: http://doctor-service:3002
       NOTIFICATION_SERVICE_URL: http://notification-service:3005
+      MEDICAL_RECORD_SERVICE_URL: http://medical-record-service:3004
       USER_SERVICE_URL: http://user-service:3001
       DOCTOR_INTERNAL_API_TOKEN: ${DOCTOR_INTERNAL_API_TOKEN:?DOCTOR_INTERNAL_API_TOKEN is required by Appointment Service}
       USER_APPOINTMENT_INTERNAL_API_TOKEN: ${USER_APPOINTMENT_INTERNAL_API_TOKEN:?USER_APPOINTMENT_INTERNAL_API_TOKEN is required by Appointment Service}
@@ -123,8 +129,6 @@ services:
       - "3003"
     depends_on:
       doctor-service:
-        condition: service_healthy
-      notification-service:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3003/health').then((response) => { if (!response.ok) process.exit(1); }).catch(() => process.exit(1));"]
