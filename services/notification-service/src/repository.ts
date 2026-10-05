@@ -7,6 +7,8 @@ export type Notification = {
 };
 export type NotificationInput = Pick<Notification, "recipientUserId" | "type" | "title" | "message" | "payload">;
 export type Reminder = { appointmentId: string; patientId: string; recipientUserId: string; scheduledStartAt: Date };
+export type EventEffect = { kind: "none" } | { kind: "cancel"; appointmentId: string } |
+  { kind: "schedule"; reminder: Omit<Reminder, "scheduledStartAt"> & { scheduledStartAt: string } };
 const select = `id, recipient_user_id AS "recipientUserId", type, title, message, payload, status,
   read_at AS "readAt", created_at AS "createdAt", event_id AS "eventId"`;
 
@@ -30,6 +32,12 @@ export class NotificationRepository {
     return result.rows[0] ?? null;
   }
 
+  async hasProcessedEvent(eventId: string) {
+    const result = await this.pool.query(
+      "SELECT 1 FROM notification_service.processed_events WHERE event_id = $1", [eventId]);
+    return Boolean(result.rows[0]);
+  }
+
   async createEvent(eventId: string, input: NotificationInput) {
     const client = await this.pool.connect();
     try {
@@ -45,6 +53,50 @@ export class NotificationRepository {
         "INSERT INTO notification_service.notification_deliveries (notification_id, channel, status, sent_at) VALUES ($1,'IN_APP','SENT',now())",
         [notification.id]
       );
+      await client.query("COMMIT");
+      return { created: true as const, notification };
+    } catch (error) { await client.query("ROLLBACK"); throw error; }
+    finally { client.release(); }
+  }
+
+  async applyEvent(eventId: string, input: NotificationInput | null, effect: EventEffect) {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const inserted = await client.query<{ event_id: string }>(
+        `INSERT INTO notification_service.processed_events (event_id) VALUES ($1)
+         ON CONFLICT (event_id) DO NOTHING RETURNING event_id`, [eventId]);
+      if (!inserted.rows[0]) {
+        await client.query("COMMIT");
+        return { created: false as const, notification: null };
+      }
+      let notification: Notification | null = null;
+      if (input) {
+        const result = await client.query<Notification>(
+          `INSERT INTO notification_service.notifications (recipient_user_id, type, title, message, payload, event_id)
+           VALUES ($1,$2,$3,$4,$5,$6) RETURNING ${select}`,
+          [input.recipientUserId, input.type, input.title, input.message, JSON.stringify(input.payload), eventId]);
+        notification = result.rows[0];
+        await client.query(
+          "INSERT INTO notification_service.notification_deliveries (notification_id, channel, status, sent_at) VALUES ($1,'IN_APP','SENT',now())",
+          [notification.id]);
+      }
+      if (effect.kind === "cancel") {
+        await client.query("UPDATE notification_service.appointment_reminders SET status = 'CANCELLED', lease_expires_at = NULL WHERE appointment_id = $1", [effect.appointmentId]);
+      } else if (effect.kind === "schedule") {
+        const reminder = effect.reminder;
+        await client.query(
+          `INSERT INTO notification_service.appointment_reminders
+           (appointment_id, patient_id, recipient_user_id, scheduled_start_at, remind_at)
+           VALUES ($1,$2,$3,$4,$4::timestamptz - interval '24 hours')
+           ON CONFLICT (appointment_id) DO UPDATE SET patient_id = EXCLUDED.patient_id,
+             recipient_user_id = EXCLUDED.recipient_user_id, scheduled_start_at = EXCLUDED.scheduled_start_at,
+             remind_at = EXCLUDED.remind_at, status = 'PENDING', retry_count = 0,
+             next_attempt_at = now(), lease_expires_at = NULL
+           WHERE appointment_reminders.scheduled_start_at IS DISTINCT FROM EXCLUDED.scheduled_start_at
+              OR appointment_reminders.status = 'CANCELLED'`,
+          [reminder.appointmentId, reminder.patientId, reminder.recipientUserId, reminder.scheduledStartAt]);
+      }
       await client.query("COMMIT");
       return { created: true as const, notification };
     } catch (error) { await client.query("ROLLBACK"); throw error; }
@@ -76,36 +128,83 @@ export class NotificationRepository {
        VALUES ($1,$2,$3,$4,$4::timestamptz - interval '24 hours')
        ON CONFLICT (appointment_id) DO UPDATE SET patient_id = EXCLUDED.patient_id,
        recipient_user_id = EXCLUDED.recipient_user_id, scheduled_start_at = EXCLUDED.scheduled_start_at,
-       remind_at = EXCLUDED.remind_at, status = 'PENDING', retry_count = 0, next_attempt_at = now()`,
+       remind_at = EXCLUDED.remind_at, status = 'PENDING', retry_count = 0, next_attempt_at = now()
+       WHERE appointment_reminders.scheduled_start_at IS DISTINCT FROM EXCLUDED.scheduled_start_at
+          OR appointment_reminders.status = 'CANCELLED'`,
       [reminder.appointmentId, reminder.patientId, reminder.recipientUserId, reminder.scheduledStartAt]
     );
   }
 
-  async cancelReminder(appointmentId: string) {
-    await this.pool.query("UPDATE notification_service.appointment_reminders SET status = 'CANCELLED' WHERE appointment_id = $1", [appointmentId]);
+  async cancelReminder(appointmentId: string, scheduledStartAt?: string) {
+    await this.pool.query(`UPDATE notification_service.appointment_reminders SET status = 'CANCELLED', lease_expires_at = NULL
+      WHERE appointment_id = $1 AND ($2::timestamptz IS NULL OR scheduled_start_at = $2::timestamptz)`,
+    [appointmentId, scheduledStartAt ?? null]);
   }
 
-  async dueReminders() {
+  async claimDueReminders(limit = 20) {
     const result = await this.pool.query<Reminder>(
-      `SELECT appointment_id AS "appointmentId", patient_id AS "patientId", recipient_user_id AS "recipientUserId",
-       scheduled_start_at AS "scheduledStartAt" FROM notification_service.appointment_reminders
-       WHERE status = 'PENDING' AND remind_at <= now() AND next_attempt_at <= now()
-       AND scheduled_start_at > now() ORDER BY remind_at LIMIT 20`
-    );
+      `WITH due AS (
+         SELECT appointment_id FROM notification_service.appointment_reminders
+         WHERE ((status = 'PENDING' AND next_attempt_at <= now()) OR
+                (status = 'PROCESSING' AND lease_expires_at <= now()))
+           AND remind_at <= now() AND scheduled_start_at > now()
+         ORDER BY remind_at FOR UPDATE SKIP LOCKED LIMIT $1
+       )
+       UPDATE notification_service.appointment_reminders AS reminder
+       SET status = 'PROCESSING', lease_expires_at = now() + interval '90 seconds'
+       FROM due WHERE reminder.appointment_id = due.appointment_id
+       RETURNING reminder.appointment_id AS "appointmentId", reminder.patient_id AS "patientId",
+         reminder.recipient_user_id AS "recipientUserId", reminder.scheduled_start_at AS "scheduledStartAt"`, [limit]);
     return result.rows;
   }
 
-  async markReminderSent(appointmentId: string) {
-    await this.pool.query("UPDATE notification_service.appointment_reminders SET status = 'SENT' WHERE appointment_id = $1 AND status = 'PENDING'", [appointmentId]);
+  async markReminderSent(appointmentId: string, scheduledStartAt: string) {
+    await this.pool.query(`UPDATE notification_service.appointment_reminders SET status = 'SENT', lease_expires_at = NULL
+      WHERE appointment_id = $1 AND scheduled_start_at = $2 AND status = 'PROCESSING'`, [appointmentId, scheduledStartAt]);
   }
 
-  async deferReminder(appointmentId: string) {
+  async deliverClaimedReminder(reminder: Reminder, title: string, message: string) {
+    const scheduledStartAt = reminder.scheduledStartAt.toISOString();
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const claim = await client.query(
+        `SELECT appointment_id FROM notification_service.appointment_reminders
+         WHERE appointment_id = $1 AND scheduled_start_at = $2 AND status = 'PROCESSING' FOR UPDATE`,
+        [reminder.appointmentId, scheduledStartAt]);
+      if (!claim.rows[0]) { await client.query("COMMIT"); return false; }
+      const result = await client.query<Notification>(
+        `INSERT INTO notification_service.notifications (recipient_user_id, type, title, message, payload, event_id)
+         VALUES ($1,'appointment.reminder',$2,$3,$4,$5)
+         ON CONFLICT (event_id) WHERE event_id IS NOT NULL DO NOTHING RETURNING ${select}`,
+        [reminder.recipientUserId, title, message, JSON.stringify({ appointmentId: reminder.appointmentId }),
+          `reminder:${reminder.appointmentId}:${scheduledStartAt}`]);
+      if (result.rows[0]) await client.query(
+        "INSERT INTO notification_service.notification_deliveries (notification_id, channel, status, sent_at) VALUES ($1,'IN_APP','SENT',now())",
+        [result.rows[0].id]);
+      await client.query(`UPDATE notification_service.appointment_reminders SET status = 'SENT', lease_expires_at = NULL
+        WHERE appointment_id = $1 AND scheduled_start_at = $2 AND status = 'PROCESSING'`,
+      [reminder.appointmentId, scheduledStartAt]);
+      await client.query("COMMIT");
+      return true;
+    } catch (error) { await client.query("ROLLBACK"); throw error; }
+    finally { client.release(); }
+  }
+
+  async deferReminder(appointmentId: string, scheduledStartAt: string) {
     await this.pool.query(
       `UPDATE notification_service.appointment_reminders
        SET retry_count = retry_count + 1,
        status = CASE WHEN retry_count + 1 >= 3 THEN 'FAILED' ELSE 'PENDING' END,
-       next_attempt_at = now() + (LEAST(3600, power(2, retry_count + 1)) * interval '1 second')
-       WHERE appointment_id = $1 AND status = 'PENDING'`, [appointmentId]
+       next_attempt_at = now() + (LEAST(3600, power(2, retry_count + 1)) * interval '1 second'),
+       lease_expires_at = NULL
+       WHERE appointment_id = $1 AND scheduled_start_at = $2 AND status = 'PROCESSING'`, [appointmentId, scheduledStartAt]
     );
+  }
+
+  async reminderStatusCounts() {
+    const result = await this.pool.query<{ status: string; count: string }>(
+      "SELECT status, count(*)::text AS count FROM notification_service.appointment_reminders GROUP BY status");
+    return Object.fromEntries(result.rows.map(({ status, count }) => [status, Number(count)]));
   }
 }

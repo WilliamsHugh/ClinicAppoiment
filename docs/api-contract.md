@@ -379,8 +379,8 @@ Các route này không được mount vào Gateway public router. Trong MVP gọ
 | Medical Record -> Appointment | `GET /internal/v1/appointments/{appointmentId}/verify-for-medical-record` | `APPOINTMENT_RECORD_INTERNAL_API_TOKEN` | `{ valid, appointment?: { id, patientId, doctorId, status } }`; thiếu/sai token trả `401 INTERNAL_AUTH_REQUIRED` |
 | Medical Record -> Appointment | `POST /internal/v1/appointments/{appointmentId}/complete-from-record` | `APPOINTMENT_RECORD_INTERNAL_API_TOKEN` | Body `{ recordId }`; `200` lần đầu/replay cùng record, `409` trạng thái hoặc record khác, `422` record không hợp lệ/chưa FINAL |
 | Appointment -> Medical Record | `GET /internal/v1/medical-records/by-appointment/{appointmentId}` | `APPOINTMENT_RECORD_INTERNAL_API_TOKEN` | Chỉ trả ID, appointment/patient/doctor, status và thông tin audit tối thiểu; thiếu/sai token trả `401 INTERNAL_AUTH_REQUIRED` |
-| Appointment/Medical Record -> Notification | `POST /internal/v1/notifications` | `NOTIFICATION_INTERNAL_API_TOKEN` | `{ eventId, type, payload }`; `201` lần đầu, `200` duplicate |
-| Notification -> Appointment | `GET /internal/v1/appointments/{appointmentId}/reminder-context` | `APPOINTMENT_NOTIFICATION_INTERNAL_API_TOKEN` | Ngữ cảnh tối thiểu để kiểm tra reminder |
+| Appointment/Medical Record -> Notification | `POST /internal/v1/notifications` | `NOTIFICATION_INTERNAL_API_TOKEN` | `{ eventId, type, payload }`; `201` khi nhận lần đầu (kể cả event cũ được bỏ qua), `200` khi event đã xử lý; lỗi lookup Appointment trả `503` |
+| Notification -> Appointment | `GET /internal/v1/appointments/{appointmentId}/reminder-context` | `APPOINTMENT_NOTIFICATION_INTERNAL_API_TOKEN` | `{ id, patientId, status, scheduledStartAt }`; chỉ gửi reminder khi appointment còn `CONFIRMED` và patient/thời gian khớp |
 
 Mỗi biến token là secret backend-only ngẫu nhiên riêng, tối thiểu 32 byte; cùng một biến
 được cấu hình ở các service tạo và xác minh credential tương ứng. Không dùng chung
@@ -400,7 +400,7 @@ Endpoint xác minh khung giờ của Doctor Service yêu cầu `DOCTOR_INTERNAL_
 
 Doctor Service yêu cầu `DOCTOR_INTERNAL_API_TOKEN` tối thiểu 32 byte khi khởi động. Appointment Service gửi token này khi xác minh slot và trả `503 DOCTOR_VERIFICATION_UNAVAILABLE` nếu credential thiếu hoặc Doctor Service không thể xác minh. Token chỉ nằm trong cấu hình backend, không gửi tới Gateway hay frontend. `GET /health` của Doctor Service trả `200` khi Doctor database sẵn sàng, hoặc `503 DATABASE_UNAVAILABLE` với envelope lỗi chung khi truy vấn database thất bại.
 
-Notification tối thiểu xử lý event types `appointment.created`, `appointment.rescheduled`, `appointment.cancelled`, `appointment.confirmed`, `medical-record.created`, `medical-record.updated`. `eventId` dùng để deduplicate retry. Gửi HTTP đồng bộ không phải durable queue; caller cần timeout, retry có giới hạn và idempotency. Lỗi notification không được rollback appointment/medical record đã commit.
+Notification xử lý `appointment.created`, `appointment.confirmed`, `appointment.rescheduled`, `appointment.cancelled`, `appointment.checked_in`, `medical-record.created`, `medical-record.updated`. `eventId` dùng để deduplicate cả notification và thay đổi reminder trong cùng transaction. Event appointment cũ không được khôi phục reminder đã hủy hoặc gửi thông báo trạng thái lỗi thời. Gửi HTTP đồng bộ không phải durable queue; caller cần outbox, timeout, retry có giới hạn và idempotency. Lỗi notification không được rollback appointment/medical record đã commit.
 
 Payload Notification chỉ gồm ID logic và thời gian cần cho điều hướng/nhắc lịch:
 `recipientUserId`, `patientId?`, `appointmentId?`, `recordId?`, `scheduledStartAt?`.
