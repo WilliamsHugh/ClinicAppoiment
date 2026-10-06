@@ -17,6 +17,14 @@ ALTER TABLE notification_service.notifications ADD COLUMN IF NOT EXISTS event_id
 CREATE UNIQUE INDEX IF NOT EXISTS unique_notification_event_id
 ON notification_service.notifications (event_id) WHERE event_id IS NOT NULL;
 
+CREATE TABLE IF NOT EXISTS notification_service.processed_events (
+  event_id TEXT PRIMARY KEY,
+  processed_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+INSERT INTO notification_service.processed_events (event_id)
+SELECT event_id FROM notification_service.notifications WHERE event_id IS NOT NULL
+ON CONFLICT (event_id) DO NOTHING;
+
 CREATE TABLE IF NOT EXISTS notification_service.notification_deliveries (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   notification_id UUID NOT NULL,
@@ -36,9 +44,10 @@ CREATE TABLE IF NOT EXISTS notification_service.appointment_reminders (
   recipient_user_id UUID NOT NULL,
   scheduled_start_at TIMESTAMPTZ NOT NULL,
   remind_at TIMESTAMPTZ NOT NULL,
-  status TEXT NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'SENT', 'CANCELLED', 'FAILED')),
+  status TEXT NOT NULL DEFAULT 'PENDING' CHECK (status IN ('PENDING', 'PROCESSING', 'SENT', 'CANCELLED', 'FAILED')),
   retry_count INT NOT NULL DEFAULT 0,
   next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  lease_expires_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -46,3 +55,10 @@ ALTER TABLE notification_service.appointment_reminders
 ADD COLUMN IF NOT EXISTS retry_count INT NOT NULL DEFAULT 0;
 ALTER TABLE notification_service.appointment_reminders
 ADD COLUMN IF NOT EXISTS next_attempt_at TIMESTAMPTZ NOT NULL DEFAULT now();
+ALTER TABLE notification_service.appointment_reminders
+ADD COLUMN IF NOT EXISTS lease_expires_at TIMESTAMPTZ;
+ALTER TABLE notification_service.appointment_reminders
+DROP CONSTRAINT IF EXISTS appointment_reminders_status_check;
+ALTER TABLE notification_service.appointment_reminders
+ADD CONSTRAINT appointment_reminders_status_check
+CHECK (status IN ('PENDING', 'PROCESSING', 'SENT', 'CANCELLED', 'FAILED'));

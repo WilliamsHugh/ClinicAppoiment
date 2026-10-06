@@ -202,4 +202,8 @@ describe("API Gateway configuration", () => {
     expect(config.authTimeoutMs).toBe(25);
     expect(config.proxyTimeoutMs).toBe(50);
   });
+
+  it("rejects a short configured Gateway credential", () => {
+    expect(() => loadGatewayConfig({ USER_GATEWAY_INTERNAL_API_TOKEN: "short" })).toThrow();
+  });
 });

@@ -94,6 +94,10 @@ describe("USER-001 & USER-004: UserRepository tests", () => {
     );
     expect(patientQueries).toHaveLength(2);
     expect(patientQueries.every((query) => query.sql.includes("WHERE u.role = 'PATIENT'"))).toBe(true);
+    await repo.findPatientByUserId(sampleUser.id);
+    const lookup = queries.at(-1);
+    expect(lookup?.sql).toContain("WHERE p.user_id = $1 AND u.role = 'PATIENT'");
+    expect(lookup?.values).toEqual([sampleUser.id]);
   });
 
   it("creates user and automatically creates patient profile when role is PATIENT", async () => {

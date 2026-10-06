@@ -54,7 +54,7 @@ class _ProfilePageState extends State<ProfilePage> {
     try {
       final response = await _apiClient!.get('/api/v1/users/me');
       final data = response.data;
-      if (data is Map<String, dynamic>) {
+      if (mounted && data is Map<String, dynamic>) {
         setState(() {
           _fullName = data['fullName']?.toString() ?? '';
           _email = data['email']?.toString() ?? '';
@@ -74,9 +74,7 @@ class _ProfilePageState extends State<ProfilePage> {
         });
       }
     } catch (e) {
-      setState(() {
-        _error = e.toString();
-      });
+      if (mounted) setState(() => _error = e.toString());
     } finally {
       if (mounted) {
         setState(() {
@@ -241,21 +239,21 @@ class _ProfilePageState extends State<ProfilePage> {
                                       body: {
                                         'dateOfBirth':
                                             dobCtrl.text.trim().isEmpty
-                                            ? null
-                                            : dobCtrl.text.trim(),
+                                                ? null
+                                                : dobCtrl.text.trim(),
                                         'gender': selectedGender,
                                         'address':
                                             addressCtrl.text.trim().isEmpty
-                                            ? null
-                                            : addressCtrl.text.trim(),
+                                                ? null
+                                                : addressCtrl.text.trim(),
                                         'emergencyContact':
                                             emergencyCtrl.text.trim().isEmpty
-                                            ? null
-                                            : emergencyCtrl.text.trim(),
+                                                ? null
+                                                : emergencyCtrl.text.trim(),
                                         'insuranceNumber':
                                             insuranceCtrl.text.trim().isEmpty
-                                            ? null
-                                            : insuranceCtrl.text.trim(),
+                                                ? null
+                                                : insuranceCtrl.text.trim(),
                                       },
                                     );
                                   }
@@ -264,20 +262,24 @@ class _ProfilePageState extends State<ProfilePage> {
                                   Navigator.pop(ctx);
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     const SnackBar(
-                                      content: Text('Cập nhật hồ sơ thành công!'),
+                                      content:
+                                          Text('Cập nhật hồ sơ thành công!'),
                                       backgroundColor: Colors.green,
                                     ),
                                   );
                                   _loadProfile();
                                 } catch (err) {
                                   if (!mounted || !ctx.mounted) return;
-                                  setSheetState(() => saving = false);
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     SnackBar(
                                       content: Text('Lỗi: $err'),
                                       backgroundColor: Colors.red,
                                     ),
                                   );
+                                } finally {
+                                  if (ctx.mounted) {
+                                    setSheetState(() => saving = false);
+                                  }
                                 }
                               },
                         child: saving

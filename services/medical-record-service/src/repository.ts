@@ -1,4 +1,6 @@
-import type { Pool, PoolClient } from "pg";
+import type { PoolClient } from "pg";
+
+type Pool = InstanceType<typeof import("pg").Pool>;
 
 export type PrescriptionItem = { medicineName: string; dosage: string; frequency: string; duration: string };
 export type MedicalRecord = {
@@ -9,7 +11,7 @@ export type MedicalRecord = {
 };
 export type RecordInput = Omit<MedicalRecord, "id" | "createdAt" | "updatedAt" | "updatedBy">;
 export type RecordChanges = Partial<Pick<MedicalRecord, "symptoms" | "diagnosis" | "notes" | "treatmentPlan" | "prescription" | "status">>;
-export type OutboxEvent = { id: string; eventType: string; payload: Record<string, unknown>; retryCount: number };
+export type OutboxEvent = { id: string; aggregateId: string; eventType: string; payload: Record<string, unknown>; retryCount: number };
 
 const select = `id, appointment_id AS "appointmentId", patient_id AS "patientId", doctor_id AS "doctorId",
   symptoms, diagnosis, notes, treatment_plan AS "treatmentPlan", prescription, status,
@@ -47,7 +49,8 @@ export class MedicalRecordRepository {
     const payload = { recordId: record.id, appointmentId: record.appointmentId, patientId: record.patientId, recipientUserId };
     await client.query(
       "INSERT INTO medical_record_service.outbox_events (event_type, aggregate_id, payload) VALUES ($1,$2,$3),($4,$5,$6)",
-      ["medical-record.created", record.id, JSON.stringify(payload), "appointment.complete", record.id, JSON.stringify({ appointmentId: record.appointmentId, doctorId: record.doctorId, doctorUserId: record.createdBy })]
+      ["appointment.complete", record.id, JSON.stringify({ appointmentId: record.appointmentId, recordId: record.id }),
+        "medical-record.created", record.id, JSON.stringify(payload)]
     );
   }
 
@@ -110,24 +113,45 @@ export class MedicalRecordRepository {
     finally { client.release(); }
   }
 
-  async pendingOutbox(limit = 20) {
+  async claimOutbox(limit = 20) {
     const result = await this.pool.query<OutboxEvent>(
-      `SELECT id, event_type AS "eventType", payload, retry_count AS "retryCount"
-       FROM medical_record_service.outbox_events WHERE status = 'PENDING' AND next_attempt_at <= now()
-       ORDER BY created_at LIMIT $1`, [limit]
+      `WITH due AS (
+         SELECT event.id FROM medical_record_service.outbox_events AS event
+         WHERE ((event.status = 'PENDING' AND event.next_attempt_at <= now()) OR
+                (event.status = 'PROCESSING' AND event.lease_expires_at <= now()))
+           AND (event.event_type = 'appointment.complete' OR NOT EXISTS (
+             SELECT 1 FROM medical_record_service.outbox_events AS completion
+             WHERE completion.aggregate_id = event.aggregate_id AND completion.event_type = 'appointment.complete'
+               AND completion.status <> 'SENT'))
+         ORDER BY event.created_at FOR UPDATE OF event SKIP LOCKED LIMIT $1
+       )
+       UPDATE medical_record_service.outbox_events AS event
+       SET status = 'PROCESSING', lease_expires_at = now() + interval '90 seconds'
+       FROM due WHERE event.id = due.id
+       RETURNING event.id, event.aggregate_id AS "aggregateId", event.event_type AS "eventType",
+         event.payload, event.retry_count AS "retryCount"`, [limit]
     );
     return result.rows;
   }
 
   async markOutboxSent(id: string) {
-    await this.pool.query("UPDATE medical_record_service.outbox_events SET status = 'SENT' WHERE id = $1", [id]);
+    await this.pool.query("UPDATE medical_record_service.outbox_events SET status = 'SENT', lease_expires_at = NULL WHERE id = $1 AND status = 'PROCESSING'", [id]);
   }
 
   async deferOutbox(id: string, retryCount: number) {
     const delaySeconds = Math.min(3600, 2 ** Math.min(retryCount, 10));
     await this.pool.query(
-      "UPDATE medical_record_service.outbox_events SET retry_count = retry_count + 1, next_attempt_at = now() + ($2 * interval '1 second') WHERE id = $1",
+      `UPDATE medical_record_service.outbox_events
+       SET retry_count = retry_count + 1, status = CASE WHEN retry_count + 1 >= 8 THEN 'FAILED' ELSE 'PENDING' END,
+         next_attempt_at = now() + ($2 * interval '1 second'), lease_expires_at = NULL
+       WHERE id = $1 AND status = 'PROCESSING'`,
       [id, delaySeconds]
     );
+  }
+
+  async outboxStatusCounts() {
+    const result = await this.pool.query<{ status: string; count: string }>(
+      "SELECT status, count(*)::text AS count FROM medical_record_service.outbox_events GROUP BY status");
+    return Object.fromEntries(result.rows.map(({ status, count }) => [status, Number(count)]));
   }
 }

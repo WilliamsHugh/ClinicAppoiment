@@ -1,26 +1,44 @@
 import 'package:flutter/material.dart';
 
+import '../../core/api/clinic_api_client.dart';
 import '../../core/session/session.dart';
-import '../home/home_page.dart';
+import '../appointments/booking_selection.dart';
+import 'doctor_directory_page.dart';
 
-/// Route /doctors hiện hiển thị HomePage bám sát mobile_ui.png (màn trái).
-/// Navigation tới DoctorDetailPage được xử lý ngay trong HomePage qua
-/// push MaterialPageRoute.
 class DoctorsPage extends StatelessWidget {
   const DoctorsPage({
     required this.tokenProvider,
     required this.onOpenNotifications,
+    required this.onBookingSelection,
+    this.apiClient,
     super.key,
   });
 
   final TokenProvider tokenProvider;
   final VoidCallback onOpenNotifications;
+  final ValueChanged<BookingSelection> onBookingSelection;
+  final ClinicApiClient? apiClient;
 
   @override
   Widget build(BuildContext context) {
-    return HomePage(
-      tokenProvider: tokenProvider,
-      onOpenNotifications: onOpenNotifications,
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('Bác sĩ'),
+        actions: [
+          IconButton(
+            tooltip: 'Thông báo',
+            onPressed: onOpenNotifications,
+            icon: const Icon(Icons.notifications_outlined),
+          ),
+        ],
+      ),
+      body: DoctorDirectoryPage(
+        tokenProvider: tokenProvider,
+        apiClient: apiClient,
+        onSlotSelected: (doctor, slot) => onBookingSelection(
+          BookingSelection.fromDoctorSlot(doctor, slot),
+        ),
+      ),
     );
   }
 }

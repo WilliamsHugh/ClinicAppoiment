@@ -1,17 +1,24 @@
-import { randomUUID } from "node:crypto";
-import express, { type Request } from "express";
+import { randomUUID, timingSafeEqual } from "node:crypto";
+import { readFileSync } from "node:fs";
+import express, { type Request, type RequestHandler } from "express";
 import { Pool } from "pg";
 import swaggerUi from "swagger-ui-express";
 import { z } from "zod";
 import { NotificationRepository } from "./repository.js";
+import { openapi } from "./openapi.js";
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) throw new Error("DATABASE_URL is required by Notification Service");
 const databaseSsl = process.env.DATABASE_SSL === "true";
 const rejectUnauthorized = process.env.DATABASE_SSL_REJECT_UNAUTHORIZED !== "false";
+const databaseCaPath = process.env.DATABASE_SSL_CA_PATH;
+if (databaseCaPath && !databaseSsl) throw new Error("DATABASE_SSL_CA_PATH requires DATABASE_SSL=true");
+if (databaseCaPath && !rejectUnauthorized) throw new Error("DATABASE_SSL_CA_PATH requires certificate verification");
 const pool = new Pool({
   connectionString: databaseUrl,
-  ssl: databaseSsl ? { rejectUnauthorized } : undefined
+  ssl: databaseSsl
+    ? { rejectUnauthorized, ...(databaseCaPath ? { ca: readFileSync(databaseCaPath, "utf8") } : {}) }
+    : undefined
 });
 const repository = new NotificationRepository(pool);
 const port = Number(process.env.NOTIFICATION_SERVICE_PORT ?? 3005);
@@ -29,8 +36,36 @@ app.use((req, res, next) => {
   next();
 });
 const ok = (data: unknown) => ({ success: true, data });
-const fail = (res: express.Response, status: number, code: string, message: string) => res.status(status).json({ success: false, error: { code, message, details: [] } });
+const fail = (res: express.Response, status: number, code: string, message: string) => res.status(status).json({
+  success: false, error: { code, message, details: [] }, requestId: res.getHeader("X-Request-Id") });
 const actor = (req: Request) => req.header("x-user-id");
+function requiredInternalToken(variable: string): string {
+  const token = process.env[variable];
+  if (!token || Buffer.byteLength(token, "utf8") < 32) throw new Error(`${variable} is not configured`);
+  return token;
+}
+const requireEventToken: RequestHandler = (req, res, next) => {
+  const expected = process.env.NOTIFICATION_INTERNAL_API_TOKEN ?? "";
+  const received = req.header("X-Internal-Token") ?? "";
+  if (Buffer.byteLength(expected, "utf8") < 32 ||
+      Buffer.byteLength(expected, "utf8") !== Buffer.byteLength(received, "utf8") ||
+      !timingSafeEqual(Buffer.from(expected), Buffer.from(received)))
+    return void fail(res, 401, "INTERNAL_AUTH_REQUIRED", "Internal credential required");
+  next();
+};
+async function reminderContext(id: string): Promise<{ id: string; patientId: string; status: string; scheduledStartAt: string }> {
+  const response = await fetch(`${appointmentUrl}/internal/v1/appointments/${encodeURIComponent(id)}/reminder-context`, {
+    headers: { "X-Internal-Token": requiredInternalToken("APPOINTMENT_NOTIFICATION_INTERNAL_API_TOKEN") },
+    redirect: "error", signal: AbortSignal.timeout(4000)
+  });
+  if (!response.ok) throw new Error(`Appointment lookup returned ${response.status}`);
+  const body = await response.json() as { success?: boolean; data?: { id?: string; patientId?: string;
+    status?: string; scheduledStartAt?: string } };
+  if (body.success !== true || body.data?.id !== id || !body.data.patientId ||
+      !body.data.status || !body.data.scheduledStartAt || !Number.isFinite(Date.parse(body.data.scheduledStartAt)))
+    throw new Error("Invalid appointment response");
+  return body.data as { id: string; patientId: string; status: string; scheduledStartAt: string };
+}
 
 function message(type: string) {
   switch (type) {
@@ -45,41 +80,28 @@ function message(type: string) {
 }
 
 export async function dispatchReminders() {
-  for (const reminder of await repository.dueReminders()) {
+  for (const reminder of await repository.claimDueReminders()) {
+    const scheduledStartAt = reminder.scheduledStartAt.toISOString();
     try {
-      const response = await fetch(`${appointmentUrl}/api/v1/appointments/${encodeURIComponent(reminder.appointmentId)}`, { signal: AbortSignal.timeout(4000) });
-      if (!response.ok) throw new Error(`Appointment lookup returned ${response.status}`);
-      const body = await response.json() as { success: boolean; data: { status: string; scheduledStartAt: string; patientId: string } };
-      const appointment = body.data;
-      if (!body.success || !appointment) throw new Error("Invalid appointment response");
-      const scheduledStartAt = reminder.scheduledStartAt.toISOString();
+      const appointment = await reminderContext(reminder.appointmentId);
       if (appointment.status !== "CONFIRMED" || Date.parse(appointment.scheduledStartAt) !== reminder.scheduledStartAt.getTime() || appointment.patientId !== reminder.patientId) {
-        await repository.cancelReminder(reminder.appointmentId);
+        await repository.cancelReminder(reminder.appointmentId, scheduledStartAt);
         continue;
       }
       const [title, content] = message("appointment.reminder");
-      await repository.createEvent(`reminder:${reminder.appointmentId}:${scheduledStartAt}`, {
-        recipientUserId: reminder.recipientUserId, type: "appointment.reminder", title, message: content,
-        payload: { appointmentId: reminder.appointmentId }
-      });
-      await repository.markReminderSent(reminder.appointmentId);
+      await repository.deliverClaimedReminder(reminder, title, content);
     } catch (error) {
       console.warn(JSON.stringify({ appointmentId: reminder.appointmentId, error: String(error) }));
-      await repository.deferReminder(reminder.appointmentId);
+      await repository.deferReminder(reminder.appointmentId, scheduledStartAt);
     }
   }
 }
 
 app.get("/health", async (_req, res) => {
-  try { await pool.query("SELECT 1"); return res.json(ok({ service: "notification-service", status: "ok" })); }
+  try { await pool.query("SELECT id FROM notification_service.notifications LIMIT 0");
+    return res.json(ok({ service: "notification-service", status: "ok", reminders: await repository.reminderStatusCounts() })); }
   catch { return fail(res, 503, "DATABASE_UNAVAILABLE", "Database is unavailable"); }
 });
-const openapi = { openapi: "3.0.3", info: { title: "Notification Service", version: "1.0.0" }, paths: {
-  "/api/v1/notifications": { get: { summary: "List own notifications" } },
-  "/api/v1/notifications/{id}": { get: { summary: "Get own notification" } },
-  "/api/v1/notifications/{id}/read": { patch: { summary: "Mark own notification read" } },
-  "/internal/v1/notifications": { post: { summary: "Receive idempotent event" } }
-} };
 app.get("/openapi.json", (_req, res) => res.json(openapi));
 app.use("/docs", swaggerUi.serve, swaggerUi.setup(openapi));
 
@@ -105,24 +127,45 @@ app.patch("/api/v1/notifications/:id/read", async (req, res) => {
   return (await repository.findById(req.params.id)) ? fail(res, 403, "ACCESS_DENIED", "Access denied") : fail(res, 404, "NOTIFICATION_NOT_FOUND", "Notification not found");
 });
 
-app.post("/internal/v1/notifications", async (req, res) => {
+app.post("/internal/v1/notifications", requireEventToken, async (req, res) => {
   const parsed = eventSchema.safeParse(req.body);
   if (!parsed.success) return fail(res, 400, "VALIDATION_ERROR", "Invalid event");
   const { eventId, type, payload } = parsed.data;
-  if (type === "appointment.cancelled" && payload.appointmentId) await repository.cancelReminder(payload.appointmentId);
-  if ((type === "appointment.confirmed" || type === "appointment.rescheduled") && payload.appointmentId && payload.patientId && payload.scheduledStartAt) {
-    await repository.scheduleReminder({ appointmentId: payload.appointmentId, patientId: payload.patientId, recipientUserId: payload.recipientUserId, scheduledStartAt: payload.scheduledStartAt });
+  if (await repository.hasProcessedEvent(eventId)) return res.json(ok({ dedup: true, eventId }));
+  let effect: import("./repository.js").EventEffect = { kind: "none" };
+  let stale = false;
+  if (type === "appointment.created" || type === "appointment.confirmed" || type === "appointment.rescheduled" ||
+      type === "appointment.cancelled" || type === "appointment.checked_in") {
+    if (!payload.appointmentId || !payload.patientId ||
+        ((type === "appointment.confirmed" || type === "appointment.rescheduled") && !payload.scheduledStartAt))
+      return fail(res, 400, "VALIDATION_ERROR", "Invalid appointment event");
+    const current = await reminderContext(payload.appointmentId);
+    stale = current.patientId !== payload.patientId ||
+      (type === "appointment.created" && current.status !== "PENDING") ||
+      (type === "appointment.cancelled" && current.status !== "CANCELLED") ||
+      (type === "appointment.checked_in" && current.status !== "CHECKED_IN") ||
+      (type === "appointment.confirmed" && current.status !== "CONFIRMED") ||
+      (type === "appointment.rescheduled" && !["PENDING", "CONFIRMED"].includes(current.status)) ||
+      ((type === "appointment.confirmed" || type === "appointment.rescheduled") &&
+        Date.parse(current.scheduledStartAt) !== Date.parse(payload.scheduledStartAt!));
+    if (!stale && (type === "appointment.cancelled" || type === "appointment.checked_in"))
+      effect = { kind: "cancel", appointmentId: payload.appointmentId };
+    else if (!stale && current.status === "CONFIRMED" &&
+      (type === "appointment.confirmed" || type === "appointment.rescheduled") && payload.scheduledStartAt)
+      effect = { kind: "schedule", reminder: { appointmentId: payload.appointmentId,
+        patientId: payload.patientId, recipientUserId: payload.recipientUserId,
+        scheduledStartAt: payload.scheduledStartAt } };
   }
   const [title, content] = message(type);
-  const { created, notification } = await repository.createEvent(eventId, {
+  const { created, notification } = await repository.applyEvent(eventId, stale ? null : {
     recipientUserId: payload.recipientUserId, type, title, message: content,
     payload: { appointmentId: payload.appointmentId, recordId: payload.recordId }
-  });
-  return res.status(created ? 201 : 200).json(ok(created ? notification : { dedup: true, eventId }));
+  }, effect);
+  return res.status(created ? 201 : 200).json(ok(created ? (notification ?? { ignored: true, eventId }) : { dedup: true, eventId }));
 });
 app.post("/api/v1/notifications", (_req, res) => fail(res, 403, "ACCESS_DENIED", "Notifications are created by internal events"));
-app.post("/internal/v1/notifications/:id/retry", async (req, res) => {
-  const delivery = await repository.retryDelivery(req.params.id);
+app.post("/internal/v1/notifications/:id/retry", requireEventToken, async (req, res) => {
+  const delivery = await repository.retryDelivery(String(req.params.id));
   return delivery ? res.json(ok(delivery)) : fail(res, 409, "NOTIFICATION_RETRY_UNAVAILABLE", "No failed delivery can be retried");
 });
 app.use((req, res, next) => {

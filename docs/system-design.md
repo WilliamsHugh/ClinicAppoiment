@@ -127,6 +127,11 @@ Cung cấp API nội bộ để Appointment Service kiểm tra:
 - Khung giờ có thuộc lịch làm việc hay không.
 - Khung giờ có bị khóa, nghỉ hoặc không nhận lịch hay không.
 
+Doctor Service chỉ lưu dữ liệu Doctor trong PostgreSQL riêng. Khi liên kết tài khoản,
+service gọi API nội bộ của User Service để xác minh role/status; khi trả slot hoặc sửa
+lịch có appointment tương lai, service gọi API nội bộ của Appointment Service để lấy
+slot đã đặt. Frontend chỉ gọi các API public qua Gateway.
+
 ### Appointment Service
 
 Đây là service trung tâm của nghiệp vụ đặt lịch.
@@ -336,8 +341,16 @@ Tất cả API public qua Gateway dùng prefix `/api/v1`.
 - `GET /api/v1/doctors/:id/schedules`
 - `POST /api/v1/doctors/:id/schedules`
 - `PATCH /api/v1/schedules/:id`
+- `GET /api/v1/doctors/:id/time-offs`
+- `POST /api/v1/doctors/:id/time-offs`
+- `PATCH /api/v1/doctors/:doctorId/time-offs/:timeOffId`
 - `GET /api/v1/doctors/:id/available-slots?date=YYYY-MM-DD`
-- `POST /internal/v1/doctors/verify-slot`
+
+Doctor Service cung cấp `POST /internal/v1/doctors/verify-slot` cho Appointment Service;
+route này không đi qua Gateway public. Doctor Service gọi hai API nội bộ thuộc service khác:
+
+- User Service: `GET /internal/v1/users/:userId/doctor-eligibility`.
+- Appointment Service: `GET /internal/v1/appointments/occupied-slots`.
 
 ### Appointment Service
 
@@ -594,9 +607,16 @@ Appointment Service không chỉ kiểm tra bằng code rồi insert. Cần dùn
 Đề xuất:
 
 ```sql
-CREATE UNIQUE INDEX unique_active_doctor_slot
-ON appointment_service.appointments (doctor_id, scheduled_start_at)
-WHERE status IN ('PENDING', 'CONFIRMED', 'CHECKED_IN');
+CREATE EXTENSION IF NOT EXISTS btree_gist;
+ALTER TABLE appointment_service.appointments
+  ADD CONSTRAINT appointment_positive_interval
+  CHECK (scheduled_start_at < scheduled_end_at);
+ALTER TABLE appointment_service.appointments
+  ADD CONSTRAINT appointment_no_active_overlap
+  EXCLUDE USING gist (
+    doctor_id WITH =,
+    tstzrange(scheduled_start_at, scheduled_end_at, '[)') WITH &&
+  ) WHERE (status IN ('PENDING', 'CONFIRMED', 'CHECKED_IN'));
 ```
 
 Luồng tạo lịch:
@@ -605,7 +625,7 @@ Luồng tạo lịch:
 2. Gọi Doctor Service verify doctor và slot.
 3. Bắt đầu transaction.
 4. Insert appointment.
-5. Nếu unique constraint conflict, trả lỗi chuẩn `APPOINTMENT_SLOT_UNAVAILABLE`.
+5. Nếu exclusion constraint phát hiện khoảng giờ chồng lấn, trả `APPOINTMENT_SLOT_UNAVAILABLE`.
 6. Ghi outbox event trong cùng transaction.
 7. Commit.
 
@@ -625,8 +645,8 @@ Response lỗi:
 Idempotency:
 
 - Client gửi `Idempotency-Key` khi tạo lịch.
-- Appointment Service lưu key kèm patient/doctor/slot.
-- Nếu retry cùng key, trả lại appointment đã tạo thay vì tạo bản ghi mới.
+- Appointment Service lưu `(actor_id, operation, key)` cùng fingerprint của patient/doctor/slot/payload trong PostgreSQL.
+- Retry cùng actor, key và payload trả lại appointment đã tạo; payload khác trả `409 IDEMPOTENCY_KEY_REUSED`.
 
 ## 12. Cách Giao Tiếp Giữa Các Service
 
@@ -658,6 +678,13 @@ Khuyến nghị:
 
 ## 13. Biến Môi Trường Cần Thiết
 
+Cả năm business service dùng chung một Supabase root CA certificate lưu tại
+`.local-certs/supabase-ca.crt` trong repo. Khi chạy bằng Compose, cùng file được mount
+read-only tại `/run/certs/database-ca.crt`; khi chạy service trực tiếp, mỗi `.env` của
+service đặt `DATABASE_SSL_CA_PATH=../../.local-certs/supabase-ca.crt`. Database URL,
+credential và quyền sở hữu dữ liệu vẫn tách riêng theo service. Không tắt xác minh TLS để
+né lỗi CA; không commit certificate.
+
 ### API Gateway
 
 - `GATEWAY_PORT`
@@ -681,6 +708,7 @@ Khuyến nghị:
 - `DATABASE_URL`
 - `DATABASE_SSL`
 - `DATABASE_SSL_REJECT_UNAUTHORIZED`
+- `DATABASE_SSL_CA_PATH` (đường dẫn CA tùy chọn; bắt buộc nếu Supabase CA không có trong trust store của Node)
 - `SUPABASE_URL`
 - `SUPABASE_ANON_KEY`
 - `AUTH_PROVIDER_TIMEOUT_MS` (mặc định `15000`; phải nhỏ hơn `PROXY_TIMEOUT_MS` của Gateway)
@@ -692,6 +720,10 @@ Khuyến nghị:
 - `DATABASE_URL`
 - `DATABASE_SSL`
 - `DATABASE_SSL_REJECT_UNAUTHORIZED`
+- `DATABASE_SSL_CA_PATH` (đường dẫn CA tùy chọn; bắt buộc nếu Supabase CA không có trong trust store của Node)
+- `USER_SERVICE_URL`
+- `APPOINTMENT_SERVICE_URL`
+- `DOCTOR_INTERNAL_API_TOKEN` (cùng giá trị ở Appointment Service)
 - `LOG_LEVEL`
 
 ### Appointment Service
@@ -700,7 +732,9 @@ Khuyến nghị:
 - `DATABASE_URL`
 - `DATABASE_SSL`
 - `DATABASE_SSL_REJECT_UNAUTHORIZED`
+- `DATABASE_SSL_CA_PATH` (đường dẫn CA tùy chọn; bắt buộc nếu Supabase CA không có trong trust store của Node)
 - `DOCTOR_SERVICE_URL`
+- `DOCTOR_INTERNAL_API_TOKEN` (cùng giá trị ở Doctor Service)
 - `USER_SERVICE_URL`
 - `NOTIFICATION_SERVICE_URL`
 - `LOG_LEVEL`
@@ -711,6 +745,7 @@ Khuyến nghị:
 - `DATABASE_URL`
 - `DATABASE_SSL`
 - `DATABASE_SSL_REJECT_UNAUTHORIZED`
+- `DATABASE_SSL_CA_PATH` (đường dẫn CA tùy chọn; bắt buộc nếu Supabase CA không có trong trust store của Node)
 - `APPOINTMENT_SERVICE_URL`
 - `USER_SERVICE_URL`
 - `DOCTOR_SERVICE_URL`
@@ -723,6 +758,7 @@ Khuyến nghị:
 - `DATABASE_URL`
 - `DATABASE_SSL`
 - `DATABASE_SSL_REJECT_UNAUTHORIZED`
+- `DATABASE_SSL_CA_PATH` (đường dẫn CA tùy chọn; bắt buộc nếu Supabase CA không có trong trust store của Node)
 - `APPOINTMENT_SERVICE_URL`
 - `LOG_LEVEL`
 - `EMAIL_PROVIDER_API_KEY` tùy chọn cho phase sau

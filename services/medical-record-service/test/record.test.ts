@@ -34,8 +34,11 @@ describe("Medical Record PostgreSQL repository", () => {
     expect(db.queries.map((item) => item.sql)).toEqual(expect.arrayContaining(["BEGIN", "COMMIT"]));
     const outbox = db.queries.find((item) => item.sql.includes("outbox_events"));
     expect(outbox).toBeDefined();
-    expect(outbox?.values?.[2]).toContain("recipientUserId");
-    expect(outbox?.values?.[2]).not.toContain("diagnosis");
+    expect(outbox?.values?.[0]).toBe("appointment.complete");
+    expect(outbox?.values?.[2]).toContain(`"recordId":"${record.id}"`);
+    expect(outbox?.values?.[3]).toBe("medical-record.created");
+    expect(outbox?.values?.[5]).toContain("recipientUserId");
+    expect(outbox?.values?.[5]).not.toContain("diagnosis");
     expect(db.client.release).toHaveBeenCalledOnce();
   });
 
@@ -69,5 +72,20 @@ describe("Medical Record PostgreSQL repository", () => {
     expect(audit?.values?.[2]).toContain('"before"');
     expect(audit?.values?.[2]).toContain('"after"');
     expect(db.queries.find((item) => item.sql.includes("outbox_events"))?.values?.[0]).toBe("medical-record.updated");
+  });
+
+  it("leases completion events before record notifications and recovers expired claims", async () => {
+    const db = database();
+    await db.repo.claimOutbox();
+    const sql = db.queries[0].sql;
+    expect(sql).toContain("completion.status <> 'SENT'");
+    expect(sql).toContain("FOR UPDATE OF event SKIP LOCKED");
+    expect(sql).toContain("lease_expires_at <= now()");
+  });
+
+  it("caps failed completion retries", async () => {
+    const db = database();
+    await db.repo.deferOutbox(record.id, 7);
+    expect(db.queries[0].sql).toContain("retry_count + 1 >= 8 THEN 'FAILED'");
   });
 });

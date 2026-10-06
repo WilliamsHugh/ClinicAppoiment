@@ -11,6 +11,7 @@ export type GatewayConfig = {
   rateLimitWindowMs: number;
   rateLimitMax: number;
   authTimeoutMs: number;
+  userGatewayInternalApiToken?: string;
   healthTimeoutMs: number;
   proxyTimeoutMs: number;
   serviceTargets: Record<ServiceName, string>;
@@ -25,6 +26,10 @@ const envSchema = z.object({
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(120),
   AUTH_TIMEOUT_MS: z.coerce.number().int().positive().default(3_000),
+  USER_GATEWAY_INTERNAL_API_TOKEN: z.string().refine(
+    (value) => Buffer.byteLength(value, "utf8") >= 32,
+    "USER_GATEWAY_INTERNAL_API_TOKEN must contain at least 32 bytes"
+  ).optional(),
   HEALTH_CHECK_TIMEOUT_MS: z.coerce.number().int().positive().default(1_500),
   PROXY_TIMEOUT_MS: z.coerce.number().int().positive().default(20_000),
   USER_SERVICE_URL: z.string().url().default("http://localhost:3001"),
@@ -50,6 +55,7 @@ export function loadGatewayConfig(environment: NodeJS.ProcessEnv = process.env):
     rateLimitWindowMs: env.RATE_LIMIT_WINDOW_MS,
     rateLimitMax: env.RATE_LIMIT_MAX,
     authTimeoutMs: env.AUTH_TIMEOUT_MS,
+    userGatewayInternalApiToken: env.USER_GATEWAY_INTERNAL_API_TOKEN,
     healthTimeoutMs: env.HEALTH_CHECK_TIMEOUT_MS,
     proxyTimeoutMs: env.PROXY_TIMEOUT_MS,
     serviceTargets: {

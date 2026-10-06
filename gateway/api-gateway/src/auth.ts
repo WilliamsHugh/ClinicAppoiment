@@ -20,11 +20,22 @@ async function withTimeout<T>(operation: Promise<T>, timeoutMs: number): Promise
 
 export function createUserServiceVerifier(config: GatewayConfig): AccessTokenVerifier {
   return async (token, requestId) => {
+    if (!config.userGatewayInternalApiToken) {
+      throw new Error("Gateway credential for User Service is not configured");
+    }
     const response = await fetch(`${config.serviceTargets.users}/internal/v1/auth/verify`, {
-      headers: { Authorization: `Bearer ${token}`, "X-Request-Id": requestId },
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "X-Internal-Token": config.userGatewayInternalApiToken,
+        "X-Request-Id": requestId
+      },
       signal: AbortSignal.timeout(config.authTimeoutMs)
     });
-    if (response.status === 401 || response.status === 404) return null;
+    if (response.status === 401 || response.status === 404) {
+      const body = await response.json().catch(() => null) as { error?: { code?: string } } | null;
+      if (body?.error?.code === "AUTH_TOKEN_INVALID" || body?.error?.code === "USER_PROFILE_NOT_FOUND") return null;
+      throw new Error(`User Service verification failed with ${response.status}`);
+    }
     if (!response.ok) throw new Error(`User Service returned ${response.status}`);
 
     const body = await response.json() as {
