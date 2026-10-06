@@ -1,4 +1,5 @@
 import { randomUUID, timingSafeEqual } from "node:crypto";
+import { readFileSync } from "node:fs";
 import express, { type Request, type RequestHandler } from "express";
 import { Pool } from "pg";
 import swaggerUi from "swagger-ui-express";
@@ -10,9 +11,14 @@ const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) throw new Error("DATABASE_URL is required by Notification Service");
 const databaseSsl = process.env.DATABASE_SSL === "true";
 const rejectUnauthorized = process.env.DATABASE_SSL_REJECT_UNAUTHORIZED !== "false";
+const databaseCaPath = process.env.DATABASE_SSL_CA_PATH;
+if (databaseCaPath && !databaseSsl) throw new Error("DATABASE_SSL_CA_PATH requires DATABASE_SSL=true");
+if (databaseCaPath && !rejectUnauthorized) throw new Error("DATABASE_SSL_CA_PATH requires certificate verification");
 const pool = new Pool({
   connectionString: databaseUrl,
-  ssl: databaseSsl ? { rejectUnauthorized } : undefined
+  ssl: databaseSsl
+    ? { rejectUnauthorized, ...(databaseCaPath ? { ca: readFileSync(databaseCaPath, "utf8") } : {}) }
+    : undefined
 });
 const repository = new NotificationRepository(pool);
 const port = Number(process.env.NOTIFICATION_SERVICE_PORT ?? 3005);

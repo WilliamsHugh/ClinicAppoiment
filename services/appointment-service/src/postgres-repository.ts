@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { readFileSync } from "node:fs";
 import pg from "pg";
 import type { PoolClient } from "pg";
 import type { AppointmentStatus } from "@clinic/shared-types";
@@ -84,10 +85,15 @@ async function queueEvent(client: PoolClient, eventType: string, item: Appointme
 
 export function createAppointmentPool(connectionString = process.env.DATABASE_URL): Pool {
   if (!connectionString) throw new Error("DATABASE_URL is required by Appointment Service");
+  const databaseSsl = process.env.DATABASE_SSL === "true";
+  const rejectUnauthorized = process.env.DATABASE_SSL_REJECT_UNAUTHORIZED !== "false";
+  const databaseCaPath = process.env.DATABASE_SSL_CA_PATH;
+  if (databaseCaPath && !databaseSsl) throw new Error("DATABASE_SSL_CA_PATH requires DATABASE_SSL=true");
+  if (databaseCaPath && !rejectUnauthorized) throw new Error("DATABASE_SSL_CA_PATH requires certificate verification");
   return new pg.Pool({
     connectionString,
-    ssl: process.env.DATABASE_SSL === "true"
-      ? { rejectUnauthorized: process.env.DATABASE_SSL_REJECT_UNAUTHORIZED !== "false" }
+    ssl: databaseSsl
+      ? { rejectUnauthorized, ...(databaseCaPath ? { ca: readFileSync(databaseCaPath, "utf8") } : {}) }
       : undefined,
     max: 10,
     connectionTimeoutMillis: 3000

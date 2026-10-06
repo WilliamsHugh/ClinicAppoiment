@@ -54,6 +54,7 @@ services:
       DATABASE_URL: ${USER_DATABASE_URL:?USER_DATABASE_URL is required for User Service}
       DATABASE_SSL: ${USER_DATABASE_SSL:-true}
       DATABASE_SSL_REJECT_UNAUTHORIZED: ${USER_DATABASE_SSL_REJECT_UNAUTHORIZED:-true}
+      DATABASE_SSL_CA_PATH: /run/certs/database-ca.crt
       SUPABASE_URL: ${SUPABASE_URL:?SUPABASE_URL is required by User Service}
       SUPABASE_ANON_KEY: ${SUPABASE_ANON_KEY:?SUPABASE_ANON_KEY is required by User Service}
       AUTH_PROVIDER_TIMEOUT_MS: ${AUTH_PROVIDER_TIMEOUT_MS:-15000}
@@ -67,6 +68,13 @@ services:
       APPOINTMENT_SERVICE_URL: http://appointment-service:3003
     expose:
       - "3001"
+    volumes:
+      - type: bind
+        source: ../../.local-certs/supabase-ca.crt
+        target: /run/certs/database-ca.crt
+        read_only: true
+        bind:
+          create_host_path: false
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3001/health').then((response) => { if (!response.ok) process.exit(1); }).catch(() => process.exit(1));"]
       interval: 10s
@@ -86,6 +94,7 @@ services:
       DATABASE_URL: ${DOCTOR_DATABASE_URL:?DOCTOR_DATABASE_URL is required for Doctor Service}
       DATABASE_SSL: ${DOCTOR_DATABASE_SSL:-true}
       DATABASE_SSL_REJECT_UNAUTHORIZED: ${DOCTOR_DATABASE_SSL_REJECT_UNAUTHORIZED:-true}
+      DATABASE_SSL_CA_PATH: /run/certs/database-ca.crt
       DOCTOR_INTERNAL_API_TOKEN: ${DOCTOR_INTERNAL_API_TOKEN:?DOCTOR_INTERNAL_API_TOKEN is required by Doctor Service}
       USER_DOCTOR_INTERNAL_API_TOKEN: ${USER_DOCTOR_INTERNAL_API_TOKEN:?USER_DOCTOR_INTERNAL_API_TOKEN is required by Doctor Service}
       DOCTOR_USER_INTERNAL_API_TOKEN: ${DOCTOR_USER_INTERNAL_API_TOKEN:?DOCTOR_USER_INTERNAL_API_TOKEN is required by Doctor Service}
@@ -93,6 +102,13 @@ services:
       APPOINTMENT_SERVICE_URL: http://appointment-service:3003
     expose:
       - "3002"
+    volumes:
+      - type: bind
+        source: ../../.local-certs/supabase-ca.crt
+        target: /run/certs/database-ca.crt
+        read_only: true
+        bind:
+          create_host_path: false
     depends_on:
       user-service:
         condition: service_healthy
@@ -115,6 +131,7 @@ services:
       DATABASE_URL: ${APPOINTMENT_DATABASE_URL:?APPOINTMENT_DATABASE_URL is required by Appointment Service}
       DATABASE_SSL: ${APPOINTMENT_DATABASE_SSL:-true}
       DATABASE_SSL_REJECT_UNAUTHORIZED: ${APPOINTMENT_DATABASE_SSL_REJECT_UNAUTHORIZED:-true}
+      DATABASE_SSL_CA_PATH: /run/certs/database-ca.crt
       DOCTOR_SERVICE_URL: http://doctor-service:3002
       NOTIFICATION_SERVICE_URL: http://notification-service:3005
       MEDICAL_RECORD_SERVICE_URL: http://medical-record-service:3004
@@ -127,6 +144,13 @@ services:
       NOTIFICATION_INTERNAL_API_TOKEN: ${NOTIFICATION_INTERNAL_API_TOKEN:?NOTIFICATION_INTERNAL_API_TOKEN is required by Appointment Service}
     expose:
       - "3003"
+    volumes:
+      - type: bind
+        source: ../../.local-certs/supabase-ca.crt
+        target: /run/certs/database-ca.crt
+        read_only: true
+        bind:
+          create_host_path: false
     depends_on:
       doctor-service:
         condition: service_healthy
@@ -149,6 +173,7 @@ services:
       DATABASE_URL: ${MEDICAL_RECORD_DATABASE_URL:?MEDICAL_RECORD_DATABASE_URL is required for Medical Record Service}
       DATABASE_SSL: ${MEDICAL_RECORD_DATABASE_SSL:-true}
       DATABASE_SSL_REJECT_UNAUTHORIZED: ${MEDICAL_RECORD_DATABASE_SSL_REJECT_UNAUTHORIZED:-true}
+      DATABASE_SSL_CA_PATH: /run/certs/database-ca.crt
       APPOINTMENT_SERVICE_URL: http://appointment-service:3003
       USER_SERVICE_URL: http://user-service:3001
       DOCTOR_SERVICE_URL: http://doctor-service:3002
@@ -159,6 +184,13 @@ services:
       NOTIFICATION_INTERNAL_API_TOKEN: ${NOTIFICATION_INTERNAL_API_TOKEN:?NOTIFICATION_INTERNAL_API_TOKEN is required by Medical Record Service}
     expose:
       - "3004"
+    volumes:
+      - type: bind
+        source: ../../.local-certs/supabase-ca.crt
+        target: /run/certs/database-ca.crt
+        read_only: true
+        bind:
+          create_host_path: false
     depends_on:
       appointment-service:
         condition: service_healthy
@@ -183,11 +215,19 @@ services:
       DATABASE_URL: ${NOTIFICATION_DATABASE_URL:?NOTIFICATION_DATABASE_URL is required for Notification Service}
       DATABASE_SSL: ${NOTIFICATION_DATABASE_SSL:-true}
       DATABASE_SSL_REJECT_UNAUTHORIZED: ${NOTIFICATION_DATABASE_SSL_REJECT_UNAUTHORIZED:-true}
+      DATABASE_SSL_CA_PATH: /run/certs/database-ca.crt
       APPOINTMENT_SERVICE_URL: http://appointment-service:3003
       APPOINTMENT_NOTIFICATION_INTERNAL_API_TOKEN: ${APPOINTMENT_NOTIFICATION_INTERNAL_API_TOKEN:?APPOINTMENT_NOTIFICATION_INTERNAL_API_TOKEN is required by Notification Service}
       NOTIFICATION_INTERNAL_API_TOKEN: ${NOTIFICATION_INTERNAL_API_TOKEN:?NOTIFICATION_INTERNAL_API_TOKEN is required by Notification Service}
     expose:
       - "3005"
+    volumes:
+      - type: bind
+        source: ../../.local-certs/supabase-ca.crt
+        target: /run/certs/database-ca.crt
+        read_only: true
+        bind:
+          create_host_path: false
     healthcheck:
       test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:3005/health').then((response) => { if (!response.ok) process.exit(1); }).catch(() => process.exit(1));"]
       interval: 10s

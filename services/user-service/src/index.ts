@@ -1,5 +1,6 @@
 import cors from "cors";
 import express from "express";
+import { readFileSync } from "node:fs";
 import { Pool } from "pg";
 import swaggerUi from "swagger-ui-express";
 import { z } from "zod";
@@ -14,10 +15,13 @@ const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) throw new Error("DATABASE_URL is required by User Service");
 const databaseSsl = process.env.DATABASE_SSL === "true";
 const rejectUnauthorized = process.env.DATABASE_SSL_REJECT_UNAUTHORIZED !== "false";
+const databaseCaPath = process.env.DATABASE_SSL_CA_PATH;
+if (databaseCaPath && !databaseSsl) throw new Error("DATABASE_SSL_CA_PATH requires DATABASE_SSL=true");
+if (databaseCaPath && !rejectUnauthorized) throw new Error("DATABASE_SSL_CA_PATH requires certificate verification");
 const pool = new Pool({
   connectionString: databaseUrl,
   ssl: databaseSsl
-    ? { rejectUnauthorized }
+    ? { rejectUnauthorized, ...(databaseCaPath ? { ca: readFileSync(databaseCaPath, "utf8") } : {}) }
     : undefined,
 });
 export const app = express();

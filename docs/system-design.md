@@ -678,6 +678,13 @@ Khuyến nghị:
 
 ## 13. Biến Môi Trường Cần Thiết
 
+Cả năm business service dùng chung một Supabase root CA certificate lưu tại
+`.local-certs/supabase-ca.crt` trong repo. Khi chạy bằng Compose, cùng file được mount
+read-only tại `/run/certs/database-ca.crt`; khi chạy service trực tiếp, mỗi `.env` của
+service đặt `DATABASE_SSL_CA_PATH=../../.local-certs/supabase-ca.crt`. Database URL,
+credential và quyền sở hữu dữ liệu vẫn tách riêng theo service. Không tắt xác minh TLS để
+né lỗi CA; không commit certificate.
+
 ### API Gateway
 
 - `GATEWAY_PORT`
@@ -701,6 +708,7 @@ Khuyến nghị:
 - `DATABASE_URL`
 - `DATABASE_SSL`
 - `DATABASE_SSL_REJECT_UNAUTHORIZED`
+- `DATABASE_SSL_CA_PATH` (đường dẫn CA tùy chọn; bắt buộc nếu Supabase CA không có trong trust store của Node)
 - `SUPABASE_URL`
 - `SUPABASE_ANON_KEY`
 - `AUTH_PROVIDER_TIMEOUT_MS` (mặc định `15000`; phải nhỏ hơn `PROXY_TIMEOUT_MS` của Gateway)
@@ -712,6 +720,7 @@ Khuyến nghị:
 - `DATABASE_URL`
 - `DATABASE_SSL`
 - `DATABASE_SSL_REJECT_UNAUTHORIZED`
+- `DATABASE_SSL_CA_PATH` (đường dẫn CA tùy chọn; bắt buộc nếu Supabase CA không có trong trust store của Node)
 - `USER_SERVICE_URL`
 - `APPOINTMENT_SERVICE_URL`
 - `DOCTOR_INTERNAL_API_TOKEN` (cùng giá trị ở Appointment Service)
@@ -723,6 +732,7 @@ Khuyến nghị:
 - `DATABASE_URL`
 - `DATABASE_SSL`
 - `DATABASE_SSL_REJECT_UNAUTHORIZED`
+- `DATABASE_SSL_CA_PATH` (đường dẫn CA tùy chọn; bắt buộc nếu Supabase CA không có trong trust store của Node)
 - `DOCTOR_SERVICE_URL`
 - `DOCTOR_INTERNAL_API_TOKEN` (cùng giá trị ở Doctor Service)
 - `USER_SERVICE_URL`
@@ -735,6 +745,7 @@ Khuyến nghị:
 - `DATABASE_URL`
 - `DATABASE_SSL`
 - `DATABASE_SSL_REJECT_UNAUTHORIZED`
+- `DATABASE_SSL_CA_PATH` (đường dẫn CA tùy chọn; bắt buộc nếu Supabase CA không có trong trust store của Node)
 - `APPOINTMENT_SERVICE_URL`
 - `USER_SERVICE_URL`
 - `DOCTOR_SERVICE_URL`
@@ -747,6 +758,7 @@ Khuyến nghị:
 - `DATABASE_URL`
 - `DATABASE_SSL`
 - `DATABASE_SSL_REJECT_UNAUTHORIZED`
+- `DATABASE_SSL_CA_PATH` (đường dẫn CA tùy chọn; bắt buộc nếu Supabase CA không có trong trust store của Node)
 - `APPOINTMENT_SERVICE_URL`
 - `LOG_LEVEL`
 - `EMAIL_PROVIDER_API_KEY` tùy chọn cho phase sau

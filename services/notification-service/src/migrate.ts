@@ -1,12 +1,19 @@
 import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { Pool } from "pg";
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) throw new Error("DATABASE_URL is required");
+const databaseSsl = process.env.DATABASE_SSL === "true";
+const rejectUnauthorized = process.env.DATABASE_SSL_REJECT_UNAUTHORIZED !== "false";
+const databaseCaPath = process.env.DATABASE_SSL_CA_PATH;
+if (databaseCaPath && !databaseSsl) throw new Error("DATABASE_SSL_CA_PATH requires DATABASE_SSL=true");
+if (databaseCaPath && !rejectUnauthorized) throw new Error("DATABASE_SSL_CA_PATH requires certificate verification");
 const pool = new Pool({ connectionString: databaseUrl,
-  ssl: process.env.DATABASE_SSL === "true"
-    ? { rejectUnauthorized: process.env.DATABASE_SSL_REJECT_UNAUTHORIZED !== "false" } : undefined });
+  ssl: databaseSsl
+    ? { rejectUnauthorized, ...(databaseCaPath ? { ca: readFileSync(databaseCaPath, "utf8") } : {}) }
+    : undefined });
 const sql = await readFile(new URL("../../../infrastructure/supabase/notification-service/schema.sql", import.meta.url), "utf8");
 const version = "001_m2_notification_reminders";
 const checksum = createHash("sha256").update(sql).digest("hex");

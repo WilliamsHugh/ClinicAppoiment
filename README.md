@@ -28,10 +28,16 @@ project Supabase tương ứng. Chạy file `infrastructure/supabase/<service>/s
 trên đúng database của service đó. Không chạy migration của service này trên database
 của service khác.
 
-Tạo một secret ngẫu nhiên tối thiểu 32 byte và đặt `DOCTOR_INTERNAL_API_TOKEN` trong `.env`.
-Compose chuyển secret này chỉ cho Doctor và Appointment Service để xác minh slot qua API nội bộ.
-Khi chạy service trực tiếp, đặt cùng giá trị trong hai file `.env` riêng của chúng; không đưa
-secret vào frontend hoặc Git.
+Với kết nối TLS có xác minh CA, tải Supabase root CA certificate một lần từ
+**Database Settings -> SSL Configuration** và lưu thành `.local-certs/supabase-ca.crt`.
+Cả năm service dùng chung file CA này nhưng vẫn giữ URL và database riêng. Compose mount
+cùng file ở chế độ chỉ đọc vào từng service; khi chạy trực tiếp, `DATABASE_SSL_CA_PATH`
+trong mỗi service `.env` trỏ về file dùng chung. Thư mục `.local-certs/` bị Git và Docker
+build context loại trừ; không commit hoặc đưa certificate vào image.
+
+Tạo các internal token ngẫu nhiên riêng theo từng tên biến trong `.env.example`; đặt cùng
+giá trị ở các caller/provider được liệt kê ở đó. Không dùng chung một token cho các credential
+khác tên, không đưa token vào frontend hoặc Git.
 
 Supabase Auth thuộc project của User Service. Chỉ User Service nhận `SUPABASE_URL` và
 `SUPABASE_ANON_KEY` ở môi trường backend để đăng ký, đăng nhập, refresh và xác minh token.
