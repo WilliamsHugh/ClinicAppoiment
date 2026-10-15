@@ -120,15 +120,16 @@ npm run test:patient
 npm audit --omit=dev --audit-level=high
 ```
 
-Doctor và Appointment Service đã có PostgreSQL repository và migration riêng.
-Hướng dẫn migration và smoke qua Gateway nằm trong README của từng service.
-Luồng khám end-to-end với Medical Record và Notification vẫn cần kiểm thử trên
-service và database đã tích hợp trước khi nghiệm thu.
+Cả 5 service nghiệp vụ (User, Doctor, Appointment, Medical Record, Notification)
+đều đã có PostgreSQL database riêng trên Supabase, nạp CA certificate và hoàn tất
+toàn bộ migration lược đồ dữ liệu. Hợp đồng tích hợp backend Milestone 2 (M2) đã
+được nghiệm thu và kiểm thử thành công.
 
 ## Tài Liệu
 
 - Quy tắc bắt buộc cho agent và phối hợp nhánh: [.agents/rules.md](.agents/rules.md)
 - Thiết kế hệ thống: `docs/system-design.md`
 - Hợp đồng API v1: `docs/api-contract.md`
+- Báo cáo đề xuất cải thiện kiến trúc: `docs/architecture-improvements.md`
 - Hợp đồng thiết kế UI cho thành viên và agent: `docs/ui-design-contract.md`
 - Supabase migrations riêng từng service: `infrastructure/supabase/<service>/schema.sql`
