@@ -12,6 +12,10 @@ class StatusChip extends StatelessWidget {
         return const Color(0xFFFFF7ED);
       case 'CONFIRMED':
         return const Color(0xFFEFF6FF);
+      case 'CHECKED_IN':
+        return const Color(0xFFE0F2F1);
+      case 'NO_SHOW':
+        return const Color(0xFFFFF7ED);
       case 'COMPLETED':
         return const Color(0xFFECFDF5);
       case 'CANCELLED':
@@ -27,6 +31,10 @@ class StatusChip extends StatelessWidget {
         return const Color(0xFFF59E0B);
       case 'CONFIRMED':
         return ClinicColors.primary;
+      case 'CHECKED_IN':
+        return const Color(0xFF00695C);
+      case 'NO_SHOW':
+        return const Color(0xFF9A6700);
       case 'COMPLETED':
         return const Color(0xFF059669);
       case 'CANCELLED':
@@ -49,9 +57,9 @@ class StatusChip extends StatelessWidget {
       case 'CHECKED_IN':
         return 'Đã check-in';
       case 'NO_SHOW':
-        return 'Vắng mặt';
+        return 'Không đến';
       default:
-        return status;
+        return 'Chưa rõ trạng thái';
     }
   }
 

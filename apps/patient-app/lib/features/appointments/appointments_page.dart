@@ -1,30 +1,29 @@
 import 'package:flutter/material.dart';
 
-import '../../core/api/api_models.dart';
 import '../../core/api/clinic_api_client.dart';
 import '../../core/session/session.dart';
-import '../../core/theme/app_theme.dart';
 import '../../shared/widgets/async_states.dart';
-import 'booking_selection.dart';
+import 'appointment_models.dart';
 import 'booking_confirmation_sheet.dart';
+import 'booking_selection.dart';
 import 'data/appointment_repository.dart';
 import 'widgets/appointment_card.dart';
+import 'widgets/appointment_ticket.dart';
 import 'widgets/reschedule_sheet.dart';
 
 class AppointmentsPage extends StatefulWidget {
-  const AppointmentsPage({
-    required this.tokenProvider,
-    this.api,
-    this.bookingSelection,
-    this.refreshVersion = 0,
-    super.key,
-  });
-
+  const AppointmentsPage(
+      {required this.tokenProvider,
+      this.api,
+      this.bookingSelection,
+      this.refreshVersion = 0,
+      this.ticketBuilder,
+      super.key});
   final TokenProvider tokenProvider;
   final ClinicApiClient? api;
   final BookingSelection? bookingSelection;
   final int refreshVersion;
-
+  final AppointmentTicketBuilder? ticketBuilder;
   @override
   State<AppointmentsPage> createState() => _AppointmentsPageState();
 }
@@ -32,36 +31,48 @@ class AppointmentsPage extends StatefulWidget {
 class _AppointmentsPageState extends State<AppointmentsPage>
     with SingleTickerProviderStateMixin {
   late final TabController _tab;
-  late final AppointmentRepository _repo;
-  late final ClinicApiClient _api;
+  late ClinicApiClient _api;
+  late AppointmentRepository _repo;
   BookingSelection? _completedSelection;
   bool _openingConfirmation = false;
+  bool _openingAction = false;
+  bool _openingTicket = false;
   int _loadRequest = 0;
+  RequestCancellation? _cancellation;
   bool _loading = true;
   String? _error;
-  List<Map<String, dynamic>> _items = [];
-
-  // tabs: Tất cả, Chờ xác nhận (PENDING), Đã xác nhận (CONFIRMED), Hoàn thành (COMPLETED)
-  final _tabs = const ['Tất cả', 'Chờ xác nhận', 'Đã xác nhận', 'Hoàn thành'];
-  final _statusForTab = const [null, 'PENDING', 'CONFIRMED', 'COMPLETED'];
+  String? _notice;
+  List<PatientAppointment> _items = [];
 
   @override
   void initState() {
     super.initState();
-    _tab = TabController(length: _tabs.length, vsync: this);
-    _tab.addListener(_onTabChanged);
-    _api = widget.api ?? ClinicApiClient(tokenProvider: widget.tokenProvider);
-    _repo = AppointmentRepository(_api);
+    _tab = TabController(length: appointmentTabLabels.length, vsync: this)
+      ..addListener(_onTabChanged);
+    _resetApi();
     _load();
     if (widget.bookingSelection != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _confirmBooking());
     }
   }
 
+  void _resetApi() {
+    _api = widget.api ?? ClinicApiClient(tokenProvider: widget.tokenProvider);
+    _repo = AppointmentRepository(_api);
+  }
+
   @override
   void didUpdateWidget(covariant AppointmentsPage oldWidget) {
     super.didUpdateWidget(oldWidget);
-    if (oldWidget.refreshVersion != widget.refreshVersion) {
+    if (oldWidget.api != widget.api ||
+        oldWidget.tokenProvider != widget.tokenProvider) {
+      _cancellation?.cancel();
+      ++_loadRequest;
+      _items = [];
+      _notice = null;
+      _resetApi();
+      _load();
+    } else if (oldWidget.refreshVersion != widget.refreshVersion) {
       _tab.index = 0;
       _load();
     }
@@ -71,194 +82,231 @@ class _AppointmentsPageState extends State<AppointmentsPage>
     }
   }
 
-  Future<void> _confirmBooking() async {
-    final selection = widget.bookingSelection;
-    if (!mounted ||
-        selection == null ||
-        selection == _completedSelection ||
-        _openingConfirmation) {
-      return;
-    }
-    _openingConfirmation = true;
-    final booked = await showBookingConfirmationSheet(context,
-        selection: selection, api: _api);
-    if (!mounted) return;
-    setState(() {
-      _openingConfirmation = false;
-      if (booked != null) _completedSelection = selection;
-    });
-    if (booked != null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Đã tạo lịch hẹn thành công.')));
-      _tab.index = 0;
-      await _load();
-    }
-  }
-
   @override
   void dispose() {
+    _cancellation?.cancel();
     _tab.removeListener(_onTabChanged);
     _tab.dispose();
     super.dispose();
   }
 
   void _onTabChanged() {
-    if (_tab.indexIsChanging) return;
-    _load();
+    if (mounted) setState(() {});
   }
 
   Future<void> _load() async {
+    _cancellation?.cancel();
+    final cancellation = _cancellation = RequestCancellation();
     final request = ++_loadRequest;
     setState(() {
       _loading = true;
       _error = null;
     });
-    final status = _statusForTab[_tab.index];
     try {
-      final data = await _repo.fetch(status: status);
+      final data = await _repo.fetchAll(cancellation: cancellation);
       if (mounted && request == _loadRequest) setState(() => _items = data);
-    } on ApiException catch (error) {
+    } catch (error) {
       if (mounted && request == _loadRequest) {
-        setState(() => _error = error.message);
+        setState(() => _error = appointmentError(error));
       }
     } finally {
       if (mounted && request == _loadRequest) setState(() => _loading = false);
     }
   }
 
-  Future<void> _cancel(String id) async {
-    final confirm = await showDialog<bool>(
-        context: context,
-        builder: (_) => AlertDialog(
-              title: const Text('Hủy lịch hẹn?'),
-              content: const Text(
-                  'Bạn có chắc muốn hủy? Thao tác này không thể hoàn tác nếu đã qua xác nhận.'),
-              actions: [
-                TextButton(
-                    onPressed: () => Navigator.pop(context, false),
-                    child: const Text('Không')),
-                FilledButton(
-                    onPressed: () => Navigator.pop(context, true),
-                    child: const Text('Hủy lịch')),
-              ],
-            ));
-    if (confirm != true) return;
-    try {
-      await _repo.cancel(id, reason: 'Patient cancelled via app');
-      if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('Đã hủy lịch')));
-      _load();
-    } catch (e) {
-      if (!mounted) return;
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('Lỗi hủy: $e')));
+  Future<void> _confirmBooking() async {
+    final selection = widget.bookingSelection;
+    if (!mounted ||
+        selection == null ||
+        selection == _completedSelection ||
+        _openingConfirmation ||
+        _openingAction ||
+        _openingTicket) {
+      return;
+    }
+    setState(() => _openingConfirmation = true);
+    final booked = await showBookingConfirmationSheet(context,
+        selection: selection, api: _api);
+    if (!mounted) return;
+    setState(() {
+      _openingConfirmation = false;
+      if (booked != null) {
+        _completedSelection = selection;
+        _notice = 'Đã tạo lịch hẹn thành công.';
+      }
+    });
+    if (booked != null) {
+      _tab.index = 0;
+      await _load();
     }
   }
 
-  void _reschedule(String id) {
-    showModalBottomSheet(
+  Future<void> _change(PatientAppointment appointment,
+      {bool cancel = false}) async {
+    if (_openingAction ||
+        _openingTicket ||
+        _openingConfirmation ||
+        _loading ||
+        _error != null ||
+        !appointment.canModify) {
+      return;
+    }
+    setState(() {
+      _openingAction = true;
+      _notice = null;
+    });
+    final repository = _repo;
+    final result = await showAppointmentChangeSheet(context,
+        appointment: appointment, repository: repository, cancel: cancel);
+    if (!mounted) return;
+    if (repository != _repo) {
+      setState(() => _openingAction = false);
+      return;
+    }
+    setState(() {
+      _openingAction = false;
+      if (result?.appointment case final updated?) {
+        _items = _items
+            .map((item) => item.id == updated.id
+                ? updated.withNames(
+                    doctorName: item.doctorName, specialty: item.specialty)
+                : item)
+            .toList();
+        _notice = cancel ? 'Đã hủy lịch hẹn.' : 'Đã đổi lịch thành công.';
+      }
+    });
+    if (result?.appointment != null) _tab.index = cancel ? 2 : 0;
+    if (result?.requiresRefresh == true) await _load();
+  }
+
+  Future<void> _ticket(PatientAppointment appointment) async {
+    if (_openingAction ||
+        _openingTicket ||
+        _openingConfirmation ||
+        _loading ||
+        _error != null ||
+        !appointment.ticketAvailable(DateTime.now())) {
+      return;
+    }
+    setState(() => _openingTicket = true);
+    await showModalBottomSheet<void>(
         context: context,
         isScrollControlled: true,
-        shape: const RoundedRectangleBorder(
-            borderRadius: BorderRadius.vertical(top: Radius.circular(20))),
-        builder: (_) => RescheduleSheet(onConfirm: (start, end) async {
-              try {
-                await _repo.reschedule(id, start, end, reason: 'Đổi giờ');
-                if (!mounted) return;
-                ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Đã đổi lịch thành công')));
-                _load();
-              } catch (e) {
-                if (!mounted) return;
-                ScaffoldMessenger.of(context)
-                    .showSnackBar(SnackBar(content: Text('Lỗi đổi lịch: $e')));
-              }
-            }));
+        useSafeArea: true,
+        builder: (_) => AppointmentTicketSheet(
+            appointment: appointment,
+            repository: _repo,
+            builder: widget.ticketBuilder));
+    if (!mounted) return;
+    setState(() => _openingTicket = false);
+    await _load();
   }
+
+  Widget _skeleton() => Semantics(
+      label: 'Đang tải lịch hẹn',
+      liveRegion: true,
+      child: Column(
+        children: List.generate(
+            3,
+            (_) => Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  child: Container(
+                      height: 112,
+                      decoration: BoxDecoration(
+                          color: Theme.of(context)
+                              .colorScheme
+                              .surfaceContainerHighest,
+                          borderRadius: BorderRadius.circular(12))),
+                )),
+      ));
 
   @override
   Widget build(BuildContext context) {
+    final now = DateTime.now();
+    final tab = AppointmentTab.values[_tab.index];
+    final items = _items.where((item) => item.belongsTo(tab, now)).toList()
+      ..sort((a, b) => tab == AppointmentTab.upcoming
+          ? a.startAt.compareTo(b.startAt)
+          : b.startAt.compareTo(a.startAt));
+    final enabled = !_loading &&
+        _error == null &&
+        !_openingAction &&
+        !_openingConfirmation &&
+        !_openingTicket;
     return Scaffold(
-      backgroundColor: ClinicColors.scaffold,
       appBar: AppBar(
-        backgroundColor: ClinicColors.scaffold,
-        title: const Text('Lịch hẹn',
-            style: TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w800,
-                color: ClinicColors.ink)),
-        bottom: TabBar(
-          controller: _tab,
-          isScrollable: false,
-          indicatorSize: TabBarIndicatorSize.tab,
-          labelPadding: EdgeInsets.zero,
-          labelColor: ClinicColors.primary,
-          unselectedLabelColor: ClinicColors.muted,
-          indicatorColor: ClinicColors.primary,
-          labelStyle:
-              const TextStyle(fontSize: 12, fontWeight: FontWeight.w700),
-          tabs: _tabs.map((t) => Tab(text: t)).toList(),
-        ),
-      ),
-      body: Column(
-        children: [
-          if (widget.bookingSelection case final selection?
-              when selection != _completedSelection)
-            Card(
+          title: const Text('Lịch hẹn'),
+          actions: [
+            IconButton(
+                tooltip: 'Tải lại lịch hẹn',
+                onPressed: _loading ? null : _load,
+                icon: const Icon(Icons.refresh)),
+          ],
+          bottom: TabBar(
+              controller: _tab,
+              isScrollable: false,
+              indicatorSize: TabBarIndicatorSize.tab,
+              labelPadding: EdgeInsets.zero,
+              tabs: appointmentTabLabels
+                  .map((label) => Tab(text: label))
+                  .toList())),
+      body: Column(children: [
+        if (widget.bookingSelection case final selection?
+            when selection != _completedSelection)
+          Card(
               margin: const EdgeInsets.all(16),
               child: Padding(
-                padding: const EdgeInsets.all(12),
-                child: Row(
-                  children: [
-                    const Icon(Icons.event_available_outlined),
-                    const SizedBox(width: 12),
-                    Expanded(
-                        child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                            '${selection.doctorName}, ${selection.displayTime}'),
-                        TextButton(
-                            onPressed: _confirmBooking,
-                            child: const Text('Xem và xác nhận đặt lịch')),
+                  padding: const EdgeInsets.all(12),
+                  child: Column(children: [
+                    Text('${selection.doctorName}, ${selection.displayTime}'),
+                    TextButton(
+                        onPressed: _confirmBooking,
+                        child: const Text('Xem và xác nhận đặt lịch')),
+                  ]))),
+        Expanded(
+            child: RefreshIndicator(
+                onRefresh: _load,
+                child: ListView(
+                    padding: const EdgeInsets.all(16),
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    children: [
+                      if (_notice != null)
+                        Semantics(
+                            liveRegion: true,
+                            child: Padding(
+                                padding: const EdgeInsets.only(bottom: 16),
+                                child: Text(_notice!))),
+                      if (_error != null) ...[
+                        AppErrorState(message: _error!, onRetry: _load),
+                        if (_items.isNotEmpty)
+                          const Text(
+                              'Dữ liệu có thể đã thay đổi. Tải lại thành công trước khi tiếp tục thao tác.'),
                       ],
-                    )),
-                  ],
-                ),
-              ),
-            ),
-          Expanded(
-            child: _loading
-                ? const AppLoadingState(label: 'Đang tải lịch hẹn...')
-                : _error != null
-                    ? AppErrorState(message: _error!, onRetry: _load)
-                    : _items.isEmpty
-                        ? AppEmptyState(
-                            title: 'Chưa có lịch hẹn',
-                            message: 'Trạng thái ${_tabs[_tab.index]} trống',
-                            icon: Icons.calendar_month_outlined,
-                          )
-                        : RefreshIndicator(
-                            onRefresh: _load,
-                            child: ListView.separated(
-                              padding:
-                                  const EdgeInsets.fromLTRB(16, 16, 16, 24),
-                              itemCount: _items.length,
-                              separatorBuilder: (_, __) =>
-                                  const SizedBox(height: 12),
-                              itemBuilder: (_, i) => AppointmentCard(
-                                data: _items[i],
-                                onCancel: () =>
-                                    _cancel(_items[i]['id'].toString()),
-                                onReschedule: () =>
-                                    _reschedule(_items[i]['id'].toString()),
-                              ),
-                            ),
-                          ),
-          ),
-        ],
-      ),
+                      if (_loading)
+                        _skeleton()
+                      else if (items.isEmpty && _error == null)
+                        Column(children: [
+                          AppEmptyState(
+                              title: 'Chưa có lịch hẹn',
+                              message:
+                                  'Chưa có dữ liệu trong mục ${appointmentTabLabels[_tab.index]}.',
+                              icon: Icons.calendar_month_outlined),
+                          TextButton(
+                              onPressed: _load,
+                              child: const Text('Kiểm tra lại')),
+                        ])
+                      else
+                        ...items.map((item) => Padding(
+                            padding: const EdgeInsets.only(bottom: 12),
+                            child: AppointmentCard(
+                              appointment: item,
+                              enabled: enabled,
+                              onCancel: () => _change(item, cancel: true),
+                              onReschedule: () => _change(item),
+                              onTicket: () => _ticket(item),
+                            ))),
+                    ]))),
+      ]),
     );
   }
 }

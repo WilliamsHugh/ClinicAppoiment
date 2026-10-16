@@ -2,6 +2,8 @@ import '../../../core/api/clinic_api_client.dart';
 import '../../../core/api/api_models.dart';
 import '../../doctors/doctor_models.dart';
 import '../booking_selection.dart';
+import '../appointment_models.dart';
+import '../../doctors/doctor_repository.dart';
 
 class AppointmentRepository {
   AppointmentRepository(this._api);
@@ -35,6 +37,97 @@ class AppointmentRepository {
     return (response.data as List<dynamic>)
         .map((item) => DoctorSlot.fromJson(item as Map<String, dynamic>))
         .toList(growable: false);
+  }
+
+  Future<List<DoctorSlot>> rescheduleSlots(String doctorId, String date,
+          {RequestCancellation? cancellation}) =>
+      DoctorRepository(_api).slots(doctorId, date, cancellation: cancellation);
+
+  Future<List<PatientAppointment>> fetchAll(
+      {RequestCancellation? cancellation}) async {
+    final items = <String, PatientAppointment>{};
+    for (var page = 1;; page++) {
+      final response = await _api.get('/api/v1/appointments',
+          query: {'page': page, 'limit': 100}, cancellation: cancellation);
+      final data = response.data as Map<String, dynamic>;
+      final values = data['items'] as List;
+      final total = data['total'] as int;
+      final limit = data['limit'] as int;
+      if (data['page'] != page ||
+          limit < 1 ||
+          total < 0 ||
+          values.length > limit ||
+          (values.isEmpty && (page - 1) * limit < total) ||
+          page > 100) {
+        throw const FormatException('Invalid pagination');
+      }
+      for (final value in values) {
+        final item = PatientAppointment.fromJson(value as Map<String, dynamic>);
+        items[item.id] = item;
+      }
+      if (page * limit >= total) break;
+    }
+    final ids = items.values
+        .map((item) => item.doctorId)
+        .toSet()
+        .where((id) => !_doctorNames.containsKey(id))
+        .toList();
+    var next = 0;
+    await Future.wait(List.generate(ids.length.clamp(0, 6), (_) async {
+      while (next < ids.length) {
+        final id = ids[next++];
+        try {
+          final response = await _api.get(
+              '/api/v1/doctors/${Uri.encodeComponent(id)}',
+              cancellation: cancellation);
+          final name = appointmentDisplayName(
+              (response.data as Map<String, dynamic>)['displayName']);
+          if (name != null) _doctorNames[id] = name;
+        } on ApiException catch (error) {
+          if (cancellation?.isCancelled == true || error.statusCode == 401) {
+            rethrow;
+          }
+        } catch (_) {
+          /* Keep a readable fallback while the doctor service is unavailable. */
+        }
+      }
+    }));
+    return items.values
+        .map((item) => item.withNames(
+            doctorName: _doctorNames[item.doctorId] ?? item.doctorName,
+            specialty: item.specialty))
+        .toList();
+  }
+
+  Future<PatientAppointment> detail(String id,
+      {RequestCancellation? cancellation}) async {
+    final response = await _api.get(
+        '/api/v1/appointments/${Uri.encodeComponent(id)}',
+        cancellation: cancellation);
+    final item =
+        PatientAppointment.fromJson(response.data as Map<String, dynamic>);
+    if (item.id != id) throw const FormatException('Mismatched appointment');
+    return item;
+  }
+
+  Future<PatientAppointment> _change(
+      String id, String action, Map<String, Object?> body) async {
+    final response = await _api.patch(
+        '/api/v1/appointments/${Uri.encodeComponent(id)}/$action',
+        body: body);
+    final item =
+        PatientAppointment.fromJson(response.data as Map<String, dynamic>);
+    if (item.id != id) throw const FormatException('Mismatched appointment');
+    if ((action == 'cancel' && item.status != 'CANCELLED') ||
+        (action == 'reschedule' &&
+            (!item.canModify ||
+                item.startAt !=
+                    DateTime.parse(body['scheduledStartAt'] as String) ||
+                item.endAt !=
+                    DateTime.parse(body['scheduledEndAt'] as String)))) {
+      throw const FormatException('Unconfirmed appointment change');
+    }
+    return item;
   }
 
   Future<List<Map<String, dynamic>>> fetch(
@@ -83,17 +176,44 @@ class AppointmentRepository {
         .toList(growable: false);
   }
 
-  Future<void> cancel(String id, {String? reason}) async {
-    await _api.patch('/api/v1/appointments/$id/cancel',
-        body: {if (reason != null) 'reason': reason});
-  }
+  Future<PatientAppointment> cancel(String id, {String? reason}) =>
+      _change(id, 'cancel', {if (reason != null) 'reason': reason.trim()});
 
-  Future<void> reschedule(String id, DateTime start, DateTime end,
+  Future<PatientAppointment> reschedule(String id, DateTime start, DateTime end,
       {String? reason}) async {
-    await _api.patch('/api/v1/appointments/$id/reschedule', body: {
-      'scheduledStartAt': start.toIso8601String(),
-      'scheduledEndAt': end.toIso8601String(),
-      if (reason != null) 'reason': reason,
+    if (!start.isAfter(DateTime.now().toUtc()) || !end.isAfter(start)) {
+      throw const ApiException(
+          code: 'APPOINTMENT_SLOT_INVALID', message: 'Khung giờ không hợp lệ.');
+    }
+    return _change(id, 'reschedule', {
+      'scheduledStartAt': start.toUtc().toIso8601String(),
+      'scheduledEndAt': end.toUtc().toIso8601String(),
+      if (reason != null) 'reason': reason.trim(),
     });
   }
+}
+
+String appointmentError(Object error) {
+  if (error is ApiException) {
+    if (error.statusCode == 401 || error.code == 'SESSION_REQUIRED') {
+      return 'Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.';
+    }
+    if (error.statusCode == 403) {
+      return 'Bạn không có quyền thực hiện thao tác với lịch hẹn này.';
+    }
+    if (error.statusCode == 404) {
+      return 'Lịch hẹn không còn tồn tại. Vui lòng tải lại danh sách.';
+    }
+    if (error.code == 'APPOINTMENT_INVALID_STATUS_TRANSITION') {
+      return 'Trạng thái lịch hẹn đã thay đổi. Vui lòng kiểm tra lại danh sách.';
+    }
+    if (error.code == 'APPOINTMENT_SLOT_UNAVAILABLE' ||
+        error.code == 'APPOINTMENT_SLOT_INVALID') {
+      return 'Khung giờ không còn khả dụng. Lý do đã được giữ lại; hãy chọn giờ khác.';
+    }
+    if (error.code == 'NETWORK_ERROR' || error.code == 'REQUEST_TIMEOUT') {
+      return 'Chưa nhận được xác nhận. Hãy kiểm tra lại danh sách trước khi thử lại thao tác.';
+    }
+  }
+  return 'Không thể hoàn thành yêu cầu lúc này. Vui lòng thử lại.';
 }
