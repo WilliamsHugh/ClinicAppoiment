@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../core/api/clinic_api_client.dart';
 import '../core/session/session.dart';
-import '../features/appointments/booking_selection.dart';
 import '../shared/widgets/async_states.dart';
 import 'app_routes.dart';
 
@@ -24,7 +23,7 @@ class PatientShell extends StatefulWidget {
 
 class _PatientShellState extends State<PatientShell> {
   int _selectedIndex = 0;
-  BookingSelection? _bookingSelection;
+  int _appointmentsRevision = 0;
 
   @override
   Widget build(BuildContext context) {
@@ -48,9 +47,8 @@ class _PatientShellState extends State<PatientShell> {
 
     final routeContext = PatientRouteContext(
       navigate: (path) => _selectPath(routes, path),
-      onBookingSelection: (selection) =>
-          setState(() => _bookingSelection = selection),
-      bookingSelection: _bookingSelection,
+      onBookingSelection: (_) => setState(() => _appointmentsRevision++),
+      appointmentsRevision: _appointmentsRevision,
       doctorApiClient: widget.doctorApiClient,
     );
 

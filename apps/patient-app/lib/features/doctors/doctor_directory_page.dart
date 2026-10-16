@@ -5,14 +5,17 @@ import '../../core/api/clinic_api_client.dart';
 import '../../core/session/session.dart';
 import '../../shared/widgets/async_states.dart';
 import '../../shared/widgets/pagination_controls.dart';
+import '../appointments/booking_confirmation_sheet.dart';
+import '../appointments/booking_selection.dart';
 import 'doctor_models.dart';
 
 class DoctorDirectoryPage extends StatefulWidget {
-  const DoctorDirectoryPage({super.key, this.tokenProvider, this.apiClient, this.onSlotSelected});
+  const DoctorDirectoryPage({super.key, this.tokenProvider, this.apiClient, this.onSlotSelected, this.onAppointmentCreated});
 
   final TokenProvider? tokenProvider;
   final ClinicApiClient? apiClient;
   final void Function(Doctor doctor, DoctorSlot slot)? onSlotSelected;
+  final ValueChanged<BookingSelection>? onAppointmentCreated;
 
   @override
   State<DoctorDirectoryPage> createState() => _DoctorDirectoryPageState();
@@ -42,6 +45,29 @@ class _DoctorDirectoryPageState extends State<DoctorDirectoryPage> {
   int _directoryRequest = 0;
   int _detailRequest = 0;
   int _slotRequest = 0;
+  bool _confirmingBooking = false;
+
+  Future<void> _confirmSlot(DoctorSlot slot) async {
+    final doctor = _selectedDoctor;
+    final api = _api;
+    if (_confirmingBooking || doctor == null || api == null) return;
+    setState(() {
+      _selectedSlot = slot;
+      _confirmingBooking = true;
+    });
+    widget.onSlotSelected?.call(doctor, slot);
+    final booked = await showBookingConfirmationSheet(context,
+        selection: BookingSelection.fromDoctorSlot(doctor, slot), api: api);
+    if (!mounted) return;
+    setState(() => _confirmingBooking = false);
+    if (booked != null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text(
+              'Đã tạo lịch hẹn. Bạn có thể theo dõi trạng thái trong danh sách.')));
+      widget.onAppointmentCreated?.call(booked);
+    }
+    await _loadSlots();
+  }
 
   @override
   void initState() {
@@ -279,10 +305,7 @@ class _DoctorDirectoryPageState extends State<DoctorDirectoryPage> {
                 else Wrap(spacing: 8, runSpacing: 8, children: _slots.map((slot) => ChoiceChip(
                   label: Text('${clinicTime(slot.startAt)}–${clinicTime(slot.endAt)}'),
                   selected: _selectedSlot?.startAt == slot.startAt,
-                  onSelected: (_) {
-                    setState(() => _selectedSlot = slot);
-                    widget.onSlotSelected?.call(_selectedDoctor!, slot);
-                  },
+                  onSelected: _confirmingBooking ? null : (_) => _confirmSlot(slot),
                 )).toList()),
                 if (_selectedSlot != null) const Padding(
                   padding: EdgeInsets.only(top: 12),

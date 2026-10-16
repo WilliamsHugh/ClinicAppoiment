@@ -6,6 +6,7 @@ import '../../core/session/session.dart';
 import '../../core/theme/app_theme.dart';
 import '../../shared/widgets/async_states.dart';
 import 'booking_selection.dart';
+import 'booking_confirmation_sheet.dart';
 import 'data/appointment_repository.dart';
 import 'widgets/appointment_card.dart';
 import 'widgets/reschedule_sheet.dart';
@@ -15,12 +16,14 @@ class AppointmentsPage extends StatefulWidget {
     required this.tokenProvider,
     this.api,
     this.bookingSelection,
+    this.refreshVersion = 0,
     super.key,
   });
 
   final TokenProvider tokenProvider;
   final ClinicApiClient? api;
   final BookingSelection? bookingSelection;
+  final int refreshVersion;
 
   @override
   State<AppointmentsPage> createState() => _AppointmentsPageState();
@@ -30,6 +33,10 @@ class _AppointmentsPageState extends State<AppointmentsPage>
     with SingleTickerProviderStateMixin {
   late final TabController _tab;
   late final AppointmentRepository _repo;
+  late final ClinicApiClient _api;
+  BookingSelection? _completedSelection;
+  bool _openingConfirmation = false;
+  int _loadRequest = 0;
   bool _loading = true;
   String? _error;
   List<Map<String, dynamic>> _items = [];
@@ -43,10 +50,49 @@ class _AppointmentsPageState extends State<AppointmentsPage>
     super.initState();
     _tab = TabController(length: _tabs.length, vsync: this);
     _tab.addListener(_onTabChanged);
-    _repo = AppointmentRepository(
-      widget.api ?? ClinicApiClient(tokenProvider: widget.tokenProvider),
-    );
+    _api = widget.api ?? ClinicApiClient(tokenProvider: widget.tokenProvider);
+    _repo = AppointmentRepository(_api);
     _load();
+    if (widget.bookingSelection != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _confirmBooking());
+    }
+  }
+
+  @override
+  void didUpdateWidget(covariant AppointmentsPage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.refreshVersion != widget.refreshVersion) {
+      _tab.index = 0;
+      _load();
+    }
+    if (oldWidget.bookingSelection != widget.bookingSelection &&
+        widget.bookingSelection != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) => _confirmBooking());
+    }
+  }
+
+  Future<void> _confirmBooking() async {
+    final selection = widget.bookingSelection;
+    if (!mounted ||
+        selection == null ||
+        selection == _completedSelection ||
+        _openingConfirmation) {
+      return;
+    }
+    _openingConfirmation = true;
+    final booked = await showBookingConfirmationSheet(context,
+        selection: selection, api: _api);
+    if (!mounted) return;
+    setState(() {
+      _openingConfirmation = false;
+      if (booked != null) _completedSelection = selection;
+    });
+    if (booked != null) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Đã tạo lịch hẹn thành công.')));
+      _tab.index = 0;
+      await _load();
+    }
   }
 
   @override
@@ -62,6 +108,7 @@ class _AppointmentsPageState extends State<AppointmentsPage>
   }
 
   Future<void> _load() async {
+    final request = ++_loadRequest;
     setState(() {
       _loading = true;
       _error = null;
@@ -69,11 +116,13 @@ class _AppointmentsPageState extends State<AppointmentsPage>
     final status = _statusForTab[_tab.index];
     try {
       final data = await _repo.fetch(status: status);
-      if (mounted) setState(() => _items = data);
+      if (mounted && request == _loadRequest) setState(() => _items = data);
     } on ApiException catch (error) {
-      if (mounted) setState(() => _error = error.message);
+      if (mounted && request == _loadRequest) {
+        setState(() => _error = error.message);
+      }
     } finally {
-      if (mounted) setState(() => _loading = false);
+      if (mounted && request == _loadRequest) setState(() => _loading = false);
     }
   }
 
@@ -154,7 +203,8 @@ class _AppointmentsPageState extends State<AppointmentsPage>
       ),
       body: Column(
         children: [
-          if (widget.bookingSelection case final selection?)
+          if (widget.bookingSelection case final selection?
+              when selection != _completedSelection)
             Card(
               margin: const EdgeInsets.all(16),
               child: Padding(
@@ -164,11 +214,16 @@ class _AppointmentsPageState extends State<AppointmentsPage>
                     const Icon(Icons.event_available_outlined),
                     const SizedBox(width: 12),
                     Expanded(
-                      child: Text(
-                        'Đã chọn ${selection.doctorName}, ${selection.displayTime}. '
-                        'Lịch hẹn chưa được tạo.',
-                      ),
-                    ),
+                        child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                            '${selection.doctorName}, ${selection.displayTime}'),
+                        TextButton(
+                            onPressed: _confirmBooking,
+                            child: const Text('Xem và xác nhận đặt lịch')),
+                      ],
+                    )),
                   ],
                 ),
               ),

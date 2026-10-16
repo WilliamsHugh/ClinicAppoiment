@@ -35,9 +35,7 @@ class DoctorsPage extends StatelessWidget {
       body: DoctorDirectoryPage(
         tokenProvider: tokenProvider,
         apiClient: apiClient,
-        onSlotSelected: (doctor, slot) => onBookingSelection(
-          BookingSelection.fromDoctorSlot(doctor, slot),
-        ),
+        onAppointmentCreated: onBookingSelection,
       ),
     );
   }

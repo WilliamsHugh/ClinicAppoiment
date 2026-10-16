@@ -22,13 +22,13 @@ class PatientRouteContext {
   const PatientRouteContext({
     required this.navigate,
     required this.onBookingSelection,
-    this.bookingSelection,
+    this.appointmentsRevision = 0,
     this.doctorApiClient,
   });
 
   final void Function(String) navigate;
   final ValueChanged<BookingSelection> onBookingSelection;
-  final BookingSelection? bookingSelection;
+  final int appointmentsRevision;
   final ClinicApiClient? doctorApiClient;
 }
 
@@ -58,7 +58,10 @@ final patientRoutes = <PatientRoute>[
       tokenProvider: session,
       apiClient: route.doctorApiClient,
       onOpenNotifications: () => route.navigate(AppRoutes.notifications),
-      onBookingSelection: route.onBookingSelection,
+      onBookingSelection: (selection) {
+        route.onBookingSelection(selection);
+        route.navigate(AppRoutes.appointments);
+      },
     ),
   ),
   PatientRoute(
@@ -67,7 +70,8 @@ final patientRoutes = <PatientRoute>[
     icon: Icons.calendar_month_outlined,
     builder: (_, session, route) => AppointmentsPage(
       tokenProvider: session,
-      bookingSelection: route.bookingSelection,
+      api: route.doctorApiClient,
+      refreshVersion: route.appointmentsRevision,
     ),
   ),
   PatientRoute(
