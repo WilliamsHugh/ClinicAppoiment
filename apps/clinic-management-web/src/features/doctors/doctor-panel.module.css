@@ -1,6 +1,6 @@
-.stack { display: grid; gap: 22px; max-width: 1120px; }
+.stack { display: grid; gap: 22px; max-width: 1120px; min-width: 0; }
 .muted { color: #637083; line-height: 1.5; }
-.card { background: #fff; border: 1px solid #dbe2e8; border-radius: 14px; padding: 24px; box-shadow: 0 8px 30px rgb(29 58 63 / 5%); }
+.card { background: #fff; border: 1px solid #dbe2e8; border-radius: 14px; padding: 24px; box-shadow: 0 8px 30px rgb(29 58 63 / 5%); min-width: 0; }
 .card h2 { font-size: 1.25rem; margin-bottom: 18px; }
 .row { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px; }
 .row > label { flex: 1 1 145px; }
@@ -19,3 +19,30 @@
 .error, .notice { border-radius: 8px; padding: 12px 15px; }
 .error { background: #fbeaea; color: #a33b3b; }
 .notice { background: #e9f4f3; color: #075b64; }
+.doctorRow { border: 1px solid #dbe2e8; border-radius: 10px; display: flex; flex-wrap: wrap; align-items: center; gap: 12px; padding: 8px 12px; min-width: 0; }
+.doctorSelect { border: 0; background: transparent; display: grid; gap: 5px; flex: 1 1 200px; text-align: left; min-width: 0; overflow-wrap: anywhere; }
+.doctorSelect span { color: #637083; font-size: .9rem; }
+.activityControl { display: flex; align-items: center; justify-content: flex-end; gap: 10px; font-size: .85rem; margin-left: auto; }
+.activitySwitch { border: 1px solid #637083; border-radius: 20px; background: #637083; width: 48px; height: 28px; padding: 3px; flex-shrink: 0; }
+.activitySwitch[aria-checked="true"] { background: #087f8c; border-color: #087f8c; }
+.activitySwitch span { display: block; background: #fff; width: 20px; height: 20px; border-radius: 50%; transition: transform .15s ease; }
+.activitySwitch[aria-checked="true"] span { transform: translateX(20px); }
+.stack button:focus-visible, .calendarViewport:focus-visible { outline: 3px solid #087f8c; outline-offset: 3px; }
+.row button[aria-pressed="true"] { background: #e9f4f3; color: #075b64; border-color: #087f8c; font-weight: 700; }
+.calendarViewport { overflow-x: auto; max-width: 100%; border: 1px solid #dbe2e8; border-radius: 10px; margin: 18px 0; overscroll-behavior-inline: contain; }
+.calendarWeek { display: grid; grid-template-columns: repeat(7, minmax(124px, 1fr)); min-width: 868px; }
+.calendarDay { min-width: 0; border-right: 1px solid #dbe2e8; }
+.calendarDay:last-child { border-right: 0; }
+.calendarDay h3 { background: #f4f7f8; padding: 14px 8px; border-bottom: 1px solid #dbe2e8; margin: 0; text-align: center; font-size: .9rem; }
+.calendarSessions { display: grid; align-content: start; gap: 10px; min-height: 190px; padding: 10px 8px; }
+.calendarSessions > p { font-size: .85rem; text-align: center; }
+.calendarSession { display: grid; gap: 7px; border: 1px solid #97c7c2; border-left: 4px solid #087f8c; border-radius: 8px; background: #e9f4f3; color: #075b64; padding: 10px 6px; font-size: .78rem; overflow-wrap: anywhere; }
+.calendarSession strong { white-space: nowrap; font-size: .8rem; }
+.calendarSession button { padding: 6px; font-size: .8rem; }
+.inactiveSession { background: #f4f7f8; color: #4b5866; border: 1px dashed #81909f; border-left: 4px solid #81909f; }
+.calendarEmpty { background: #f7fafb; border: 1px dashed #bdc9d2; border-radius: 10px; text-align: center; padding: 24px; margin: 18px 0; }
+.calendarEmpty > span { display: inline-block; font-size: 2rem; color: #087f8c; margin-bottom: 10px; }
+.skeleton { background: linear-gradient(90deg, #edf1f3, #f8fafb, #edf1f3); background-size: 200% 100%; animation: shimmer 1.5s ease-in-out infinite; border-radius: 10px; min-height: 110px; margin: 18px 0; padding: 18px; color: #4b5866; }
+@keyframes shimmer { to { background-position: -200% 0; } }
+@media (prefers-reduced-motion: reduce) { .skeleton { animation: none; } .activitySwitch span { transition: none; } }
+@media (max-width: 600px) { .card { padding: 18px; } .doctorRow { gap: 6px; } .activityControl { width: 100%; justify-content: space-between; padding: 4px 14px; } }
