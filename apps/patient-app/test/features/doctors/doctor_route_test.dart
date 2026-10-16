@@ -5,6 +5,8 @@ import 'package:clinic_patient_app/core/api/clinic_api_client.dart';
 import 'package:clinic_patient_app/core/session/session.dart';
 import 'package:clinic_patient_app/features/appointments/booking_confirmation_sheet.dart';
 import 'package:clinic_patient_app/features/doctors/doctor_directory_page.dart';
+import 'package:clinic_patient_app/features/doctors/doctor_detail_page.dart';
+import 'package:clinic_patient_app/features/doctors/doctor_models.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -29,6 +31,7 @@ void main() {
     final paths = <String>[];
     var created = false;
     var listReads = 0;
+    final bookingDate = clinicDate(DateTime.now().add(const Duration(days: 1)));
     final api = ClinicApiClient(
       tokenProvider: _PatientSession(),
       transport: MockClient((request) async {
@@ -59,8 +62,8 @@ void main() {
                             'id': 'appointment-1',
                             'doctorId': 'doctor-1',
                             'status': 'PENDING',
-                            'scheduledStartAt': '2030-01-07T01:00:00Z',
-                            'scheduledEndAt': '2030-01-07T01:30:00Z',
+                            'scheduledStartAt': '${bookingDate}T01:00:00Z',
+                            'scheduledEndAt': '${bookingDate}T01:30:00Z',
                             'reason': 'Khám tổng quát',
                           }
                         ]
@@ -88,6 +91,7 @@ void main() {
                   'id': 'doctor-1',
                   'specialtyId': 'specialty-1',
                   'displayName': 'Bác sĩ An',
+                  'isActive': true,
                 }
               ],
               'page': 1,
@@ -98,11 +102,19 @@ void main() {
               'id': 'doctor-1',
               'specialtyId': 'specialty-1',
               'displayName': 'Bác sĩ An',
+              'isActive': true,
+            },
+          '/api/v1/doctors/doctor-1/schedules' => {
+              'items': <Object>[],
+              'page': 1,
+              'limit': 100,
+              'total': 0,
             },
           '/api/v1/doctors/doctor-1/available-slots' => [
               {
-                'startAt': '2030-01-07T01:00:00.000Z',
-                'endAt': '2030-01-07T01:30:00.000Z',
+                'startAt':
+                    '${request.url.queryParameters['date']}T01:00:00.000Z',
+                'endAt': '${request.url.queryParameters['date']}T01:30:00.000Z',
               },
             ],
           _ =>
@@ -126,13 +138,21 @@ void main() {
     expect(find.text('Bác sĩ An'), findsOneWidget);
     await tester.tap(find.text('Bác sĩ An'));
     await tester.pumpAndSettle();
+    await tester.scrollUntilVisible(find.byTooltip('Ngày tiếp theo'), 240,
+        scrollable: find
+            .descendant(
+                of: find.byType(DoctorDetailPage),
+                matching: find.byType(Scrollable))
+            .first);
+    await tester.tap(find.byTooltip('Ngày tiếp theo'));
+    await tester.pumpAndSettle();
     final slot = find.text('08:00–08:30');
     await tester.scrollUntilVisible(
       slot,
       240,
       scrollable: find
           .descendant(
-            of: find.byType(DoctorDirectoryPage),
+            of: find.byType(DoctorDetailPage),
             matching: find.byType(Scrollable),
           )
           .first,
