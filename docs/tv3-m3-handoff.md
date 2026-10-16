@@ -36,9 +36,10 @@ or force push is part of this work.
 
 ## Required review and integration before acceptance
 
-1. TV1: review the native browser `fetch` receiver fix in the shared API client and
-   Flutter `qr_flutter`/lockfile additions. Shared API client, shell and router
-   ownership remain with TV1.
+1. TV1: review the native browser `fetch` receiver fix in the shared API client,
+   booking-success navigation/refresh hooks in Flutter `app_routes.dart` and
+   `patient_shell.dart`, and the `qr_flutter`/lockfile additions. Shared API client,
+   shell and router ownership remain with TV1.
 2. TV1: supply actual `HorizontalDateStrip`, `SlotGridSelector` and `QrTicketCard`.
    TV3 currently retains domain-local controls/library rendering with typed injection
    boundaries. Synthetic-provider tests do not establish real provider integration.
