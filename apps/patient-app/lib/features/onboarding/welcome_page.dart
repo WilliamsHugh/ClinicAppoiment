@@ -1,23 +1,106 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_theme.dart';
+import '../auth/auth_page.dart';
 
-/// Màn hình Welcome / Onboarding - bám sát hình giữa trong mobile_ui.png
-/// Nền xanh #2D5BFF, tiêu đề "We'll help you take care of yourself",
-/// card "Doctor Consultations" nghiêng nhẹ + nút mũi tên.
-class WelcomePage extends StatelessWidget {
-  const WelcomePage({super.key, this.onGetStarted});
+class OnboardingSlideData {
+  const OnboardingSlideData({
+    required this.title,
+    required this.description,
+    required this.icon,
+    required this.badgeLabel,
+  });
+
+  final String title;
+  final String description;
+  final IconData icon;
+  final String badgeLabel;
+}
+
+const List<OnboardingSlideData> kOnboardingSlides = [
+  OnboardingSlideData(
+    title: 'Đặt lịch khám dễ dàng',
+    description: 'Chọn bác sĩ, chuyên khoa, ngày giờ phù hợp.',
+    icon: Icons.calendar_month_rounded,
+    badgeLabel: 'Doctor Consultations',
+  ),
+  OnboardingSlideData(
+    title: 'Theo dõi lịch hẹn',
+    description: 'Xem vé khám, QR check-in, đổi/hủy lịch linh hoạt.',
+    icon: Icons.qr_code_scanner_rounded,
+    badgeLabel: 'Smart Check-in QR',
+  ),
+  OnboardingSlideData(
+    title: 'Hồ sơ sức khỏe của bạn',
+    description: 'Xem bệnh án, đơn thuốc, tiền sử khám bệnh.',
+    icon: Icons.health_and_safety_rounded,
+    badgeLabel: 'Electronic Records',
+  ),
+];
+
+/// Màn hình Welcome / Onboarding 3 slides với PageView, dot indicator và nút "Bắt đầu".
+class WelcomePage extends StatefulWidget {
+  const WelcomePage({
+    super.key,
+    this.onGetStarted,
+    this.onLogin,
+    this.onRegister,
+  });
 
   final VoidCallback? onGetStarted;
+  final Future<void> Function(String email, String password)? onLogin;
+  final Future<bool> Function(String name, String email, String password)?
+      onRegister;
+
+  @override
+  State<WelcomePage> createState() => _WelcomePageState();
+}
+
+class _WelcomePageState extends State<WelcomePage> {
+  final PageController _pageController = PageController();
+  int _currentIndex = 0;
+
+  @override
+  void dispose() {
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  void _completeOnboarding() {
+    if (widget.onGetStarted != null) {
+      widget.onGetStarted!();
+      return;
+    }
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute<void>(
+        builder: (_) => AuthPage(
+          onLogin: widget.onLogin ?? (_, __) async {},
+          onRegister: widget.onRegister ?? (_, __, ___) async => false,
+        ),
+      ),
+    );
+  }
+
+  void _nextSlide() {
+    if (_currentIndex < kOnboardingSlides.length - 1) {
+      _pageController.nextPage(
+        duration: const Duration(milliseconds: 280),
+        curve: Curves.easeOutCubic,
+      );
+    } else {
+      _completeOnboarding();
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
+    final isLastSlide = _currentIndex == kOnboardingSlides.length - 1;
+
     return Scaffold(
       backgroundColor: ClinicColors.primary,
       body: SafeArea(
         child: Stack(
           children: [
-            // Decorative elements giống hình Figma
             Positioned(
               top: 24,
               left: 18,
@@ -49,7 +132,6 @@ class WelcomePage extends StatelessWidget {
                 ),
               ),
             ),
-            // Line art mờ phía trên (mô phỏng đường cong trong hình)
             Positioned(
               top: 8,
               left: 0,
@@ -59,24 +141,25 @@ class WelcomePage extends StatelessWidget {
                 painter: _LineArtPainter(),
               ),
             ),
-            // Nội dung chính
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
               child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  // Status bar fake spacing + logo header
                   Row(
                     children: [
-                      // Logo 3 sóng
                       Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 10, vertical: 6),
+                          horizontal: 10,
+                          vertical: 6,
+                        ),
                         child: Row(
                           children: [
-                            // icon sóng
-                            const Icon(Icons.waves,
-                                color: Colors.white, size: 20),
+                            const Icon(
+                              Icons.waves,
+                              color: Colors.white,
+                              size: 20,
+                            ),
                             const SizedBox(width: 6),
                             Text(
                               'Health&Human',
@@ -91,126 +174,68 @@ class WelcomePage extends StatelessWidget {
                         ),
                       ),
                       const Spacer(),
-                    ],
-                  ),
-                  const SizedBox(height: 28),
-                  // Headline
-                  const Text(
-                    'We\'ll help you\ntake care of\nyourself',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 30,
-                      height: 1.12,
-                      fontWeight: FontWeight.w800,
-                      letterSpacing: -0.6,
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  // Yellow star
-                  Align(
-                    alignment: Alignment.centerRight,
-                    child: Padding(
-                      padding: const EdgeInsets.only(right: 24),
-                      child: Transform.rotate(
-                        angle: 0.18,
-                        child: const Icon(
-                          Icons.star,
-                          color: Color(0xFFFFD600),
-                          size: 42,
-                        ),
-                      ),
-                    ),
-                  ),
-                  const Spacer(),
-                  // Card Doctor Consultations (trắng, xoay nhẹ)
-                  Center(
-                    child: Transform.rotate(
-                      angle: -0.07,
-                      child: Container(
-                        width: 250,
-                        padding: const EdgeInsets.fromLTRB(18, 18, 18, 16),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(18),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: 0.16),
-                              blurRadius: 24,
-                              offset: const Offset(0, 12),
-                            ),
-                          ],
-                        ),
-                        child: const Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Doctor\nConsultations',
-                              style: TextStyle(
-                                fontSize: 20,
-                                fontWeight: FontWeight.w800,
-                                height: 1.1,
-                                letterSpacing: -0.4,
-                                color: ClinicColors.ink,
-                              ),
-                            ),
-                            SizedBox(height: 16),
-                            Row(
-                              children: [
-                                _AvatarMini(
-                                    color: Color(0xFFBFD0FF), label: 'S'),
-                                SizedBox(width: 8),
-                                _AvatarMini(
-                                    color: Color(0xFFFFD6C8), label: 'A'),
-                                SizedBox(width: 8),
-                                _AvatarMini(
-                                    color: Color(0xFFBCE8FF), label: 'J'),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ),
-                  const Spacer(),
-                  // Decor shape dưới card (tam giác xanh đậm)
-                  Stack(
-                    clipBehavior: Clip.none,
-                    children: [
-                      // Fake bottom round container hint already via card above
-                      Align(
-                        alignment: Alignment.bottomRight,
-                        child: Padding(
-                          padding: const EdgeInsets.only(right: 4, bottom: 8),
-                          child: Container(
-                            width: 56,
-                            height: 56,
-                            decoration: const BoxDecoration(
-                              color: Colors.black,
-                              shape: BoxShape.circle,
-                            ),
-                            child: const Icon(
-                              Icons.arrow_outward,
-                              color: Colors.white,
-                              size: 26,
-                            ),
+                      if (!isLastSlide)
+                        TextButton(
+                          onPressed: _completeOnboarding,
+                          style: TextButton.styleFrom(
+                            foregroundColor: Colors.white,
                           ),
+                          child: const Text('Bỏ qua'),
                         ),
-                      ),
                     ],
                   ),
-                  const SizedBox(height: 8),
-                  if (onGetStarted != null)
-                    SizedBox(
-                      width: double.infinity,
-                      child: FilledButton(
-                        style: FilledButton.styleFrom(
-                          backgroundColor: Colors.white,
-                          foregroundColor: ClinicColors.primary,
-                        ),
-                        onPressed: onGetStarted,
-                        child: const Text('Get Started'),
-                      ),
+                  Expanded(
+                    child: PageView.builder(
+                      key: const Key('onboarding-page-view'),
+                      controller: _pageController,
+                      itemCount: kOnboardingSlides.length,
+                      onPageChanged: (index) {
+                        setState(() => _currentIndex = index);
+                      },
+                      itemBuilder: (context, index) {
+                        final slide = kOnboardingSlides[index];
+                        return _OnboardingSlideView(slide: slide);
+                      },
                     ),
+                  ),
+                  const SizedBox(height: 16),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: List.generate(kOnboardingSlides.length, (index) {
+                      final active = index == _currentIndex;
+                      return AnimatedContainer(
+                        key: Key('onboarding-dot-$index'),
+                        duration: const Duration(milliseconds: 220),
+                        margin: const EdgeInsets.symmetric(horizontal: 4),
+                        width: active ? 24 : 8,
+                        height: 8,
+                        decoration: BoxDecoration(
+                          color: active
+                              ? const Color(0xFF00E5CC)
+                              : Colors.white.withValues(alpha: 0.35),
+                          borderRadius: BorderRadius.circular(99),
+                        ),
+                      );
+                    }),
+                  ),
+                  const SizedBox(height: 20),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      key: Key(
+                        isLastSlide
+                            ? 'onboarding-start-button'
+                            : 'onboarding-next-button',
+                      ),
+                      style: FilledButton.styleFrom(
+                        backgroundColor: Colors.white,
+                        foregroundColor: ClinicColors.primary,
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                      ),
+                      onPressed: isLastSlide ? _completeOnboarding : _nextSlide,
+                      child: Text(isLastSlide ? 'Bắt đầu' : 'Tiếp tục'),
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -221,29 +246,97 @@ class WelcomePage extends StatelessWidget {
   }
 }
 
-class _AvatarMini extends StatelessWidget {
-  const _AvatarMini({required this.color, required this.label});
-  final Color color;
-  final String label;
+class _OnboardingSlideView extends StatelessWidget {
+  const _OnboardingSlideView({required this.slide});
+
+  final OnboardingSlideData slide;
+
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: 42,
-      height: 42,
-      decoration: BoxDecoration(
-        color: color,
-        shape: BoxShape.circle,
-        border: Border.all(color: Colors.white, width: 2),
-      ),
-      alignment: Alignment.center,
-      child: Text(
-        label,
-        style: const TextStyle(
-          fontWeight: FontWeight.w700,
-          fontSize: 12,
-          color: ClinicColors.ink,
-        ),
-      ),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        return SingleChildScrollView(
+          child: ConstrainedBox(
+            constraints: BoxConstraints(minHeight: constraints.maxHeight),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                const SizedBox(height: 12),
+                Transform.rotate(
+                  angle: -0.04,
+                  child: Container(
+                    width: 240,
+                    padding: const EdgeInsets.all(22),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(24),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: 0.16),
+                          blurRadius: 24,
+                          offset: const Offset(0, 12),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      children: [
+                        Container(
+                          width: 72,
+                          height: 72,
+                          decoration: BoxDecoration(
+                            color: ClinicColors.primary.withValues(alpha: 0.12),
+                            shape: BoxShape.circle,
+                          ),
+                          child: Icon(
+                            slide.icon,
+                            size: 40,
+                            color: ClinicColors.primary,
+                          ),
+                        ),
+                        const SizedBox(height: 14),
+                        Text(
+                          slide.badgeLabel,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                            color: ClinicColors.ink,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 28),
+                Text(
+                  slide.title,
+                  textAlign: TextAlign.center,
+                  style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 26,
+                    height: 1.2,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.4,
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 12),
+                  child: Text(
+                    slide.description,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Colors.white.withValues(alpha: 0.9),
+                      fontSize: 15,
+                      height: 1.45,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
     );
   }
 }
@@ -256,28 +349,26 @@ class _LineArtPainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeWidth = 1.2;
 
-    final path = Path();
-    // đường cong lớn như trong hình giữa
-    path.moveTo(size.width * 0.38, 10);
-    path.cubicTo(
-      size.width * 0.55,
-      8,
-      size.width * 0.58,
-      26,
-      size.width * 0.48,
-      52,
-    );
-    path.cubicTo(
-      size.width * 0.40,
-      74,
-      size.width * 0.62,
-      78,
-      size.width * 0.72,
-      62,
-    );
+    final path = Path()
+      ..moveTo(size.width * 0.38, 10)
+      ..cubicTo(
+        size.width * 0.55,
+        8,
+        size.width * 0.58,
+        26,
+        size.width * 0.48,
+        52,
+      )
+      ..cubicTo(
+        size.width * 0.40,
+        74,
+        size.width * 0.62,
+        78,
+        size.width * 0.72,
+        62,
+      );
     canvas.drawPath(path, paint);
 
-    // vòng tròn nhỏ mờ
     final dotPaint = Paint()
       ..color = Colors.white.withValues(alpha: 0.18)
       ..style = PaintingStyle.stroke
