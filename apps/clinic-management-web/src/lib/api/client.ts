@@ -95,7 +95,7 @@ export class ApiClient {
 
   constructor(private readonly options: ApiClientOptions) {
     this.baseUrl = options.baseUrl.replace(/\/$/, "");
-    this.fetcher = options.fetcher ?? fetch;
+    this.fetcher = options.fetcher ?? globalThis.fetch.bind(globalThis);
     this.timeoutMs = options.timeoutMs ?? 10_000;
   }
 
@@ -201,3 +201,33 @@ export function createBrowserApiClient(
     session
   });
 }
+
+/** Formats any caught API error into a friendly Vietnamese message */
+export function toUserFriendlyError(caught: unknown, fallback = "Đã xảy ra lỗi khi kết nối hệ thống."): string {
+  if (caught instanceof ApiClientError) {
+    if (caught.code === "APPOINTMENT_SLOT_UNAVAILABLE") {
+      return "Khung giờ này vừa có người đặt. Vui lòng chọn khung giờ khác.";
+    }
+    if (caught.status === 401) {
+      return "Phiên đăng nhập đã hết hạn. Vui lòng đăng nhập lại.";
+    }
+    if (caught.status === 403) {
+      return "Bạn không có quyền thực hiện thao tác này.";
+    }
+    if (caught.status === 404) {
+      return "Không tìm thấy dữ liệu yêu cầu.";
+    }
+    if (caught.status === 409) {
+      return caught.message || "Xung đột dữ liệu. Vui lòng thử lại.";
+    }
+    if (caught.status >= 500) {
+      return "Dịch vụ máy chủ tạm thời không khả dụng. Vui lòng thử lại sau.";
+    }
+    return caught.message || fallback;
+  }
+  if (caught instanceof Error) {
+    return caught.message || fallback;
+  }
+  return fallback;
+}
+
