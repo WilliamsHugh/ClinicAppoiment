@@ -1,13 +1,45 @@
 :root {
   color-scheme: light;
+  /* Text and neutrals */
   --ink: #17202a;
   --muted: #637083;
+  --muted-light: #94a3b8;
   --line: #dbe2e8;
   --surface: #ffffff;
+  --surface-subtle: #f8fafc;
   --canvas: #f4f7f8;
+
+  /* Primary Brand (Teal/Blue healthcare) */
   --brand: #087f8c;
   --brand-dark: #075b64;
-  --danger: #a33b3b;
+  --brand-light: #e6f4f5;
+  --primary: #087f8c;
+  --primary-hover: #075b64;
+  --primary-light: #e6f4f5;
+  --primary-text: #054b52;
+
+  /* Status Colors */
+  --success: #10b981;
+  --success-light: #ecfdf5;
+  --success-text: #065f46;
+  --warning: #f59e0b;
+  --warning-light: #fffbeb;
+  --warning-text: #92400e;
+  --danger: #ef4444;
+  --danger-light: #fef2f2;
+  --danger-text: #991b1b;
+  --info: #0284c7;
+  --info-light: #f0f9ff;
+  --info-text: #075985;
+
+  /* Radius & Shadows */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-full: 9999px;
+  --shadow-sm: 0 1px 2px 0 rgb(0 0 0 / 0.05);
+  --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+  --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
 }
 
 * { box-sizing: border-box; }

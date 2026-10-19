@@ -9,12 +9,26 @@ abstract final class ClinicColors {
   static const primaryDark = Color(0xFF1E4FE0);
   // Màu thẻ / search
   static const card = Color(0xFFFFFFFF);
+  static const surfaceSubtle = Color(0xFFF8FAFC);
   // Màu text
   static const ink = Color(0xFF0F172A);
   static const muted = Color(0xFF64748B);
   static const mutedLight = Color(0xFF94A3B8);
   // Viền nhạt
   static const border = Color(0xFFE2E8F0);
+  // Trạng thái y tế (Health&Human semantic status colors)
+  static const success = Color(0xFF10B981);
+  static const successLight = Color(0xFFECFDF5);
+  static const successDark = Color(0xFF047857);
+  static const warning = Color(0xFFF59E0B);
+  static const warningLight = Color(0xFFFFFBEB);
+  static const warningDark = Color(0xFFB45309);
+  static const danger = Color(0xFFEF4444);
+  static const dangerLight = Color(0xFFFEF2F2);
+  static const dangerDark = Color(0xFFB91C1C);
+  static const info = Color(0xFF0284C7);
+  static const infoLight = Color(0xFFF0F9FF);
+  static const infoDark = Color(0xFF075985);
   // Star
   static const star = Color(0xFF0F172A);
   static const starGold = Color(0xFFF59E0B);
@@ -27,6 +41,8 @@ ThemeData buildPatientTheme() {
     seedColor: seed,
     primary: ClinicColors.primary,
     surface: ClinicColors.scaffold,
+    error: ClinicColors.danger,
+    surfaceContainerHighest: ClinicColors.surfaceSubtle,
   );
   return ThemeData(
     colorScheme: scheme,
