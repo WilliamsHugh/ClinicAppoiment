@@ -2,6 +2,23 @@ import 'package:flutter/material.dart';
 
 import '../../../core/session/session.dart';
 
+final RegExp _emailFormatRegex = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
+
+String? validateAuthEmail(String? value) {
+  final trimmed = value?.trim() ?? '';
+  if (trimmed.isEmpty || !_emailFormatRegex.hasMatch(trimmed)) {
+    return 'Email không hợp lệ';
+  }
+  return null;
+}
+
+String? validateAuthPassword(String? value) {
+  if (value == null || value.length < 8) {
+    return 'Mật khẩu phải có ít nhất 8 ký tự';
+  }
+  return null;
+}
+
 class LoginForm extends StatefulWidget {
   const LoginForm({required this.onSubmit, super.key});
   final Future<void> Function(String email, String password) onSubmit;
@@ -48,56 +65,57 @@ class _LoginFormState extends State<LoginForm> {
   Widget build(BuildContext context) {
     return Form(
       key: _formKey,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          TextFormField(
-            controller: _email,
-            keyboardType: TextInputType.emailAddress,
-            decoration: const InputDecoration(
-              hintText: 'Email',
-              prefixIcon: Icon(Icons.mail_outline, size: 18),
-            ),
-            validator: (v) =>
-                (v == null || !v.contains('@')) ? 'Email không hợp lệ' : null,
-          ),
-          const SizedBox(height: 12),
-          TextFormField(
-            controller: _pass,
-            obscureText: _obscure,
-            decoration: InputDecoration(
-              hintText: 'Mật khẩu',
-              prefixIcon: const Icon(Icons.lock_outline, size: 18),
-              suffixIcon: IconButton(
-                icon: Icon(_obscure ? Icons.visibility_off : Icons.visibility,
-                    size: 18),
-                onPressed: () => setState(() => _obscure = !_obscure),
+      autovalidateMode: AutovalidateMode.onUserInteraction,
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            TextFormField(
+              controller: _email,
+              keyboardType: TextInputType.emailAddress,
+              decoration: const InputDecoration(
+                hintText: 'Email',
+                prefixIcon: Icon(Icons.mail_outline, size: 18),
               ),
+              validator: validateAuthEmail,
             ),
-            validator: (v) =>
-                (v == null || v.length < 6) ? 'Tối thiểu 6 ký tự' : null,
-          ),
-          const SizedBox(height: 8),
-          const Align(
-            alignment: Alignment.centerRight,
-            child: SizedBox.shrink(),
-          ),
-          const SizedBox(height: 4),
-          if (_errorMessage case final message?) ...[
-            _AuthErrorMessage(key: const Key('login-error'), message: message),
             const SizedBox(height: 12),
+            TextFormField(
+              controller: _pass,
+              obscureText: _obscure,
+              decoration: InputDecoration(
+                hintText: 'Mật khẩu',
+                prefixIcon: const Icon(Icons.lock_outline, size: 18),
+                suffixIcon: IconButton(
+                  icon: Icon(
+                    _obscure ? Icons.visibility_off : Icons.visibility,
+                    size: 18,
+                  ),
+                  onPressed: () => setState(() => _obscure = !_obscure),
+                ),
+              ),
+              validator: validateAuthPassword,
+            ),
+            const SizedBox(height: 12),
+            if (_errorMessage case final message?) ...[
+              _AuthErrorMessage(key: const Key('login-error'), message: message),
+              const SizedBox(height: 12),
+            ],
+            FilledButton(
+              onPressed: _loading ? null : _handle,
+              child: _loading
+                  ? const SizedBox(
+                      height: 18,
+                      width: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Text('Đăng nhập'),
+            ),
           ],
-          FilledButton(
-            onPressed: _loading ? null : _handle,
-            child: _loading
-                ? const SizedBox(
-                    height: 18,
-                    width: 18,
-                    child: CircularProgressIndicator(
-                        strokeWidth: 2, color: Colors.white))
-                : const Text('Đăng nhập'),
-          ),
-        ],
+        ),
       ),
     );
   }
