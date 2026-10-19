@@ -54,10 +54,10 @@ Clinic assistant means `STAFF`; do not add an `ASSISTANT` role. There is no Pati
 staff mode in the patient app, or third frontend. ADMIN has administrative permissions,
 not automatic permission to edit diagnoses. Services enforce access independently of UI.
 
-The brand is **Health&Human**. Visual design is awaiting approval. Existing screens,
-navigation, colors, component layouts and design proposals are not an approved visual
-baseline. Do not undertake UI redesign during a backend task. Read
-`docs/ui-design-contract.md` for context; its visual/navigation proposals remain provisional.
+The brand is **Health&Human**. Visual design is officially approved based on the
+Anima/Figma Design Board. All UI implementations must strictly adhere to the approved
+contract in `docs/ui-design-contract.md` (tokens, colors `#2D5BFF`, layout and component contracts).
+Do not invent alternative color schemes or unapproved visual styles.
 Preserve existing consumer compatibility or document and coordinate API changes.
 
 ## 3. Start Every Task With Evidence

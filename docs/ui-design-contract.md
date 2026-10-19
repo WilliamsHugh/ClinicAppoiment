@@ -1,14 +1,14 @@
 # Health&Human UI Design Contract
 
-> **Status:** Mandatory architecture/platform boundaries; visual design pending approval
+> **Status:** APPROVED VISUAL DESIGN CONTRACT (Figma / Anima Design Board `Health&Human`)
 > **Audience:** Team members and AI agents designing or implementing UI
 > **Applies to:** Flutter Patient App and Next.js Clinic Management Web
 > **Related contracts:** `docs/system-design.md` and `docs/api-contract.md`
 
-> **Current milestone clarification:** Flutter serves `PATIENT` only; Next.js serves
-> `DOCTOR`, `STAFF`, and `ADMIN`. Visual styling, navigation composition and component
-> designs below are provisional guidance, not approved designs or current backend
-> acceptance criteria. Do not infer visual approval from existing screens. Follow
+> **Milestone enforcement:** Flutter serves `PATIENT` only; Next.js serves
+> `DOCTOR`, `STAFF`, and `ADMIN`. All UI implementations across Web and Mobile
+> MUST strictly adhere to the approved tokens, layout specifications, and component
+> patterns defined in this contract and the connected Anima/Figma design boards. Follow
 > [agent rules](../.agents/rules.md) when implementing or coordinating changes.
 
 ## 1. Purpose and authority
@@ -198,32 +198,63 @@ Use backend status names as the semantic source of truth:
 
 ## 8. Visual system
 
-Agents may evolve the visual design, but both products must share recognizable Health&Human identity.
+The visual design is officially approved based on the Health&Human Figma / Anima Design Board. Both Flutter (Patient App) and Next.js (Clinic Management Web) MUST strictly follow these tokens and layout specifications.
 
-### 8.1 Brand direction
+### 8.1 Approved Design Tokens (Anima/Figma Contract)
 
-- Product name: `Health&Human`.
-- Primary identity may retain the existing healthcare blue (`#2D5BFF`) but must include neutral,
-  success, warning, and danger families. Do not create a one-color blue/purple interface.
-- Avoid decorative gradients, floating color blobs, bokeh, or purely atmospheric healthcare imagery.
-- Use actual doctor/clinic/product content when imagery is required. Do not obscure inspectable content.
-- Text and icons must meet accessible contrast against their backgrounds.
+All color tokens, radii, and typographic scales are defined centrally and must not be altered:
 
-### 8.2 Tokens
+| Token Name | CSS Variable (`globals.css`) | Flutter Token (`ClinicColors`) | Value / Hex | Usage / Intent |
+|---|---|---|---|---|
+| **Primary** | `--color-primary` | `ClinicColors.primary` | `#2D5BFF` (rgba 45, 91, 255, 1) | Primary buttons, active nav, focus rings, brand badges |
+| **Primary Soft** | `--color-primary-soft` | `ClinicColors.primarySoft` | `#E9EEFF` (rgba 233, 238, 255, 1) | Active menu background, avatar background, soft pill chips |
+| **Canvas** | `--color-canvas` | `ClinicColors.scaffold` | `#F5F7FA` (rgba 245, 247, 250, 1) | Page background for both web and mobile screens |
+| **Surface** | `--color-surface` | `ClinicColors.card` | `#FFFFFF` (rgba 255, 255, 255, 1) | Card background, sidebar background, modal background |
+| **Surface Subtle** | `--color-surface-subtle` | `ClinicColors.surfaceSubtle` | `#EEF2F7` (rgba 238, 242, 247, 1) | Read-only input backgrounds, table headers, switch track |
+| **Border** | `--color-border` | `ClinicColors.border` | `#D9E0EA` (rgba 217, 224, 234, 1) | Card borders, dividers, input borders |
+| **Text** | `--color-text` | `ClinicColors.ink` | `#0F172A` (rgba 15, 23, 42, 1) | Main headlines, body copy, active labels |
+| **Text Muted** | `--color-text-muted` | `ClinicColors.muted` | `#5A6577` (rgba 90, 101, 119, 1) | Secondary captions, subtext, timestamp notes |
+| **Success** | `--color-success` | `ClinicColors.success` | `#15803D` (rgba 21, 128, 61, 1) | Completed status, active badges, success states |
+| **Success Soft** | `--color-success-soft` | `ClinicColors.successLight` | `#E3F6E9` (rgba 227, 246, 233, 1) | Success pill background |
+| **Warning** | `--color-warning` | `ClinicColors.warning` | `#B45309` (rgba 180, 83, 9, 1) | Pending appointments, warning status |
+| **Warning Soft** | `--color-warning-soft` | `ClinicColors.warningLight` | `#FEF3C7` (rgba 254, 243, 199, 1) | Warning pill background |
+| **Danger** | `--color-danger` | `ClinicColors.danger` | `#B91C1C` (rgba 185, 28, 28, 1) | Cancelled status, destructive buttons, logout |
+| **Danger Soft** | `--color-danger-soft` | `ClinicColors.dangerLight` | `#FEE2E2` (rgba 254, 226, 226, 1) | Error / danger pill background |
 
-Define tokens centrally rather than scattering literals:
+#### Radii & Metrics
 
-- Color: canvas, surface, surface-subtle, border, text, text-muted, primary, success, warning, danger.
-- Spacing: a consistent 4 px base scale.
-- Typography: body, label, title, page title; no viewport-based font scaling and no negative letter spacing.
-- Shape: web controls/cards should generally be 4-8 px radius; mobile controls may use 8-16 px where
-  touch ergonomics benefit. Avoid pill shapes except chips, segmented filters, and statuses.
-- Elevation: restrained; use borders and hierarchy before shadows.
-- Motion: short and functional, with reduced-motion support on web where applicable.
+- **Web Radius:** `6px` (`rounded-md`, `--radius-web: 6px`) - Used for web inputs, buttons, and section cards.
+- **Mobile Radius:** `12px` (`rounded-xl`, `--radius-mobile: 12px`) - Used for mobile cards and inputs.
+- **Pill Radius:** `999px` (`rounded-full`, `--radius-pill: 999px`) - Strictly for status chips, tags, and badges.
+- **Spacing scale:** 4 px increments: `4px` (space-1), `8px` (space-2), `12px` (space-3), `16px` (space-4), `20px` (space-5), `24px` (space-6), `32px` (space-8).
 
-Flutter tokens belong under `lib/core/theme/`. Web tokens belong in the shared stylesheet/design
-system layer, not inside individual route files. A redesign should migrate repeated inline styles into
-shared tokens/components without mixing business logic into shared packages.
+#### Typography Scale (Font: `Inter`, Helvetica)
+
+- **Web Page Title:** `24px`, weight `600`, line-height `32px`
+- **Web Section Title:** `18px`, weight `600`, line-height `28px`
+- **Web Body:** `14px`, weight `400`, line-height `20px`
+- **Web Label / Meta:** `12px` - `13px`, weight `500`, line-height `16px` - `18px`
+- **Mobile Page Title:** `22px`, weight `600`, line-height `30px`
+- **Mobile Section Title:** `17px`, weight `600`, line-height `24px`
+- **Mobile Body:** `15px`, weight `400`, line-height `22px`
+- **Mobile Label:** `13px`, weight `500`, line-height `18px`
+
+### 8.2 Layout Specifications
+
+#### Web Application Shell (`AppShell` & `ApplicationSidebarSection`)
+- **Sidebar Structure:**
+  - Fixed width: `232px`, full-height (`min-h-screen`), background: `#FFFFFF` (`--color-surface`), right border: `1px solid #D9E0EA`.
+  - Header: Health&Human logo (32x32) + brand name (16px, weight 600, `#0F172A`).
+  - Navigation: Vertical list of nav buttons (`h-10`, rounded-md `6px`, padding `0 12px`). Active state uses background `#E9EEFF` and text/icon color `#2D5BFF`.
+  - Footer Profile Box: Fixed at the bottom of the sidebar, background `#E9EEFF`, containing user avatar badge (circular `36x36`, initials in bold `#2D5BFF`), full name (`13px`, bold `#0F172A`), role subtitle (`12px`, muted `#5A6577`), and a quick logout button.
+- **Main Header Bar:**
+  - Compact height: `56px` (`h-14`), background `#FFFFFF`, bottom border `1px solid #D9E0EA`, padding `0 24px`.
+  - Displays localized real-time operational date/time and timezone (e.g., `Thứ Năm, 01/10/2026 · Múi giờ GMT+7`) and notification popover slot.
+
+#### Patient Mobile App Layout
+- Canvas background `#F5F7FA` with white rounded cards (`12px` radius) and subtle borders `#D9E0EA`.
+- Bottom navigation with 5 primary destinations (`Doctors`, `Appointments`, `Records`, `Notifications`, `Profile`).
+- Primary actions (like booking submission, confirmations) use full-width primary buttons with `#2D5BFF` and white text.
 
 ### 8.3 Typography and language
 

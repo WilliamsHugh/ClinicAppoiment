@@ -1,31 +1,32 @@
 import 'package:flutter/material.dart';
 
-/// Palette trích xuất chính xác từ mobile_ui.png
+/// Bảng màu chuẩn phê duyệt từ Anima / Figma Design Board `Health&Human`
 abstract final class ClinicColors {
-  // Background tổng thể (hơi xanh rất nhạt như trong hình)
-  static const scaffold = Color(0xFFEAF0FF);
-  // Màu xanh primary của Figma - dùng cho chip, nút Book Session, welcome screen
+  // Background canvas tổng thể
+  static const scaffold = Color(0xFFF5F7FA);
+  // Màu xanh primary của Figma/Anima - dùng cho button, active chip, link
   static const primary = Color(0xFF2D5BFF);
+  static const primarySoft = Color(0xFFE9EEFF);
   static const primaryDark = Color(0xFF1E4FE0);
-  // Màu thẻ / search
+  // Màu thẻ / surface
   static const card = Color(0xFFFFFFFF);
-  static const surfaceSubtle = Color(0xFFF8FAFC);
+  static const surfaceSubtle = Color(0xFFEEF2F7);
   // Màu text
   static const ink = Color(0xFF0F172A);
-  static const muted = Color(0xFF64748B);
+  static const muted = Color(0xFF5A6577);
   static const mutedLight = Color(0xFF94A3B8);
-  // Viền nhạt
-  static const border = Color(0xFFE2E8F0);
-  // Trạng thái y tế (Health&Human semantic status colors)
-  static const success = Color(0xFF10B981);
-  static const successLight = Color(0xFFECFDF5);
+  // Viền border chuẩn
+  static const border = Color(0xFFD9E0EA);
+  // Trạng thái y tế (Health&Human semantic status colors từ Anima tokens)
+  static const success = Color(0xFF15803D);
+  static const successLight = Color(0xFFE3F6E9);
   static const successDark = Color(0xFF047857);
-  static const warning = Color(0xFFF59E0B);
-  static const warningLight = Color(0xFFFFFBEB);
-  static const warningDark = Color(0xFFB45309);
-  static const danger = Color(0xFFEF4444);
-  static const dangerLight = Color(0xFFFEF2F2);
-  static const dangerDark = Color(0xFFB91C1C);
+  static const warning = Color(0xFFB45309);
+  static const warningLight = Color(0xFFFEF3C7);
+  static const warningDark = Color(0xFF78350F);
+  static const danger = Color(0xFFB91C1C);
+  static const dangerLight = Color(0xFFFEE2E2);
+  static const dangerDark = Color(0xFF7F1D1D);
   static const info = Color(0xFF0284C7);
   static const infoLight = Color(0xFFF0F9FF);
   static const infoDark = Color(0xFF075985);
