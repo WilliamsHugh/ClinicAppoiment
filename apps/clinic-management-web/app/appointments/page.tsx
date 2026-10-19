@@ -1,5 +1,6 @@
-import { PagePlaceholder } from "../../src/components/page-placeholder";
+import { QueueBoard } from "../../src/features/appointments/queue-board";
+import { PatientLookupDrawer } from "../../src/features/users/patient-lookup-drawer";
 
 export default function AppointmentsPage() {
-  return <PagePlaceholder eyebrow="Appointment Service" title="Lịch hẹn" description="Điểm vào cho danh sách và vận hành lịch hẹn theo quyền." />;
+  return <QueueBoard PatientLookup={PatientLookupDrawer} />;
 }

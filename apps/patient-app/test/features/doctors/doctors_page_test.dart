@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:clinic_patient_app/core/api/clinic_api_client.dart';
 import 'package:clinic_patient_app/core/session/session.dart';
 import 'package:clinic_patient_app/features/doctors/doctor_directory_page.dart';
+import 'package:clinic_patient_app/features/doctors/doctor_detail_page.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -44,6 +45,7 @@ void main() {
                   'specialtyId': 'specialty-1',
                   'displayName': 'Bác sĩ An',
                   'bio': 'Chuyên khoa tim mạch',
+                  'isActive': true,
                 }
               ],
               'page': 1,
@@ -55,11 +57,19 @@ void main() {
               'specialtyId': 'specialty-1',
               'displayName': 'Bác sĩ An',
               'bio': 'Chuyên khoa tim mạch',
+              'isActive': true,
+            },
+          '/api/v1/doctors/doctor-1/schedules' => {
+              'items': <Object>[],
+              'page': 1,
+              'limit': 100,
+              'total': 0,
             },
           '/api/v1/doctors/doctor-1/available-slots' => [
               {
-                'startAt': '2030-01-07T01:00:00.000Z',
-                'endAt': '2030-01-07T01:30:00.000Z',
+                'startAt':
+                    '${request.url.queryParameters['date']}T01:00:00.000Z',
+                'endAt': '${request.url.queryParameters['date']}T01:30:00.000Z',
               },
             ],
           _ => throw StateError('Unexpected Doctor API path: $path'),
@@ -80,6 +90,14 @@ void main() {
     await tester.tap(find.text('Bác sĩ An'));
     await tester.pumpAndSettle();
     expect(find.text('Chi tiết bác sĩ'), findsOneWidget);
-    expect(find.textContaining('08:00'), findsOneWidget);
+    await tester.scrollUntilVisible(find.byTooltip('Ngày tiếp theo'), 240,
+        scrollable: find
+            .descendant(
+                of: find.byType(DoctorDetailPage),
+                matching: find.byType(Scrollable))
+            .first);
+    await tester.tap(find.byTooltip('Ngày tiếp theo'));
+    await tester.pumpAndSettle();
+    expect(find.text('08:00–08:30'), findsOneWidget);
   });
 }

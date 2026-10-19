@@ -26,13 +26,13 @@ function failure(status: number, message: string) {
     { status, headers: { "Content-Type": "application/json" } });
 }
 
-type Override = (path: string, method: string) => Response | Promise<Response> | undefined;
+type Override = (path: string, method: string, url: URL, body: unknown) => Response | Promise<Response> | undefined;
 
 function gateway(override?: Override) {
   return vi.fn<typeof fetch>(async (input, options) => {
     const path = new URL(String(input)).pathname;
     const method = options?.method ?? "GET";
-    const custom = override?.(path, method);
+    const custom = override?.(path, method, new URL(String(input)), options?.body ? JSON.parse(String(options.body)) : undefined);
     if (custom) return custom;
     if (method !== "GET") return envelope({ id: "saved" });
     if (path === "/api/v1/specialties") return envelope(page([specialty]));
@@ -42,7 +42,7 @@ function gateway(override?: Override) {
     ]));
     if (path === "/api/v1/doctors/doctor-1") return envelope(ownDoctor);
     if (path === "/api/v1/doctors/doctor-2") return envelope(otherDoctor);
-    if (path.endsWith("/schedules")) return envelope(page([schedule]));
+    if (path.endsWith("/schedules")) return envelope(page([{ ...schedule, doctorId: path.split("/")[4] }]));
     if (path.endsWith("/time-offs")) return envelope(page([timeOff]));
     if (path.endsWith("/available-slots")) return envelope([]);
     throw new Error(`Unexpected Gateway path: ${path}`);
@@ -129,6 +129,175 @@ function calls(fetcher: ReturnType<typeof gateway>, path: string, method: string
 }
 
 describe("DoctorPanel Gateway interactions", () => {
+  it("selecting the current doctor keeps the loaded calendar and explicit refresh recovers a read failure", async () => {
+    let failed = false;
+    const fetcher = gateway((path, method) => path.endsWith("/schedules") && method === "GET" && failed ? failure(503, "Lịch chưa khả dụng") : undefined);
+    await render("STAFF", fetcher); await click(doctorButton("Bác sĩ An"));
+    await click(doctorButton("Bác sĩ An"));
+    expect(host.querySelector('[aria-label="Lịch tuần định kỳ"]')).not.toBeNull();
+    expect(calls(fetcher, "/api/v1/doctors/doctor-1/schedules", "GET")).toHaveLength(1);
+    failed = true; await click(button(host, "Tải lại lịch"));
+    expect(host.textContent).not.toContain("Chưa có ca làm việc trong tuần");
+    expect(host.querySelector('[aria-label="Lịch tuần định kỳ"]')).toBeNull();
+    expect(button(host, "Lưu lịch").disabled).toBe(true);
+    failed = false; await click(button(host, "Tải lại lịch"));
+    expect(host.querySelector('[aria-label="Lịch tuần định kỳ"]')).not.toBeNull();
+    expect(button(host, "Lưu lịch").disabled).toBe(false);
+  });
+  it("loads split sessions and Sunday from later pages; switching views reuses data and editing uses the original form", async () => {
+    const fetcher = gateway((path, method, url) => {
+      if (method === "GET" && path.endsWith("/schedules")) {
+        const current = Number(url.searchParams.get("page"));
+        const item = current === 1 ? schedule : { ...schedule, id: "sunday-session", weekday: 0, startTime: "14:00", endTime: "17:00", isActive: false };
+        return envelope({ items: [item], page: current, limit: 1, total: 2 });
+      }
+      return undefined;
+    });
+    await render("STAFF", fetcher); await click(doctorButton("Bác sĩ An"));
+    const calendar = host.querySelector('[aria-label="Lịch tuần định kỳ"]')!;
+    expect(calendar).not.toBeNull();
+    expect(calendar.querySelector('[aria-label="Chủ nhật"]')?.textContent).toContain("14:00–17:00");
+    expect(calendar.querySelector('[aria-label="Chủ nhật"]')?.textContent).toContain("Đã ngừng ca");
+    const scheduleSection = section("Quản lý lịch làm việc");
+    await click(calendar.querySelector('[aria-label^="Sửa ca Chủ nhật"]') as HTMLElement);
+    expect(field(scheduleSection, "Thứ").value).toBe("0");
+    expect(field(scheduleSection, "Bắt đầu").value).toBe("14:00");
+    expect(document.activeElement).toBe(field(scheduleSection, "Thứ"));
+    await change(field(scheduleSection, "Kết thúc"), "18:00");
+    await submit(scheduleSection.querySelector("form")!);
+    expect(JSON.parse(String(calls(fetcher, "/api/v1/schedules/sunday-session", "PATCH")[0]?.[1]?.body))).toMatchObject({ weekday: 0, startTime: "14:00", endTime: "18:00" });
+    const count = calls(fetcher, "/api/v1/doctors/doctor-1/schedules", "GET").length;
+    await click(button(scheduleSection, "Danh sách")); await click(button(scheduleSection, "Lịch tuần"));
+    expect(calls(fetcher, "/api/v1/doctors/doctor-1/schedules", "GET")).toHaveLength(count);
+  });
+
+  it("renders the empty calendar with an action to the existing creation form", async () => {
+    const fetcher = gateway((path, method) => method === "GET" && path.endsWith("/schedules") ? envelope(page([])) : undefined);
+    await render("STAFF", fetcher); await click(doctorButton("Bác sĩ An"));
+    expect(host.textContent).toContain("Chưa có ca làm việc trong tuần");
+    await click(button(host, "Thêm ca làm việc"));
+    const schedules = section("Quản lý lịch làm việc");
+    expect(document.activeElement).toBe(field(schedules, "Thứ"));
+    await submit(schedules.querySelector("form")!);
+    expect(calls(fetcher, "/api/v1/doctors/doctor-1/schedules", "POST")).toHaveLength(1);
+  });
+
+  it("shows schedule failure and recovery without claiming an empty week", async () => {
+    let failed = true;
+    const fetcher = gateway((path, method) => method === "GET" && path.endsWith("/schedules") && failed ? failure(503, "Lịch chưa khả dụng") : undefined);
+    await render("STAFF", fetcher); await click(doctorButton("Bác sĩ An"));
+    expect(host.textContent).toContain("Chưa tải được thông tin bác sĩ hoặc lịch làm việc");
+    expect(host.textContent).not.toContain("Chưa có ca làm việc trong tuần");
+    failed = false;
+    await click(button(host, "Tải lại chi tiết bác sĩ"));
+    expect(host.querySelector('[aria-label="Lịch tuần định kỳ"]')).not.toBeNull();
+  });
+
+  it("offers other doctors' calendars read-only and never reads private time off", async () => {
+    const fetcher = gateway();
+    await render("DOCTOR", fetcher); await click(doctorButton("Bác sĩ Bình"));
+    const calendar = host.querySelector('[aria-label="Lịch tuần định kỳ"]')!;
+    expect(calendar).not.toBeNull(); expect(calendar.querySelector("button")).toBeNull();
+    expect(section("Quản lý lịch làm việc").querySelector("form")).toBeNull();
+    expect(calls(fetcher, "/api/v1/doctors/doctor-2/time-offs", "GET")).toHaveLength(0);
+    expect(host.querySelector('[role="switch"]')).toBeNull();
+  });
+
+  it("ADMIN switches the list and selected detail after confirmation, without reloading the directory", async () => {
+    let doctor = { ...ownDoctor };
+    const fetcher = gateway((path, method, _url, body) => {
+      if (path === "/api/v1/doctors/doctor-1") {
+        if (method === "PATCH") doctor = { ...doctor, ...(body as { isActive: boolean }) };
+        return envelope(doctor);
+      }
+      return undefined;
+    });
+    await render("ADMIN", fetcher); await click(doctorButton("Bác sĩ An"));
+    const activitySwitch = host.querySelector('[role="switch"][aria-label="Hoạt động của Bác sĩ An"]') as HTMLButtonElement;
+    expect(activitySwitch.getAttribute("aria-checked")).toBe("true");
+    await click(activitySwitch);
+    expect(activitySwitch.getAttribute("aria-checked")).toBe("false");
+    expect(section("Chi tiết bác sĩ").textContent).toContain("Không nhận đặt lịch");
+    expect(host.textContent).toContain("đã ngừng hoạt động");
+    expect(calls(fetcher, "/api/v1/doctors", "GET")).toHaveLength(1);
+    expect(JSON.parse(String(calls(fetcher, "/api/v1/doctors/doctor-1", "PATCH")[0]?.[1]?.body))).toEqual({ isActive: false });
+    await click(activitySwitch);
+    expect(activitySwitch.getAttribute("aria-checked")).toBe("true");
+    expect(calls(fetcher, "/api/v1/doctors/doctor-1", "PATCH")).toHaveLength(2);
+  });
+
+  it("pending activity change keeps confirmed state and blocks duplicate and concurrent writes", async () => {
+    let finish!: (value: Response) => void;
+    const response = new Promise<Response>((resolve) => { finish = resolve; });
+    const fetcher = gateway((path, method) => path === "/api/v1/doctors/doctor-1" && method === "PATCH" ? response : undefined);
+    await render("ADMIN", fetcher);
+    const activitySwitch = host.querySelector('[role="switch"]') as HTMLButtonElement;
+    await click(activitySwitch); await click(activitySwitch);
+    expect(activitySwitch.disabled).toBe(true); expect(activitySwitch.getAttribute("aria-checked")).toBe("true");
+    expect(activitySwitch.getAttribute("aria-busy")).toBe("true");
+    await submit(section("Quản lý chuyên khoa").querySelector("form")!);
+    expect(calls(fetcher, "/api/v1/specialties", "POST")).toHaveLength(0);
+    expect(calls(fetcher, "/api/v1/doctors/doctor-1", "PATCH")).toHaveLength(1);
+    await act(async () => { finish(envelope({ ...ownDoctor, isActive: false })); });
+    expect(activitySwitch.getAttribute("aria-checked")).toBe("false");
+    expect(activitySwitch.disabled).toBe(false);
+  });
+
+  it.each([403, 409, 502])("failed activity request %i preserves checked state and shows a readable explanation", async (status) => {
+    const fetcher = gateway((path, method) => path === "/api/v1/doctors/doctor-1" && method === "PATCH" ?
+      new Response(JSON.stringify({ success: false, error: { code: status === 409 ? "SCHEDULE_CONFLICT_WITH_APPOINTMENTS" : "FAILURE", message: "Private database info" } }), { status }) : undefined);
+    await render("ADMIN", fetcher);
+    const activitySwitch = host.querySelector('[role="switch"]') as HTMLButtonElement;
+    await click(activitySwitch);
+    expect(activitySwitch.getAttribute("aria-checked")).toBe("true");
+    expect(host.querySelector('[role="alert"]')?.textContent).not.toContain("Private");
+    if (status === 409) expect(host.textContent).toContain("còn lịch hẹn tương lai");
+    expect(calls(fetcher, "/api/v1/doctors/doctor-1", "PATCH")).toHaveLength(1);
+  });
+
+  it("unknown activity outcome disables switching until a successful reload reveals server state", async () => {
+    let active = true;
+    const fetcher = gateway((path, method) => {
+      if (path === "/api/v1/doctors/doctor-1" && method === "PATCH") { active = false; throw new TypeError("Private network failure"); }
+      if (path === "/api/v1/doctors" && method === "GET") return envelope(page([{ ...ownDoctor, isActive: active }]));
+      return undefined;
+    });
+    await render("ADMIN", fetcher);
+    await click(host.querySelector('[role="switch"]') as HTMLElement);
+    expect((host.querySelector('[role="switch"]') as HTMLButtonElement).disabled).toBe(true);
+    expect(host.textContent).toContain("Cần tải lại dữ liệu");
+    expect(host.textContent).not.toContain("Private");
+    await click(button(host, "Tải lại dữ liệu"));
+    const refreshed = host.querySelector('[role="switch"]') as HTMLButtonElement;
+    expect(refreshed.disabled).toBe(false); expect(refreshed.getAttribute("aria-checked")).toBe("false");
+    expect(calls(fetcher, "/api/v1/doctors/doctor-1", "PATCH")).toHaveLength(1);
+  });
+
+  it("late schedule response cannot replace the newly selected doctor's calendar", async () => {
+    let finish!: (value: Response) => void;
+    const response = new Promise<Response>((resolve) => { finish = resolve; });
+    const fetcher = gateway((path, method) => path === "/api/v1/doctors/doctor-1/schedules" && method === "GET" ? response : undefined);
+    await render("STAFF", fetcher);
+    await click(doctorButton("Bác sĩ An"));
+    expect(host.querySelector('[aria-label="Đang tải chi tiết"]')).not.toBeNull();
+    await click(doctorButton("Bác sĩ Bình"));
+    await act(async () => { finish(envelope(page([{ ...schedule, startTime: "05:00" }]))); });
+    expect(section("Chi tiết bác sĩ").textContent).toContain("Bác sĩ Bình");
+    expect(host.querySelector('[aria-label="Lịch tuần định kỳ"]')?.textContent).not.toContain("05:00");
+  });
+
+  it("changing role removes the old management workspace and ignores its pending switch result", async () => {
+    let finish!: (value: Response) => void;
+    const response = new Promise<Response>((resolve) => { finish = resolve; });
+    const fetcher = gateway((path, method) => path === "/api/v1/doctors/doctor-1" && method === "PATCH" ? response : undefined);
+    await render("ADMIN", fetcher); await click(doctorButton("Bác sĩ An"));
+    await click(host.querySelector('[role="switch"]') as HTMLElement);
+    await render("STAFF", fetcher);
+    await act(async () => { finish(envelope({ ...ownDoctor, isActive: false })); });
+    expect(host.querySelector('[role="switch"]')).toBeNull();
+    expect(host.querySelector('[aria-label="Chi tiết bác sĩ"]')).toBeNull();
+    expect(host.textContent).not.toContain("đã ngừng hoạt động");
+  });
   it("loads data and lets ADMIN manage specialties and doctor account links", async () => {
     const fetcher = gateway();
     await render("ADMIN", fetcher);
