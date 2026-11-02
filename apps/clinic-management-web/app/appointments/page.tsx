@@ -1,5 +1,7 @@
-import { PagePlaceholder } from "../../src/components/page-placeholder";
+"use client";
+
+import { AppointmentsPanel } from "../../src/features/appointments/appointments-panel";
 
 export default function AppointmentsPage() {
-  return <PagePlaceholder eyebrow="Appointment Service" title="Lịch hẹn" description="Điểm vào cho danh sách và vận hành lịch hẹn theo quyền." />;
+  return <AppointmentsPanel />;
 }
