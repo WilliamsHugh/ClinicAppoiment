@@ -3,24 +3,26 @@ import styles from "./ui.module.css";
 
 export interface AlertProps {
   type?: "success" | "warning" | "danger" | "info";
+  variant?: "success" | "warning" | "danger" | "info";
   title?: string;
   children: ReactNode;
   onClose?: () => void;
   className?: string;
 }
 
-export function Alert({ type = "info", title, children, onClose, className }: AlertProps) {
+export function Alert({ type = "info", variant, title, children, onClose, className }: AlertProps) {
+  const effectiveType = variant || type;
   const typeClass =
-    type === "success"
+    effectiveType === "success"
       ? styles.alertSuccess
-      : type === "warning"
+      : effectiveType === "warning"
       ? styles.alertWarning
-      : type === "danger"
+      : effectiveType === "danger"
       ? styles.alertDanger
       : styles.alertInfo;
 
   const icon =
-    type === "success" ? "✓" : type === "warning" ? "⚠" : type === "danger" ? "✕" : "ℹ";
+    effectiveType === "success" ? "✓" : effectiveType === "warning" ? "⚠" : effectiveType === "danger" ? "✕" : "ℹ";
 
   return (
     <div
