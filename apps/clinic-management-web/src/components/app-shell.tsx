@@ -7,6 +7,7 @@ import { visibleRoutes } from "../lib/navigation/routes";
 import { useSession } from "../lib/session/session-context";
 import { RouteGuard } from "./route-guard";
 import { Badge } from "./ui";
+import styles from "./app-shell.module.css";
 
 export interface AppShellProps {
   children: ReactNode;
@@ -42,90 +43,53 @@ export function AppShell({ children, NotificationSlot }: AppShellProps) {
   const session = useSession();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
+  // Bypass AppShell chrome for /auth so the login/registration page renders full-canvas centered
+  if (pathname === "/auth") {
+    return <RouteGuard>{children}</RouteGuard>;
+  }
+
   const role = session.identity?.role;
   const displayName = session.identity?.displayName || session.identity?.role || "Tài khoản";
   const initials = getInitials(session.identity?.displayName, role);
   const roleLabel = getRoleLabel(role);
 
   return (
-    <div className="app-shell" style={{ display: "flex", minHeight: "100vh", background: "var(--canvas)" }}>
+    <div className={`${styles.shell} app-shell`}>
+      {/* Mobile backdrop */}
+      {mobileMenuOpen && (
+        <div
+          className={styles.mobileBackdrop}
+          onClick={() => setMobileMenuOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
       {/* Sidebar (Left, 232px width per Anima ApplicationSidebarSection) */}
       <aside
-        className={`shell-sidebar ${mobileMenuOpen ? "sidebar-mobile-open" : ""}`}
+        className={`${styles.sidebar} shell-sidebar ${mobileMenuOpen ? `${styles.sidebarMobileOpen} sidebar-mobile-open` : ""}`}
         aria-label="Thanh điều hướng chính"
-        style={{
-          width: 232,
-          backgroundColor: "#ffffff",
-          borderRight: "1px solid var(--line)",
-          display: "flex",
-          flexDirection: "column",
-          flexShrink: 0,
-          minHeight: "100vh",
-          position: "sticky",
-          top: 0,
-          zIndex: 40,
-        }}
       >
         {/* Brand Header */}
-        <div
-          style={{
-            height: 56,
-            display: "flex",
-            alignItems: "center",
-            gap: 10,
-            padding: "0 16px",
-            borderBottom: "1px solid var(--line)",
-          }}
-        >
+        <div className={styles.brandHeader}>
           <Link
-            className="brand"
+            className={`${styles.brandLink} brand`}
             href="/"
             onClick={() => setMobileMenuOpen(false)}
-            style={{
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-              textDecoration: "none",
-              color: "var(--ink)",
-              fontWeight: 700,
-              fontSize: "1rem",
-            }}
           >
             <span
-              className="brand-mark"
+              className={`${styles.brandMark} brand-mark`}
               aria-hidden="true"
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                justifyContent: "center",
-                width: 32,
-                height: 32,
-                borderRadius: 6,
-                backgroundColor: "var(--primary-light)",
-                color: "var(--primary)",
-                fontWeight: 800,
-                fontSize: "1.1rem",
-              }}
             >
               +
             </span>
-            <span>Health&amp;Human</span>
+            <span className={styles.brandText}>Health&amp;Human</span>
           </Link>
         </div>
 
         {/* Navigation list */}
         <nav
-          className="navigation"
+          className={`${styles.navigation} navigation`}
           aria-label="Điều hướng ứng dụng"
-          style={{
-            display: "flex",
-            flexDirection: "column",
-            gap: 4,
-            padding: "14px 10px",
-            flex: 1,
-            borderRight: "none",
-            minHeight: "auto",
-          }}
         >
           {visibleRoutes(session).map((route) => {
             const isActive = pathname === route.href;
@@ -135,19 +99,7 @@ export function AppShell({ children, NotificationSlot }: AppShellProps) {
                 href={route.href}
                 aria-current={isActive ? "page" : undefined}
                 onClick={() => setMobileMenuOpen(false)}
-                style={{
-                  display: "flex",
-                  alignItems: "center",
-                  gap: 10,
-                  padding: "9px 12px",
-                  borderRadius: 6,
-                  color: isActive ? "var(--primary)" : "var(--ink)",
-                  backgroundColor: isActive ? "var(--primary-light)" : "transparent",
-                  fontWeight: isActive ? 600 : 500,
-                  fontSize: "0.875rem",
-                  textDecoration: "none",
-                  transition: "background 0.15s ease",
-                }}
+                className={`${styles.navItem} ${isActive ? styles.navItemActive : ""}`}
               >
                 <span>{route.label}</span>
               </Link>
@@ -157,68 +109,20 @@ export function AppShell({ children, NotificationSlot }: AppShellProps) {
 
         {/* Sidebar Footer User Box */}
         {session.status === "authenticated" ? (
-          <div
-            style={{
-              padding: "12px 14px",
-              backgroundColor: "var(--primary-light)",
-              borderTop: "1px solid var(--line)",
-              display: "flex",
-              alignItems: "center",
-              gap: 10,
-            }}
-          >
-            <div
-              style={{
-                width: 36,
-                height: 36,
-                borderRadius: 18,
-                backgroundColor: "#ffffff",
-                color: "var(--primary)",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontWeight: 700,
-                fontSize: "0.85rem",
-                flexShrink: 0,
-                boxShadow: "0 1px 2px rgba(45, 91, 255, 0.1)",
-              }}
-              aria-hidden="true"
-            >
+          <div className={styles.sidebarFooter}>
+            <div className={styles.userAvatar} aria-hidden="true">
               {initials}
             </div>
-            <div style={{ display: "flex", flexDirection: "column", minWidth: 0, flex: 1 }}>
-              <div
-                style={{
-                  fontSize: "0.8125rem",
-                  fontWeight: 600,
-                  color: "var(--ink)",
-                  whiteSpace: "nowrap",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                }}
-              >
-                {displayName}
-              </div>
-              <div style={{ fontSize: "0.75rem", color: "var(--muted)" }}>
-                {roleLabel}
-              </div>
+            <div className={styles.userInfo}>
+              <div className={styles.userName}>{displayName}</div>
+              <div className={styles.userRole}>{roleLabel}</div>
             </div>
             <button
               type="button"
               onClick={() => session.signOut()}
-              className="logout-button"
+              className={`${styles.logoutButton} logout-button`}
               aria-label="Đăng xuất"
               title="Đăng xuất"
-              style={{
-                background: "transparent",
-                border: "none",
-                padding: "4px 6px",
-                cursor: "pointer",
-                color: "var(--danger)",
-                borderRadius: 4,
-                fontSize: "0.75rem",
-                fontWeight: 600,
-              }}
             >
               Thoát
             </button>
@@ -227,69 +131,37 @@ export function AppShell({ children, NotificationSlot }: AppShellProps) {
       </aside>
 
       {/* Main Area: Topbar + Content */}
-      <div style={{ display: "flex", flexDirection: "column", flex: 1, minWidth: 0 }}>
-        <header
-          className="topbar"
-          style={{
-            height: 56,
-            backgroundColor: "#ffffff",
-            borderBottom: "1px solid var(--line)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "space-between",
-            padding: "0 clamp(16px, 3vw, 28px)",
-          }}
-        >
+      <div className={styles.mainArea}>
+        <header className={`${styles.topbar} topbar`}>
           {/* Mobile menu toggle & Subtitle */}
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div className={styles.topbarLeft}>
             <button
               type="button"
-              className="mobile-menu-toggle"
+              className={`${styles.mobileMenuToggle} mobile-menu-toggle`}
               aria-label="Mở menu điều hướng"
               aria-expanded={mobileMenuOpen}
               onClick={() => setMobileMenuOpen((open) => !open)}
-              style={{
-                display: "none",
-                background: "transparent",
-                border: "1px solid var(--line)",
-                borderRadius: 6,
-                color: "var(--ink)",
-                fontSize: "1.1rem",
-                cursor: "pointer",
-                padding: "4px 8px",
-              }}
             >
               ☰
             </button>
-            <span style={{ fontSize: "0.8125rem", color: "var(--muted)", fontWeight: 500 }}>
+            <span className={styles.topbarSubtitle}>
               Thứ Năm, 19/10/2026 · Múi giờ GMT+7
             </span>
           </div>
 
           {/* Right actions: NotificationSlot + Role badge + Session */}
-          <div className="session-summary" style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div className={`${styles.topbarRight} session-summary`}>
             {session.status === "authenticated" && (
               <>
                 {NotificationSlot ? (
-                  <div id="notification-slot" style={{ display: "flex", alignItems: "center" }}>
+                  <div id="notification-slot" className={styles.notificationSlotWrapper}>
                     {NotificationSlot}
                   </div>
                 ) : (
                   <Link
                     href="/notifications"
                     title="Thông báo"
-                    style={{
-                      color: "var(--primary)",
-                      textDecoration: "none",
-                      display: "flex",
-                      alignItems: "center",
-                      padding: "5px 10px",
-                      borderRadius: 6,
-                      background: "var(--primary-light)",
-                      fontSize: "0.8125rem",
-                      gap: 4,
-                      fontWeight: 600,
-                    }}
+                    className={styles.notificationLink}
                   >
                     <span aria-hidden="true">🔔</span>
                     <span>Thông báo</span>
@@ -306,7 +178,7 @@ export function AppShell({ children, NotificationSlot }: AppShellProps) {
               className={`session-dot session-dot-${session.status}`}
               aria-hidden="true"
             />
-            <span style={{ fontSize: "0.8125rem", color: "var(--ink)", fontWeight: 500 }}>
+            <span className={styles.sessionStatusText}>
               {session.status === "authenticated"
                 ? displayName
                 : session.status === "loading"
@@ -315,18 +187,7 @@ export function AppShell({ children, NotificationSlot }: AppShellProps) {
             </span>
 
             {session.status === "unauthenticated" ? (
-              <Link
-                href="/auth"
-                style={{
-                  background: "var(--primary)",
-                  color: "#ffffff",
-                  padding: "6px 14px",
-                  borderRadius: 6,
-                  textDecoration: "none",
-                  fontWeight: 600,
-                  fontSize: "0.8125rem",
-                }}
-              >
+              <Link href="/auth" className={styles.loginLink}>
                 Đăng nhập
               </Link>
             ) : null}
@@ -334,7 +195,7 @@ export function AppShell({ children, NotificationSlot }: AppShellProps) {
         </header>
 
         {/* Content Area */}
-        <main className="content" style={{ flex: 1, padding: "clamp(20px, 3vw, 36px)", minWidth: 0 }}>
+        <main className={`${styles.content} content`}>
           <RouteGuard>{children}</RouteGuard>
         </main>
       </div>
