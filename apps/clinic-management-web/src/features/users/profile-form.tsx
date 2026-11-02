@@ -182,9 +182,9 @@ export function ProfileForm() {
   if (!profile) {
     if (session.status === "unauthenticated") {
       return (
-        <ErrorState
-          message="Bạn chưa đăng nhập. Vui lòng đăng nhập để xem và quản lý hồ sơ của bạn."
-        />
+        <div style={{ maxWidth: 500, margin: "48px auto", textAlign: "center" }}>
+          <LoadingState message="Đang chuyển hướng đến trang đăng nhập..." />
+        </div>
       );
     }
     return <ErrorState message={error ?? "Không tìm thấy hồ sơ cá nhân."} />;

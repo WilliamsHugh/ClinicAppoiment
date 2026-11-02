@@ -101,6 +101,19 @@ describe("AppShell & RouteGuard (M3-UI-LEAD-004, M3-UI-LEAD-005)", () => {
       expect(html).toContain("Admin Authorized Content");
       expect(html).not.toContain("403");
     });
+
+    it("redirects and shows loading indicator when unauthenticated user accesses protected route", () => {
+      currentSession = makeSession(); // unauthenticated
+      mockPathname = "/profile"; // /profile is protected
+      const html = renderToStaticMarkup(
+        <RouteGuard>
+          <div>Profile Secret Content</div>
+        </RouteGuard>
+      );
+      expect(html).toContain("Đang chuyển hướng đến trang đăng nhập...");
+      expect(html).not.toContain("Profile Secret Content");
+      expect(html).not.toContain("403");
+    });
   });
 
   describe("toUserFriendlyError", () => {

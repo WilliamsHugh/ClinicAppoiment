@@ -221,6 +221,13 @@ function RealSessionProvider({ children }: { children: ReactNode }) {
       }
     }
     clearLocalSession();
+    if (typeof window !== "undefined") {
+      try {
+        window.location.href = "/auth";
+      } catch {
+        // Safe fallback in test environments
+      }
+    }
   };
 
   const clearLocalSession = () => {
@@ -236,7 +243,16 @@ function RealSessionProvider({ children }: { children: ReactNode }) {
     getAccessToken,
     signIn: handleSignIn,
     signOut: handleSignOut,
-    handleUnauthorized: async () => clearLocalSession(),
+    handleUnauthorized: async () => {
+      clearLocalSession();
+      if (typeof window !== "undefined") {
+        try {
+          window.location.href = "/auth";
+        } catch {
+          // Safe fallback in test environments
+        }
+      }
+    },
   };
 
   return <SessionContext.Provider value={sessionValue}>{children}</SessionContext.Provider>;

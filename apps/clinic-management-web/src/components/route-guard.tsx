@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import type { ReactNode } from "react";
+import { usePathname, useRouter } from "next/navigation";
+import { useEffect, type ReactNode } from "react";
 import { canAccessRoute, routeForPath } from "../lib/navigation/routes";
 import { useSession } from "../lib/session/session-context";
 import { LoadingState } from "./states";
@@ -11,11 +11,27 @@ import { Badge, Button } from "./ui";
 export function RouteGuard({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const session = useSession();
+  const router = useRouter();
   const route = routeForPath(pathname);
+
+  useEffect(() => {
+    if (session.status === "unauthenticated" && route?.roles) {
+      if (typeof window !== "undefined") {
+        try {
+          router.replace("/auth");
+        } catch {
+          window.location.href = "/auth";
+        }
+      }
+    }
+  }, [session.status, route?.roles, router]);
 
   if (!route?.roles) return <>{children}</>;
   if (session.status === "loading") {
     return <LoadingState message="Đang kiểm tra quyền truy cập..." />;
+  }
+  if (session.status === "unauthenticated") {
+    return <LoadingState message="Đang chuyển hướng đến trang đăng nhập..." />;
   }
   if (canAccessRoute(route, session)) return <>{children}</>;
 
