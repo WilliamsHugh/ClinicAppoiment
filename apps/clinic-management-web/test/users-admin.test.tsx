@@ -4,6 +4,7 @@ import { describe, it, expect, vi } from "vitest";
 import { UserTable, type UserItem } from "../src/features/users/user-table";
 import { UserRoleModal } from "../src/features/users/user-role-modal";
 import { UserStatusModal } from "../src/features/users/user-status-modal";
+import { PatientSelector } from "../src/features/users/patient-selector";
 
 describe("Users & Roles Admin Components (M3-WEB-021)", () => {
   const mockUsers: UserItem[] = [
@@ -178,6 +179,20 @@ describe("Users & Roles Admin Components (M3-WEB-021)", () => {
 
       expect(html).toContain("Kích hoạt tài khoản");
       expect(html).toContain("buttonPrimary");
+    });
+  });
+
+  describe("PatientSelector", () => {
+    it("renders search input with accessible label and placeholder", () => {
+      const html = renderToStaticMarkup(
+        <PatientSelector onSelect={vi.fn()} />
+      );
+
+      expect(html).toContain("Chọn bệnh nhân");
+      expect(html).toContain('aria-label="Tìm kiếm bệnh nhân"');
+      expect(html).toContain('id="patient-search-input"');
+      expect(html).toContain('role="listbox"');
+      expect(html).toContain("Không tìm thấy bệnh nhân phù hợp.");
     });
   });
 });
