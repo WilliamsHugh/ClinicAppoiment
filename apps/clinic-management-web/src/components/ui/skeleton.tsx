@@ -22,13 +22,21 @@ export function Skeleton({ height = 20, width = "100%", borderRadius, className 
   );
 }
 
-export function SkeletonTable({ rows = 5, columns = 4 }: { rows?: number; columns?: number }) {
+export interface SkeletonTableProps {
+  rows?: number;
+  cols?: number;
+  columns?: number;
+  className?: string;
+}
+
+export function SkeletonTable({ rows = 5, cols, columns = 4, className }: SkeletonTableProps) {
+  const colCount = cols ?? columns;
   return (
-    <div role="region" aria-label="Đang tải bảng dữ liệu" aria-busy="true">
+    <div role="region" aria-label="Đang tải bảng dữ liệu" aria-busy="true" className={className}>
       <table className={styles.skeletonTable}>
         <thead>
           <tr>
-            {Array.from({ length: columns }).map((_, c) => (
+            {Array.from({ length: colCount }).map((_, c) => (
               <th key={c}>
                 <Skeleton height={18} width="70%" />
               </th>
@@ -38,7 +46,7 @@ export function SkeletonTable({ rows = 5, columns = 4 }: { rows?: number; column
         <tbody>
           {Array.from({ length: rows }).map((_, r) => (
             <tr key={r}>
-              {Array.from({ length: columns }).map((_, c) => (
+              {Array.from({ length: colCount }).map((_, c) => (
                 <td key={c}>
                   <Skeleton height={16} width={c === 0 ? "85%" : "60%"} />
                 </td>
