@@ -39,6 +39,9 @@ describe("Clinic Dashboard Page (M3-UI-DASH-001)", () => {
     expect(html).toContain("Hồ sơ bệnh án");
     expect(html).toContain("Hàng đợi khám");
     expect(html).toContain("Lịch khám hôm nay");
+    expect(html).toContain("Tiến độ hôm nay");
+    expect(html).toContain("Đang chờ khám (đã check-in)");
+    expect(html).toContain("Xem tất cả lịch hẹn");
   });
 
   it("renders role-specific welcome and actions for STAFF", () => {
@@ -46,6 +49,9 @@ describe("Clinic Dashboard Page (M3-UI-DASH-001)", () => {
     expect(html).toContain("Nhân viên phòng khám");
     expect(html).toContain("Lịch bác sĩ");
     expect(html).toContain("Hàng đợi khám");
+    expect(html).toContain("Hàng đợi cần xử lý");
+    expect(html).toContain("Cần tiếp đón hôm nay");
+    expect(html).toContain("Chờ xác nhận");
   });
 
   it("renders role-specific actions for ADMIN including System Health and User Management", () => {
@@ -53,6 +59,14 @@ describe("Clinic Dashboard Page (M3-UI-DASH-001)", () => {
     expect(html).toContain("Quản trị viên");
     expect(html).toContain("Quản trị người dùng");
     expect(html).toContain("Sức khỏe hệ thống");
+    expect(html).toContain("Cổng API Gateway");
+    expect(html).toContain("Dịch vụ Bác sĩ");
+  });
+
+  it("renders permission denied when an invalid or patient role accesses", () => {
+    const html = renderDashboard("PATIENT" as unknown as ClinicRole);
+    expect(html).toContain("Quyền truy cập bị từ chối");
+    expect(html).toContain("Patient App");
   });
 
   it("renders stat cards and 7-day trend chart section", () => {
