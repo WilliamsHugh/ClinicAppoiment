@@ -1,8 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { createBrowserApiClient, type PaginatedData } from "../../lib/api/client";
 import { useSession } from "../../lib/session/session-context";
+import { Alert } from "../../components/ui";
+import styles from "./patient-selector.module.css";
 
 export interface PatientItem {
   id: string;
@@ -22,7 +24,11 @@ export interface PatientSelectorProps {
   appointmentId?: string;
 }
 
-export function PatientSelector({ onSelect, selectedPatientId, appointmentId }: PatientSelectorProps) {
+export function PatientSelector({
+  onSelect,
+  selectedPatientId,
+  appointmentId,
+}: PatientSelectorProps) {
   const session = useSession();
   const [searchTerm, setSearchTerm] = useState("");
   const [patients, setPatients] = useState<PatientItem[]>([]);
@@ -40,7 +46,11 @@ export function PatientSelector({ onSelect, selectedPatientId, appointmentId }: 
       });
       setPatients(res.data.items);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Không thể tải danh sách bệnh nhân");
+      setError(
+        err instanceof Error
+          ? err.message
+          : "Không thể tải danh sách bệnh nhân"
+      );
     } finally {
       setLoading(false);
     }
@@ -57,62 +67,57 @@ export function PatientSelector({ onSelect, selectedPatientId, appointmentId }: 
   };
 
   return (
-    <div style={{ border: "1px solid #e2e8f0", borderRadius: "8px", padding: "16px", background: "#f8fafc" }}>
-      <h3 style={{ fontSize: "15px", fontWeight: "600", marginBottom: "8px", color: "#1e293b" }}>Chọn bệnh nhân</h3>
-      <div style={{ marginBottom: "12px" }}>
+    <div className={styles.container}>
+      <h3 className={styles.title}>Chọn bệnh nhân</h3>
+      <div className={styles.searchContainer}>
         <input
+          id="patient-search-input"
           type="text"
           value={searchTerm}
           onChange={handleSearchChange}
           placeholder="Tìm theo tên, SĐT, email, mã BHYT..."
-          style={{
-            width: "100%",
-            padding: "8px 12px",
-            borderRadius: "6px",
-            border: "1px solid #cbd5e1",
-            fontSize: "14px",
-            boxSizing: "border-box",
-            background: "#fff",
-          }}
+          className={styles.searchInput}
+          aria-label="Tìm kiếm bệnh nhân"
         />
       </div>
 
       {error && (
-        <div style={{ padding: "8px 12px", marginBottom: "8px", color: "#b91c1c", background: "#fef2f2", borderRadius: "4px", fontSize: "13px" }}>
+        <Alert variant="danger" title="Lỗi tìm kiếm" onClose={() => setError(null)}>
           {error}
-        </div>
+        </Alert>
       )}
 
-      {loading && <div style={{ fontSize: "13px", color: "#64748b", padding: "8px 0" }}>Đang tìm kiếm...</div>}
+      {loading && <div className={styles.statusMessage}>Đang tìm kiếm...</div>}
 
       {!loading && patients.length === 0 && (
-        <div style={{ fontSize: "13px", color: "#64748b", padding: "8px 0" }}>Không tìm thấy bệnh nhân phù hợp.</div>
+        <div className={styles.statusMessage}>Không tìm thấy bệnh nhân phù hợp.</div>
       )}
 
-      <div style={{ display: "flex", flexDirection: "column", gap: "8px", maxHeight: "240px", overflowY: "auto" }}>
+      <div className={styles.patientList} role="listbox" aria-label="Danh sách bệnh nhân">
         {patients.map((patient) => {
           const isSelected = patient.id === selectedPatientId;
           return (
             <div
               key={patient.id}
+              role="option"
+              aria-selected={isSelected}
+              tabIndex={0}
               onClick={() => onSelect(patient)}
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                padding: "10px 12px",
-                background: isSelected ? "#e0f2fe" : "#fff",
-                border: isSelected ? "1px solid #0284c7" : "1px solid #e2e8f0",
-                borderRadius: "6px",
-                cursor: "pointer",
-                transition: "all 0.15s",
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  onSelect(patient);
+                }
               }}
+              className={`${styles.patientItem} ${
+                isSelected ? styles.patientItemSelected : ""
+              }`.trim()}
             >
-              <div>
-                <div style={{ fontWeight: "600", fontSize: "14px", color: "#0f172a" }}>
+              <div className={styles.patientInfo}>
+                <div className={styles.patientName}>
                   {patient.fullName || "Chưa đặt tên"}
                 </div>
-                <div style={{ fontSize: "12px", color: "#64748b", marginTop: "2px" }}>
+                <div className={styles.patientMeta}>
                   {patient.phone ? `SĐT: ${patient.phone} • ` : ""}
                   {patient.dateOfBirth ? `NS: ${patient.dateOfBirth} • ` : ""}
                   {patient.insuranceNumber ? `BHYT: ${patient.insuranceNumber}` : ""}
@@ -120,16 +125,11 @@ export function PatientSelector({ onSelect, selectedPatientId, appointmentId }: 
               </div>
               <button
                 type="button"
-                style={{
-                  padding: "4px 10px",
-                  borderRadius: "4px",
-                  border: "none",
-                  background: isSelected ? "#0284c7" : "#f1f5f9",
-                  color: isSelected ? "#fff" : "#334155",
-                  fontSize: "12px",
-                  fontWeight: "500",
-                  cursor: "pointer",
-                }}
+                tabIndex={-1}
+                aria-hidden="true"
+                className={`${styles.selectButton} ${
+                  isSelected ? styles.selectButtonSelected : ""
+                }`.trim()}
               >
                 {isSelected ? "Đã chọn" : "Chọn"}
               </button>

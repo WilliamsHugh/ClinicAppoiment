@@ -1,5 +1,5 @@
 import React, { type FormEvent } from "react";
-import { LoadingState } from "../../components/states";
+import { EmptyState, LoadingState } from "../../components/states";
 import { Pagination } from "../../components/pagination";
 import type { Doctor, Page, Specialty } from "./doctor-api";
 import { SpecialtyFilter } from "./specialty-filter";
@@ -38,12 +38,14 @@ export function DoctorList({
   return (
     <section className={styles.card} aria-label="Tìm bác sĩ">
       <form onSubmit={onSubmitSearch} className={styles.row}>
-        <label>
+        <label htmlFor="doctor-search-input">
           Tên bác sĩ
           <input
+            id="doctor-search-input"
             value={search}
             onChange={(event) => onSearchChange(event.target.value)}
             placeholder="Tìm theo tên"
+            aria-label="Tìm theo tên bác sĩ"
           />
         </label>
         <SpecialtyFilter
@@ -57,7 +59,10 @@ export function DoctorList({
       {loading ? (
         <LoadingState message="Đang tải bác sĩ..." />
       ) : doctors.items.length === 0 ? (
-        <p>Chưa có bác sĩ phù hợp.</p>
+        <EmptyState
+          title="Chưa có bác sĩ phù hợp"
+          message="Không tìm thấy bác sĩ nào theo điều kiện tìm kiếm hoặc chuyên khoa đã chọn."
+        />
       ) : (
         <div className={styles.list}>
           {doctors.items.map((item) => (
