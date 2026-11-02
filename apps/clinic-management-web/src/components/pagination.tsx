@@ -1,3 +1,5 @@
+import React from "react";
+
 export interface PaginationState {
   page: number;
   pageCount: number;
