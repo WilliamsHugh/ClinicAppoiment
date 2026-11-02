@@ -37,7 +37,7 @@ void main() {
 
     final tabBar = tester.widget<TabBar>(find.byType(TabBar));
     final tabBarRect = tester.getRect(find.byType(TabBar));
-    const labels = ['Tất cả', 'Chờ xác nhận', 'Đã xác nhận', 'Hoàn thành'];
+    const labels = ['Sắp tới', 'Lịch sử', 'Đã hủy'];
 
     expect(tabBar.isScrollable, isFalse);
     expect(tabBarRect.left, closeTo(0, 0.1));

@@ -4,6 +4,9 @@ import '../../core/api/clinic_api_client.dart';
 import '../../core/session/session.dart';
 import '../../core/theme/app_theme.dart';
 import '../../shared/widgets/async_states.dart';
+import 'widgets/insurance_card.dart';
+
+final RegExp _phoneValidationRegex = RegExp(r'^\+?[0-9][0-9 .-]{7,19}$');
 
 class ProfilePage extends StatefulWidget {
   const ProfilePage({this.tokenProvider, this.apiClient, super.key});
@@ -84,6 +87,32 @@ class _ProfilePageState extends State<ProfilePage> {
     }
   }
 
+  Future<bool> _confirmSaveDialog(BuildContext sheetContext) async {
+    final confirmed = await showDialog<bool>(
+      context: sheetContext,
+      builder: (dialogCtx) {
+        return AlertDialog(
+          title: const Text('Xác nhận cập nhật hồ sơ?'),
+          content: const Text(
+            'Bạn có chắc muốn lưu các thay đổi cho thông tin hồ sơ cá nhân?',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogCtx).pop(false),
+              child: const Text('Hủy'),
+            ),
+            FilledButton(
+              key: const Key('confirm-save-profile-button'),
+              onPressed: () => Navigator.of(dialogCtx).pop(true),
+              child: const Text('Lưu thay đổi'),
+            ),
+          ],
+        );
+      },
+    );
+    return confirmed ?? false;
+  }
+
   void _openEditDialog() {
     final nameCtrl = TextEditingController(text: _fullName);
     final phoneCtrl = TextEditingController(text: _phone);
@@ -93,6 +122,7 @@ class _ProfilePageState extends State<ProfilePage> {
     final insuranceCtrl = TextEditingController(text: _insuranceNumber);
     String selectedGender = _gender.isNotEmpty ? _gender : 'MALE';
     bool saving = false;
+    String? validationError;
 
     showModalBottomSheet<void>(
       context: context,
@@ -204,6 +234,29 @@ class _ProfilePageState extends State<ProfilePage> {
                         prefixIcon: Icon(Icons.credit_card_outlined),
                       ),
                     ),
+                    if (validationError != null) ...[
+                      const SizedBox(height: 12),
+                      Container(
+                        key: const Key('profile-validation-error'),
+                        width: double.infinity,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 10,
+                        ),
+                        decoration: BoxDecoration(
+                          color: const Color(0xFFFEF2F2),
+                          border: Border.all(color: const Color(0xFFFECACA)),
+                          borderRadius: BorderRadius.circular(8),
+                        ),
+                        child: Text(
+                          validationError!,
+                          style: const TextStyle(
+                            fontSize: 13,
+                            color: Color(0xFF991B1B),
+                          ),
+                        ),
+                      ),
+                    ],
                     const SizedBox(height: 20),
                     SizedBox(
                       width: double.infinity,
@@ -219,20 +272,42 @@ class _ProfilePageState extends State<ProfilePage> {
                         onPressed: saving
                             ? null
                             : () async {
+                                final trimmedName = nameCtrl.text.trim();
+                                final trimmedPhone = phoneCtrl.text.trim();
+                                if (trimmedName.isEmpty) {
+                                  setSheetState(() {
+                                    validationError =
+                                        'Họ và tên không được để trống.';
+                                  });
+                                  return;
+                                }
+                                if (trimmedPhone.isNotEmpty &&
+                                    !_phoneValidationRegex.hasMatch(
+                                      trimmedPhone,
+                                    )) {
+                                  setSheetState(() {
+                                    validationError =
+                                        'Số điện thoại không đúng định dạng.';
+                                  });
+                                  return;
+                                }
+                                setSheetState(() => validationError = null);
+
+                                final confirmed = await _confirmSaveDialog(ctx);
+                                if (!confirmed || !ctx.mounted) return;
+
                                 setSheetState(() => saving = true);
                                 try {
-                                  // Update user info
                                   await _apiClient?.patch(
                                     '/api/v1/users/me',
                                     body: {
-                                      'fullName': nameCtrl.text.trim(),
-                                      'phone': phoneCtrl.text.trim().isEmpty
+                                      'fullName': trimmedName,
+                                      'phone': trimmedPhone.isEmpty
                                           ? null
-                                          : phoneCtrl.text.trim(),
+                                          : trimmedPhone,
                                     },
                                   );
 
-                                  // Update patient profile if available
                                   if (_patientProfileId != null) {
                                     await _apiClient?.patch(
                                       '/api/v1/patients/$_patientProfileId',
@@ -262,8 +337,9 @@ class _ProfilePageState extends State<ProfilePage> {
                                   Navigator.pop(ctx);
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     const SnackBar(
-                                      content:
-                                          Text('Cập nhật hồ sơ thành công!'),
+                                      content: Text(
+                                        'Cập nhật hồ sơ thành công!',
+                                      ),
                                       backgroundColor: Colors.green,
                                     ),
                                   );
@@ -442,6 +518,15 @@ class _ProfilePageState extends State<ProfilePage> {
             ),
             const SizedBox(height: 16),
 
+            // Graphic BHYT Insurance Card
+            InsuranceCard(
+              fullName: _fullName,
+              insuranceNumber:
+                  _insuranceNumber.isNotEmpty ? _insuranceNumber : null,
+              dateOfBirth: _dateOfBirth.isNotEmpty ? _dateOfBirth : null,
+            ),
+            const SizedBox(height: 16),
+
             // Personal Info Card
             _buildSectionCard(
               title: 'Thông tin liên hệ',
@@ -493,7 +578,7 @@ class _ProfilePageState extends State<ProfilePage> {
                 _buildInfoTile(
                   'Số thẻ BHYT',
                   _insuranceNumber.isNotEmpty
-                      ? _insuranceNumber
+                      ? maskInsurance(_insuranceNumber)
                       : 'Chưa cập nhật',
                 ),
               ],

@@ -18,6 +18,16 @@ function client(fetcher: typeof fetch, token: string | null = "access-token", ti
 }
 
 describe("ApiClient", () => {
+  it("binds the default browser fetch to its global receiver", async () => {
+    vi.stubGlobal("fetch", function (this: unknown) {
+      if (this !== globalThis) throw new TypeError("Illegal invocation");
+      return Promise.resolve(response({ success: true, data: { ready: true } }));
+    });
+    try {
+      const api = new ApiClient({ baseUrl: "http://gateway.test", session: { getAccessToken: async () => "test-token" } });
+      expect((await api.get<{ ready: boolean }>("/api/v1/appointments")).data.ready).toBe(true);
+    } finally { vi.unstubAllGlobals(); }
+  });
   it("refuses protected calls when the session has no token", async () => {
     const fetcher = vi.fn<typeof fetch>();
     await expect(client(fetcher, null).get("/api/v1/users/me")).rejects.toMatchObject({ code: "SESSION_REQUIRED", status: 0 });

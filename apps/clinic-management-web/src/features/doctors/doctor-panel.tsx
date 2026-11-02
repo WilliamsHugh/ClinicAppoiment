@@ -3,12 +3,13 @@
 import React, { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { ErrorState, LoadingState } from "../../components/states";
 import { Pagination } from "../../components/pagination";
-import { createBrowserApiClient } from "../../lib/api/client";
+import { ApiClientError, createBrowserApiClient } from "../../lib/api/client";
 import { useSession } from "../../lib/session/session-context";
-import { doctorApi, type Doctor, type Page, type Schedule, type Slot, type Specialty, type TimeOff, type UserAccount } from "./doctor-api";
+import type { Session } from "../../lib/session/session";
+import { doctorActivityError, doctorReadError, doctorApi, type Doctor, type Page, type Schedule, type Slot, type Specialty, type TimeOff, type UserAccount } from "./doctor-api";
+import { ScheduleCalendar, scheduleWeekdays as weekdays } from "./schedule-calendar";
 import styles from "./doctor-panel.module.css";
 
-const weekdays = ["Chủ nhật", "Thứ hai", "Thứ ba", "Thứ tư", "Thứ năm", "Thứ sáu", "Thứ bảy"];
 const localToday = () => new Date(Date.now() + 7 * 60 * 60 * 1000).toISOString().slice(0, 10);
 const displayTime = (iso: string) => new Intl.DateTimeFormat("vi-VN", { timeZone: "Asia/Ho_Chi_Minh", day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" }).format(new Date(iso));
 const dateInput = (iso: string) => new Date(Date.parse(iso) + 7 * 60 * 60 * 1000).toISOString().slice(0, 16);
@@ -17,6 +18,15 @@ const message = (error: unknown) => error instanceof Error ? error.message : "Kh
 
 export function DoctorPanel() {
   const session = useSession();
+  if (session.status === "loading") return <LoadingState message="Đang kiểm tra phiên đăng nhập..." />;
+  const role = session.identity?.role;
+  if (session.status !== "authenticated" || !role || role === "PATIENT") {
+    return <ErrorState message="Bạn cần tài khoản bác sĩ, nhân viên hoặc quản trị viên để xem trang này." />;
+  }
+  return <DoctorWorkspace key={`${session.identity?.id}:${role}`} session={session} />;
+}
+
+function DoctorWorkspace({ session }: { session: Session }) {
   const api = useMemo(() => doctorApi(createBrowserApiClient(session)), [session]);
   const [specialties, setSpecialties] = useState<Specialty[]>([]);
   const [doctors, setDoctors] = useState<Page<Doctor>>({ items: [], page: 1, limit: 20, total: 0 });
@@ -27,6 +37,15 @@ export function DoctorPanel() {
   const [timeOffs, setTimeOffs] = useState<TimeOff[]>([]);
   const [slots, setSlots] = useState<Slot[]>([]);
   const [timeOffError, setTimeOffError] = useState("");
+  const [detailError, setDetailError] = useState("");
+  const [slotError, setSlotError] = useState("");
+  const [scheduleView, setScheduleView] = useState<"calendar" | "list">("calendar");
+  const scheduleFormRef = useRef<HTMLFormElement>(null);
+  const [activityPending, setActivityPending] = useState<string | null>(null);
+  const [activityReview, setActivityReview] = useState(false);
+  const [detailRevision, setDetailRevision] = useState(0);
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const [search, setSearch] = useState("");
   const [query, setQuery] = useState("");
   const [specialtyFilter, setSpecialtyFilter] = useState("");
@@ -35,6 +54,7 @@ export function DoctorPanel() {
   const [loading, setLoading] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState("");
+  const [directoryError, setDirectoryError] = useState("");
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
   const busyRef = useRef(false);
@@ -66,7 +86,7 @@ export function DoctorPanel() {
     if (session.status !== "authenticated") return;
     let alive = true;
     setLoading(true);
-    setError("");
+    setDirectoryError("");
     Promise.all([
       api.specialties({ page: 1, limit: 100, ...(admin ? {} : { isActive: true }) }),
       api.doctors({ page, limit: 20, q: query || undefined, specialtyId: specialtyFilter || undefined, ...(admin ? {} : { isActive: true }) })
@@ -74,7 +94,8 @@ export function DoctorPanel() {
       if (!alive) return;
       setSpecialties(specialtyResponse.data.items);
       setDoctors(doctorResponse.data);
-    }).catch((caught: unknown) => { if (alive) setError(message(caught)); })
+      setActivityReview(false);
+    }).catch((caught: unknown) => { if (alive) setDirectoryError(message(caught)); })
       .finally(() => { if (alive) setLoading(false); });
     return () => { alive = false; };
   }, [api, session.status, admin, page, query, specialtyFilter, revision]);
@@ -91,31 +112,56 @@ export function DoctorPanel() {
   useEffect(() => {
     if (!selectedId || session.status !== "authenticated") return;
     let alive = true;
+    const controller = new AbortController();
     setDetailLoading(true);
-    setError("");
+    setDetailError("");
+    setSlotError("");
+    setTimeOffError("");
     void (async () => {
       try {
-        const [doctorResult, scheduleResult] = await Promise.all([api.doctor(selectedId), api.schedules(selectedId)]);
+        const [doctorResult, scheduleResult] = await Promise.all([api.doctor(selectedId, controller.signal), api.allSchedules(selectedId, controller.signal)]);
         if (!alive) return;
         setSelected(doctorResult.data);
-        setSchedules(scheduleResult.data.items);
+        setSchedules(scheduleResult);
         if (doctorResult.data.isActive) {
           try {
-            const slotResult = await api.slots(selectedId, date);
+            const slotResult = await api.slots(selectedId, date, controller.signal);
             if (alive) setSlots(slotResult.data);
-          } catch (caught) { if (alive) setError(message(caught)); }
+          } catch (caught) { if (alive) { setSlots([]); setSlotError(doctorReadError(caught)); } }
         } else if (alive) setSlots([]);
         if (role === "ADMIN" || role === "STAFF" || (role === "DOCTOR" && doctorResult.data.userId === session.identity?.id)) {
           try {
-            const timeOffResult = await api.timeOffs(selectedId);
+            const timeOffResult = await api.timeOffs(selectedId, controller.signal);
             if (alive) { setTimeOffs(timeOffResult.data.items); setTimeOffError(""); }
           } catch (caught) { if (alive) setTimeOffError(message(caught)); }
         } else if (alive) setTimeOffs([]);
-      } catch (caught) { if (alive) setError(message(caught)); }
+      } catch (caught) { if (alive) { setSchedules([]); setSlots([]); setDetailError(doctorReadError(caught)); } }
       finally { if (alive) setDetailLoading(false); }
     })();
-    return () => { alive = false; };
-  }, [api, selectedId, date, revision, role, session.status]);
+    return () => { alive = false; controller.abort(); };
+  }, [api, selectedId, date, revision, detailRevision, role, session.status]);
+
+  async function toggleActivity(item: Doctor) {
+    if (!admin || loading || busyRef.current || activityReview) return;
+    busyRef.current = true;
+    setBusy(true);
+    setActivityPending(item.id);
+    setError(""); setNotice("");
+    try {
+      const updated = await api.setDoctorActivity(item.id, !item.isActive);
+      if (!mounted.current) return;
+      setDoctors((current) => ({ ...current, items: current.items.map((doctor) => doctor.id === updated.id ? updated : doctor) }));
+      setSelected((current) => current?.id === updated.id ? updated : current);
+      setNotice(`${updated.displayName}: ${updated.isActive ? "đã kích hoạt" : "đã ngừng hoạt động"}.`);
+      setDetailRevision((value) => value + 1);
+    } catch (caught) {
+      if (!mounted.current) return;
+      setError(doctorActivityError(caught));
+      if (!(caught instanceof ApiClientError) || caught.status === 0 || caught.status >= 500 || caught.code === "INVALID_RESPONSE") setActivityReview(true);
+    } finally {
+      if (mounted.current) { busyRef.current = false; setBusy(false); setActivityPending(null); }
+    }
+  }
 
   async function mutate(action: () => Promise<unknown>, success: string, onSuccess?: () => void) {
     if (busyRef.current) return;
@@ -128,55 +174,71 @@ export function DoctorPanel() {
     finally { busyRef.current = false; setBusy(false); }
   }
 
-  function submitSearch(event: FormEvent) { event.preventDefault(); setPage(1); setQuery(search.trim()); }
+  function submitSearch(event: FormEvent) { event.preventDefault(); if (busyRef.current) return; setPage(1); setQuery(search.trim()); }
   function editSpecialty(item: Specialty) {
     setEditingSpecialtyId(item.id); setSpecialtyName(item.name); setSpecialtyDescription(item.description ?? "");
   }
   function editSchedule(item: Schedule) {
     setScheduleId(item.id); setWeekday(item.weekday); setStartTime(item.startTime);
     setEndTime(item.endTime); setDuration(item.slotDurationMinutes);
+    focusScheduleForm();
+  }
+  function focusScheduleForm() {
+    scheduleFormRef.current?.scrollIntoView?.({ block: "nearest" });
+    scheduleFormRef.current?.querySelector("select")?.focus();
+  }
+  function addSchedule() {
+    setScheduleId(null); setWeekday(1); setStartTime("08:00"); setEndTime("12:00"); setDuration(30);
+    focusScheduleForm();
   }
   function editTimeOff(item: TimeOff) {
     setTimeOffId(item.id); setOffStart(dateInput(item.startAt)); setOffEnd(dateInput(item.endAt)); setOffReason(item.reason ?? "");
   }
 
-  if (session.status === "loading") return <LoadingState message="Đang kiểm tra phiên đăng nhập..." />;
-  if (session.status !== "authenticated" || !role || role === "PATIENT") {
-    return <ErrorState message="Bạn cần tài khoản bác sĩ, nhân viên hoặc quản trị viên để xem trang này." />;
-  }
-
   return <div className={styles.stack}>
     <header><p className="eyebrow">Doctor Service</p><h1>Bác sĩ và lịch làm việc</h1>
       <p className={styles.muted}>Giờ phòng khám: Việt Nam (UTC+7). Khung giờ có thể thay đổi trước khi đặt lịch thành công.</p></header>
-    {error && <div role="alert" className={styles.error}>{error} <button type="button" disabled={loading || detailLoading || busy} onClick={() => setRevision((value) => value + 1)}>Tải lại dữ liệu</button></div>}
+    {(error || directoryError) && <div role="alert" className={styles.error}>{error || directoryError} <button type="button" disabled={loading || detailLoading || busy} onClick={() => { setError(""); setRevision((value) => value + 1); }}>Tải lại dữ liệu</button></div>}
     {notice && <div role="status" className={styles.notice}>{notice}</div>}
 
     <section className={styles.card} aria-label="Tìm bác sĩ">
       <form onSubmit={submitSearch} className={styles.row}>
-        <label>Tên bác sĩ<input value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Tìm theo tên" /></label>
-        <label>Chuyên khoa<select value={specialtyFilter} onChange={(event) => { setSpecialtyFilter(event.target.value); setPage(1); }}>
+        <label>Tên bác sĩ<input disabled={busy} value={search} onChange={(event) => setSearch(event.target.value)} placeholder="Tìm theo tên" /></label>
+        <label>Chuyên khoa<select disabled={busy} value={specialtyFilter} onChange={(event) => { setSpecialtyFilter(event.target.value); setPage(1); }}>
           <option value="">Tất cả</option>{specialties.filter((item) => item.isActive).map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
         </select></label>
-        <button type="submit">Tìm kiếm</button>
+        <button type="submit" disabled={busy}>Tìm kiếm</button>
       </form>
-      {loading ? <LoadingState message="Đang tải bác sĩ..." /> : doctors.items.length === 0 ? <p>Chưa có bác sĩ phù hợp.</p> :
+      {loading ? <div className={styles.skeleton} role="status" aria-label="Đang tải bác sĩ"><span>Đang tải bác sĩ...</span></div> : directoryError ? <p>Chưa tải được danh sách bác sĩ. Hãy tải lại dữ liệu.</p> : doctors.items.length === 0 ? <div className={styles.calendarEmpty}><span aria-hidden="true">⌕</span><p>Chưa có bác sĩ phù hợp.</p><button type="button" onClick={() => { setSearch(""); setQuery(""); setSpecialtyFilter(""); setPage(1); setRevision((value) => value + 1); }}>Xóa bộ lọc và tải lại</button></div> :
         <div className={styles.list}>{doctors.items.map((item) =>
-          <button key={item.id} type="button" className={selectedId === item.id ? styles.selected : ""} onClick={() => {
+          <div key={item.id} className={`${styles.doctorRow} ${selectedId === item.id ? styles.selected : ""}`}>
+          <button type="button" className={styles.doctorSelect} aria-pressed={selectedId === item.id} onClick={() => {
+            if (selectedId === item.id) return;
             setSelectedId(item.id); setSelected(null); setSchedules([]); setTimeOffs([]); setSlots([]);
-            setScheduleId(null); setTimeOffId(null); setEditingDoctor(false);
+            setScheduleId(null); setTimeOffId(null); setEditingDoctor(false); setDetailError("");
           }}>
             <strong>{item.displayName}</strong><span>{specialties.find((specialty) => specialty.id === item.specialtyId)?.name ?? "Chuyên khoa"}</span>
             {!item.isActive && <span>Ngừng hoạt động</span>}
-          </button>)}</div>}
-      <Pagination page={page} limit={doctors.limit} total={doctors.total} disabled={loading} onPageChange={setPage} />
+          </button>
+          {admin && <div className={styles.activityControl}>
+            <span>{activityPending === item.id ? "Đang lưu…" : item.isActive ? "Hoạt động" : "Đã ngừng"}</span>
+            <button type="button" role="switch" aria-checked={item.isActive} aria-label={`Hoạt động của ${item.displayName}`}
+              aria-busy={activityPending === item.id} disabled={busy || activityReview} className={styles.activitySwitch}
+              onClick={() => void toggleActivity(item)}><span aria-hidden="true" /></button>
+          </div>}
+          </div>)}</div>}
+      {activityReview && <p role="status">Cần tải lại dữ liệu để xác nhận trạng thái trước khi tiếp tục bật/tắt bác sĩ.</p>}
+      <Pagination page={page} limit={doctors.limit} total={doctors.total} disabled={loading || busy} onPageChange={setPage} />
     </section>
 
     {selectedId && <section className={styles.card} aria-label="Chi tiết bác sĩ">
-      {detailLoading && !selected ? <LoadingState message="Đang tải chi tiết..." /> : selected && <>
+      {detailError && <div role="alert" className={styles.error}>{detailError} <button type="button" disabled={busy || detailLoading} onClick={() => setDetailRevision((value) => value + 1)}>Tải lại chi tiết bác sĩ</button></div>}
+      {detailLoading && !selected ? <div role="status" aria-label="Đang tải chi tiết" className={styles.skeleton} /> : selected && <>
         <h2>{selected.displayName}</h2><p>{selected.bio || "Chưa có giới thiệu chuyên môn."}</p>
         <p className={styles.muted}>{specialties.find((item) => item.id === selected.specialtyId)?.name ?? "Chuyên khoa chưa xác định"}</p>
-        <label>Ngày khám (giờ Việt Nam)<input type="date" min={localToday()} value={date} onChange={(event) => setDate(event.target.value)} /></label>
-        {detailLoading ? <p>Đang cập nhật khung giờ...</p> : slots.length === 0 ? <p>Không có khung giờ phù hợp trong ngày này.</p> :
+        <p>{selected.isActive ? "Đang hoạt động" : "Bác sĩ đang ngừng hoạt động; các ca định kỳ vẫn được lưu giữ."}</p>
+        <label>Ngày khám (giờ Việt Nam)<input type="date" min={localToday()} value={date} disabled={busy} onChange={(event) => { if (event.target.value) setDate(event.target.value); }} /></label>
+        {detailLoading ? <p>Đang cập nhật khung giờ...</p> : slotError ? <p role="alert">{slotError} <button type="button" disabled={busy} onClick={() => setDetailRevision((value) => value + 1)}>Tải lại khung giờ</button></p> : detailError ? null : !selected.isActive ? <p>Không nhận đặt lịch khi bác sĩ ngừng hoạt động.</p> : slots.length === 0 ? <p>Không có khung giờ phù hợp trong ngày này.</p> :
           <div className={styles.chips}>{slots.map((slot) => <span key={slot.startAt}>{displayTime(slot.startAt)} – {displayTime(slot.endAt)}</span>)}</div>}
         <p className={styles.muted}>Việc đặt lịch được xác nhận ở bước tạo lịch hẹn.</p>
       </>}
@@ -215,27 +277,37 @@ export function DoctorPanel() {
         <label>Giới thiệu<textarea value={doctorBio} onChange={(event) => setDoctorBio(event.target.value)} /></label>
         <div className={styles.row}><button disabled={busy} type="submit">{editingDoctor ? "Lưu bác sĩ" : "Thêm bác sĩ"}</button>
           {editingDoctor && <button type="button" disabled={busy} onClick={() => { setEditingDoctor(false); setDoctorUserId(""); setDoctorSpecialtyId(""); setDoctorName(""); setDoctorBio(""); }}>Hủy sửa</button>}
-          {editingDoctor && selected && <button type="button" disabled={busy} onClick={() => void mutate(() => api.updateDoctor(selected.id, { isActive: !selected.isActive }), "Đã cập nhật trạng thái bác sĩ.")}>{selected.isActive ? "Ngừng hoạt động" : "Kích hoạt"}</button>}</div>
+          </div>
       </form>
     </section>}
 
-    {canManage && selected && <section className={styles.card} aria-label="Quản lý lịch làm việc">
+    {selected && <section className={styles.card} aria-label="Quản lý lịch làm việc">
       <h2>Lịch làm việc</h2>
-      <div className={styles.list}>{schedules.map((item) => <div key={item.id} className={styles.listRow}>
+      <p className={styles.muted}>Lịch tuần định kỳ theo giờ Việt Nam (UTC+7). Ca làm việc không đảm bảo còn giờ trống: thời gian nghỉ và lịch hẹn đã đặt được kiểm tra theo ngày.</p>
+      <div className={styles.row} role="group" aria-label="Cách xem lịch làm việc">
+        <button type="button" aria-pressed={scheduleView === "calendar"} onClick={() => setScheduleView("calendar")}>Lịch tuần</button>
+        <button type="button" aria-pressed={scheduleView === "list"} onClick={() => setScheduleView("list")}>Danh sách</button>
+        <button type="button" disabled={busy || detailLoading} onClick={() => setDetailRevision((value) => value + 1)}>Tải lại lịch</button>
+      </div>
+      {detailLoading ? <div role="status" aria-label="Đang tải lịch tuần" className={styles.skeleton} /> : detailError ? <p role="alert">Chưa tải được lịch đầy đủ. Hãy tải lại chi tiết bác sĩ.</p> : scheduleView === "calendar" ?
+        <ScheduleCalendar schedules={schedules} disabled={busy} onEdit={canManage ? editSchedule : undefined} onAdd={canManage ? addSchedule : undefined} /> :
+      <div className={styles.list}>{schedules.length === 0 && <p>Chưa có ca làm việc trong tuần.</p>}{schedules.map((item) => <div key={item.id} className={styles.listRow}>
         <span>{weekdays[item.weekday]} · {item.startTime}–{item.endTime} · {item.slotDurationMinutes} phút {item.isActive ? "" : "(ngừng)"}</span>
+        {canManage && <>
         <button type="button" disabled={busy} onClick={() => editSchedule(item)}>Sửa</button>
         <button type="button" disabled={busy} onClick={() => void mutate(() => api.updateSchedule(item.id, { isActive: !item.isActive }), "Đã cập nhật lịch làm việc.")}>{item.isActive ? "Ngừng" : "Kích hoạt"}</button>
-      </div>)}</div>
-      <form className={styles.row} onSubmit={(event) => { event.preventDefault(); void mutate(
+        </>}
+      </div>)}</div>}
+      {canManage && <form ref={scheduleFormRef} className={styles.row} onSubmit={(event) => { event.preventDefault(); if (detailLoading || detailError) return; void mutate(
         () => scheduleId ? api.updateSchedule(scheduleId, { weekday, startTime, endTime, slotDurationMinutes: duration }) : api.createSchedule(selected.id, { weekday, startTime, endTime, slotDurationMinutes: duration }),
         "Đã lưu lịch làm việc.", () => setScheduleId(null)); }}>
         <label>Thứ<select value={weekday} onChange={(event) => setWeekday(Number(event.target.value))}>{weekdays.map((label, index) => <option key={index} value={index}>{label}</option>)}</select></label>
         <label>Bắt đầu<input type="time" required value={startTime} onChange={(event) => setStartTime(event.target.value)} /></label>
         <label>Kết thúc<input type="time" required value={endTime} onChange={(event) => setEndTime(event.target.value)} /></label>
         <label>Phút mỗi lượt<input type="number" min="5" max="240" required value={duration} onChange={(event) => setDuration(Number(event.target.value))} /></label>
-        <button type="submit" disabled={busy}>Lưu lịch</button>
-        {scheduleId && <button type="button" disabled={busy} onClick={() => setScheduleId(null)}>Thêm mới</button>}
-      </form>
+        <button type="submit" disabled={busy || detailLoading || !!detailError}>Lưu lịch</button>
+        {scheduleId && <button type="button" disabled={busy} onClick={addSchedule}>Thêm mới</button>}
+      </form>}
     </section>}
 
     {canManage && selected && <section className={styles.card} aria-label="Thời gian nghỉ">
