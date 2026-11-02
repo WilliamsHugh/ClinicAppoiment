@@ -4,7 +4,7 @@ import React, { useEffect, useMemo, useState, type FormEvent } from "react";
 import { createBrowserApiClient } from "../../lib/api/client";
 import { useSession } from "../../lib/session/session-context";
 import { LoadingState, ErrorState } from "../../components/states";
-import { Button, Badge, Alert } from "../../components/ui";
+import { Button, Badge, Alert, ConfirmModal } from "../../components/ui";
 import styles from "./profile.module.css";
 
 export interface OwnProfile {
@@ -14,6 +14,32 @@ export interface OwnProfile {
   phone?: string | null;
   role: "DOCTOR" | "STAFF" | "ADMIN";
   status: "ACTIVE" | "INACTIVE" | "LOCKED";
+}
+
+function validateFullName(val: string): string | null {
+  const trimmed = val.trim();
+  if (trimmed.length === 0) {
+    return "Họ và tên không được để trống.";
+  }
+  if (trimmed.length < 2) {
+    return "Họ và tên phải có ít nhất 2 ký tự.";
+  }
+  if (val.length > 120) {
+    return "Họ và tên không được vượt quá 120 ký tự.";
+  }
+  return null;
+}
+
+function validatePhone(val: string): string | null {
+  const trimmed = val.trim();
+  if (!trimmed) {
+    return null;
+  }
+  const phoneRegex = /^\+?[0-9][0-9 .-]{7,19}$/;
+  if (!phoneRegex.test(trimmed)) {
+    return "Số điện thoại không hợp lệ (từ 8 đến 20 số, có thể có mã vùng +84).";
+  }
+  return null;
 }
 
 function getInitials(name?: string, role?: string): string {
@@ -51,6 +77,13 @@ export function ProfileForm() {
   const [dob, setDob] = useState("14/03/1984");
   const [gender, setGender] = useState("Nam");
   const [language, setLanguage] = useState("Tiếng Việt");
+
+  const [fullNameError, setFullNameError] = useState<string | null>(null);
+  const [phoneError, setPhoneError] = useState<string | null>(null);
+  const [touched, setTouched] = useState<{ fullName?: boolean; phone?: boolean }>({});
+
+  const [isConfirmSaveOpen, setIsConfirmSaveOpen] = useState(false);
+  const [isConfirmLogoutOpen, setIsConfirmLogoutOpen] = useState(false);
 
   const [activeTab, setActiveTab] = useState<TabKey>("personal");
   const [notifications, setNotifications] = useState({
@@ -94,8 +127,22 @@ export function ProfileForm() {
     };
   }, [client, session.status]);
 
-  async function handleSave(event: FormEvent) {
+  function handleSave(event: FormEvent) {
     event.preventDefault();
+    setTouched({ fullName: true, phone: true });
+    const fnErr = validateFullName(fullName);
+    const phErr = validatePhone(phone);
+    setFullNameError(fnErr);
+    setPhoneError(phErr);
+
+    if (fnErr || phErr) {
+      return;
+    }
+
+    setIsConfirmSaveOpen(true);
+  }
+
+  async function executeSave() {
     setError(null);
     setNotice(null);
     setSaving(true);
@@ -107,8 +154,10 @@ export function ProfileForm() {
       setFullName(result.data.fullName);
       setPhone(result.data.phone ?? "");
       setNotice("Đã cập nhật hồ sơ cá nhân thành công.");
+      setIsConfirmSaveOpen(false);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Không thể cập nhật hồ sơ cá nhân.");
+      setIsConfirmSaveOpen(false);
     } finally {
       setSaving(false);
     }
@@ -118,6 +167,9 @@ export function ProfileForm() {
     if (profile) {
       setFullName(profile.fullName || "");
       setPhone(profile.phone ?? "");
+      setFullNameError(null);
+      setPhoneError(null);
+      setTouched({});
       setError(null);
       setNotice(null);
     }
@@ -250,14 +302,31 @@ export function ProfileForm() {
                     </label>
                     <input
                       id="profile-fullname"
-                      className={styles.fieldInput}
+                      className={`${styles.fieldInput} ${fullNameError ? styles.inputError : ""}`}
                       value={fullName}
-                      onChange={(e) => setFullName(e.target.value)}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setFullName(val);
+                        if (touched.fullName) {
+                          setFullNameError(validateFullName(val));
+                        }
+                      }}
+                      onBlur={(e) => {
+                        setTouched((prev) => ({ ...prev, fullName: true }));
+                        setFullNameError(validateFullName(e.target.value));
+                      }}
+                      aria-invalid={Boolean(fullNameError)}
+                      aria-describedby={fullNameError ? "profile-fullname-error" : undefined}
                       minLength={2}
                       maxLength={120}
                       required
                       disabled={saving}
                     />
+                    {fullNameError && (
+                      <span id="profile-fullname-error" className={styles.fieldError} role="alert">
+                        {fullNameError}
+                      </span>
+                    )}
                   </div>
 
                   <div className={styles.field}>
@@ -282,14 +351,31 @@ export function ProfileForm() {
                     </label>
                     <input
                       id="profile-phone"
-                      className={styles.fieldInput}
+                      className={`${styles.fieldInput} ${phoneError ? styles.inputError : ""}`}
                       value={phone}
-                      onChange={(e) => setPhone(e.target.value)}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setPhone(val);
+                        if (touched.phone) {
+                          setPhoneError(validatePhone(val));
+                        }
+                      }}
+                      onBlur={(e) => {
+                        setTouched((prev) => ({ ...prev, phone: true }));
+                        setPhoneError(validatePhone(e.target.value));
+                      }}
+                      aria-invalid={Boolean(phoneError)}
+                      aria-describedby={phoneError ? "profile-phone-error" : undefined}
                       inputMode="tel"
                       maxLength={20}
                       disabled={saving}
                       placeholder="0901 234 567"
                     />
+                    {phoneError && (
+                      <span id="profile-phone-error" className={styles.fieldError} role="alert">
+                        {phoneError}
+                      </span>
+                    )}
                   </div>
 
                   <div className={styles.field}>
@@ -346,7 +432,12 @@ export function ProfileForm() {
                   <Button variant="secondary" type="button" onClick={handleReset} disabled={saving}>
                     Hủy
                   </Button>
-                  <Button variant="primary" type="submit" loading={saving} disabled={fullName.trim().length < 2}>
+                  <Button
+                    variant="primary"
+                    type="submit"
+                    loading={saving}
+                    disabled={saving || Boolean(fullNameError || phoneError || fullName.trim().length < 2)}
+                  >
                     Lưu thay đổi
                   </Button>
                 </div>
@@ -517,7 +608,7 @@ export function ProfileForm() {
                 variant="danger"
                 size="sm"
                 type="button"
-                onClick={() => session.signOut()}
+                onClick={() => setIsConfirmLogoutOpen(true)}
               >
                 Đăng xuất khỏi thiết bị này
               </Button>
@@ -525,6 +616,32 @@ export function ProfileForm() {
           </div>
         </div>
       </div>
+
+      <ConfirmModal
+        isOpen={isConfirmSaveOpen}
+        onCancel={() => setIsConfirmSaveOpen(false)}
+        onConfirm={executeSave}
+        title="Xác nhận lưu thay đổi"
+        description="Bạn có chắc chắn muốn cập nhật thông tin hồ sơ cá nhân?"
+        confirmLabel="Lưu thay đổi"
+        cancelLabel="Quay lại"
+        variant="primary"
+        loading={saving}
+      />
+
+      <ConfirmModal
+        isOpen={isConfirmLogoutOpen}
+        onCancel={() => setIsConfirmLogoutOpen(false)}
+        onConfirm={() => {
+          setIsConfirmLogoutOpen(false);
+          session.signOut();
+        }}
+        title="Xác nhận đăng xuất"
+        description="Bạn có chắc chắn muốn đăng xuất khỏi phiên làm việc trên thiết bị này?"
+        confirmLabel="Đăng xuất"
+        cancelLabel="Quay lại"
+        variant="danger"
+      />
     </div>
   );
 }
