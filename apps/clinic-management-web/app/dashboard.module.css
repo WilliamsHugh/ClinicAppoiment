@@ -1,4 +1,4 @@
-/* Dashboard Stylesheet */
+/* Dashboard Stylesheet — Health&Human Token Compliant */
 
 .container {
   display: flex;
@@ -6,11 +6,14 @@
   gap: 24px;
   max-width: 1200px;
   margin: 0 auto;
+  padding-bottom: 32px;
 }
 
+/* Welcome Banner */
 .welcomeBanner {
-  background: linear-gradient(135deg, #073c43 0%, #087f8c 100%);
-  color: #ffffff;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--ink);
   padding: 24px 28px;
   border-radius: var(--radius-lg);
   display: flex;
@@ -18,19 +21,20 @@
   align-items: center;
   flex-wrap: wrap;
   gap: 16px;
-  box-shadow: var(--shadow-md);
+  box-shadow: var(--shadow-sm);
 }
 
 .welcomeText h1 {
   font-size: 1.5rem;
-  font-weight: 800;
+  font-weight: 700;
   margin: 0 0 6px 0;
-  color: #ffffff;
+  color: var(--ink);
+  letter-spacing: -0.01em;
 }
 
 .welcomeText p {
   margin: 0;
-  color: #b7f1e9;
+  color: var(--muted);
   font-size: 0.925rem;
 }
 
@@ -38,13 +42,14 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: rgba(255, 255, 255, 0.18);
+  background: var(--surface-subtle);
+  border: 1px solid var(--line);
+  color: var(--ink);
   padding: 6px 14px;
   border-radius: var(--radius-full);
   font-size: 0.8125rem;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0.02em;
 }
 
 /* Stat Grid */
@@ -63,7 +68,7 @@
   flex-direction: column;
   gap: 8px;
   box-shadow: var(--shadow-sm);
-  transition: transform 0.15s, box-shadow 0.15s;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
 }
 
 .statCard:hover {
@@ -192,14 +197,14 @@
 .chartBar {
   width: 100%;
   max-width: 28px;
-  background: var(--brand);
-  border-radius: 4px 4px 0 0;
+  background: var(--primary);
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
   transition: height 0.3s ease;
   min-height: 4px;
 }
 
 .chartBarActive {
-  background: #059669;
+  background: var(--success);
 }
 
 .chartLabel {
