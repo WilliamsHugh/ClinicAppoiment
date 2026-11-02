@@ -57,6 +57,21 @@ describe("AppShell & RouteGuard (M3-UI-LEAD-004, M3-UI-LEAD-005)", () => {
       expect(html).toContain("href=\"/notifications\"");
       expect(html).toContain("Thông báo");
     });
+
+    it("bypasses AppShell chrome for /auth route (M3-WEB-001)", () => {
+      currentSession = makeSession();
+      mockPathname = "/auth";
+      const html = renderToStaticMarkup(
+        <AppShell>
+          <div id="auth-page-content">Trang Đăng Nhập Full Canvas</div>
+        </AppShell>
+      );
+      expect(html).toContain("auth-page-content");
+      expect(html).toContain("Trang Đăng Nhập Full Canvas");
+      expect(html).not.toContain("shell-sidebar");
+      expect(html).not.toContain("topbar");
+      expect(html).not.toContain("Health&amp;Human");
+    });
   });
 
   describe("RouteGuard (403 Forbidden)", () => {
