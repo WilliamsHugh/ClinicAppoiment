@@ -56,6 +56,8 @@ export const TextInput = forwardRef<HTMLInputElement, InputProps>(function TextI
   );
 });
 
+export const Input = TextInput;
+
 export interface SelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
   label?: string;
   error?: string;

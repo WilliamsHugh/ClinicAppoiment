@@ -3,6 +3,8 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useSession } from "../../src/lib/session/session-context";
+import { Alert, Button, ConfirmModal, Input } from "../../src/components/ui";
+import styles from "./auth.module.css";
 
 export default function AuthPage() {
   const router = useRouter();
@@ -11,46 +13,61 @@ export default function AuthPage() {
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [confirmSignOutOpen, setConfirmSignOutOpen] = useState(false);
 
+  // Authenticated Screen
   if (session.status === "authenticated" && session.identity) {
+    const isRoleAdmin = session.identity.role === "ADMIN";
+    const dashboardRoute = isRoleAdmin ? "/users" : "/appointments";
+
     return (
-      <div style={{ maxWidth: "480px", margin: "40px auto", padding: "24px", background: "#fff", borderRadius: "8px", border: "1px solid #e2e8f0" }}>
-        <h2 style={{ fontSize: "20px", fontWeight: "600", marginBottom: "8px" }}>Đã đăng nhập</h2>
-        <p style={{ color: "#64748b", marginBottom: "16px" }}>
-          Bạn đang đăng nhập với tài khoản <strong>{session.identity.displayName}</strong> ({session.identity.role}).
-        </p>
-        <div style={{ display: "flex", gap: "12px" }}>
-          <button
-            type="button"
-            onClick={() => router.push(session.identity?.role === "ADMIN" ? "/users" : "/appointments")}
-            style={{
-              padding: "8px 16px",
-              background: "#0284c7",
-              color: "#fff",
-              border: "none",
-              borderRadius: "4px",
-              cursor: "pointer",
-              fontWeight: 500,
-            }}
-          >
-            Vào bảng điều khiển
-          </button>
-          <button
-            type="button"
-            onClick={() => session.signOut()}
-            style={{
-              padding: "8px 16px",
-              background: "#fff",
-              color: "#dc2626",
-              border: "1px solid #dc2626",
-              borderRadius: "4px",
-              cursor: "pointer",
-              fontWeight: 500,
-            }}
-          >
-            Đăng xuất
-          </button>
+      <div className={styles.container}>
+        <div className={styles.authenticatedCard}>
+          <div className={styles.brandHeader}>
+            <span className={styles.brandLogo} aria-hidden="true">+</span>
+            <span className={styles.brandName}>Health&amp;Human</span>
+          </div>
+
+          <div className={styles.authenticatedHeader}>
+            <h1 className={styles.title}>Đã đăng nhập</h1>
+            <p className={styles.subtitle}>
+              Bạn đang đăng nhập với tài khoản{" "}
+              <strong>{session.identity.displayName || "Người dùng"}</strong> (
+              {session.identity.role}).
+            </p>
+          </div>
+
+          <div className={styles.authenticatedActions}>
+            <Button
+              variant="primary"
+              type="button"
+              onClick={() => router.push(dashboardRoute)}
+            >
+              Vào bảng điều khiển
+            </Button>
+            <Button
+              variant="danger"
+              type="button"
+              onClick={() => setConfirmSignOutOpen(true)}
+            >
+              Đăng xuất
+            </Button>
+          </div>
         </div>
+
+        <ConfirmModal
+          isOpen={confirmSignOutOpen}
+          onCancel={() => setConfirmSignOutOpen(false)}
+          onConfirm={() => {
+            setConfirmSignOutOpen(false);
+            session.signOut();
+          }}
+          title="Xác nhận đăng xuất"
+          description="Bạn có chắc chắn muốn đăng xuất khỏi hệ thống quản lý phòng khám?"
+          confirmLabel="Đăng xuất"
+          cancelLabel="Quay lại"
+          variant="danger"
+        />
       </div>
     );
   }
@@ -68,7 +85,8 @@ export default function AuthPage() {
       await session.signIn(email, password);
       router.push("/");
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Đăng nhập thất bại. Vui lòng thử lại.";
+      const message =
+        err instanceof Error ? err.message : "Đăng nhập thất bại. Vui lòng thử lại.";
       setErrorMessage(message);
     } finally {
       setLoading(false);
@@ -76,84 +94,70 @@ export default function AuthPage() {
   };
 
   return (
-    <div style={{ maxWidth: "440px", margin: "40px auto", padding: "32px", background: "#fff", borderRadius: "12px", border: "1px solid #e2e8f0", boxShadow: "0 1px 3px rgba(0,0,0,0.05)" }}>
-      <div style={{ marginBottom: "24px", textAlign: "center" }}>
-        <h1 style={{ fontSize: "22px", fontWeight: "700", color: "#0f172a", marginBottom: "6px" }}>Đăng nhập quản lý</h1>
-        <p style={{ fontSize: "14px", color: "#64748b" }}>Dành cho Bác sĩ, Nhân viên và Quản trị viên</p>
-      </div>
-
-      {errorMessage && (
-        <div style={{ padding: "12px 14px", marginBottom: "18px", background: "#fef2f2", border: "1px solid #fecaca", borderRadius: "6px", color: "#b91c1c", fontSize: "14px" }}>
-          {errorMessage}
-        </div>
-      )}
-
-      <form onSubmit={handleSubmit} style={{ display: "flex", flexDirection: "column", gap: "16px" }}>
-        <div>
-          <label htmlFor="auth-email" style={{ display: "block", fontSize: "14px", fontWeight: "500", color: "#334155", marginBottom: "6px" }}>
-            Email
-          </label>
-          <input
-            id="auth-email"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="nhanvien@phongkham.vn"
-            required
-            disabled={loading}
-            style={{
-              width: "100%",
-              padding: "10px 12px",
-              borderRadius: "6px",
-              border: "1px solid #cbd5e1",
-              fontSize: "14px",
-              boxSizing: "border-box",
-            }}
-          />
+    <div className={styles.container}>
+      <div className={styles.card}>
+        {/* Brand Header */}
+        <div className={styles.brandHeader}>
+          <span className={styles.brandLogo} aria-hidden="true">+</span>
+          <span className={styles.brandName}>Health&amp;Human</span>
         </div>
 
-        <div>
-          <label htmlFor="auth-password" style={{ display: "block", fontSize: "14px", fontWeight: "500", color: "#334155", marginBottom: "6px" }}>
-            Mật khẩu
-          </label>
-          <input
-            id="auth-password"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder="••••••••"
-            required
-            disabled={loading}
-            style={{
-              width: "100%",
-              padding: "10px 12px",
-              borderRadius: "6px",
-              border: "1px solid #cbd5e1",
-              fontSize: "14px",
-              boxSizing: "border-box",
-            }}
-          />
+        {/* Title Area */}
+        <div className={styles.titleArea}>
+          <h1 className={styles.title}>Đăng nhập quản lý</h1>
+          <p className={styles.subtitle}>Dành cho Bác sĩ, Nhân viên và Quản trị viên</p>
         </div>
 
-        <button
-          type="submit"
-          disabled={loading}
-          style={{
-            marginTop: "8px",
-            padding: "10px 16px",
-            background: loading ? "#94a3b8" : "#0284c7",
-            color: "#fff",
-            border: "none",
-            borderRadius: "6px",
-            fontSize: "15px",
-            fontWeight: "600",
-            cursor: loading ? "not-allowed" : "pointer",
-            transition: "background 0.2s",
-          }}
+        {/* Error Alert */}
+        {errorMessage && (
+          <Alert variant="danger" title="Lỗi đăng nhập" onClose={() => setErrorMessage(null)}>
+            {errorMessage}
+          </Alert>
+        )}
+
+        {/* Login Form */}
+        <form
+          onSubmit={handleSubmit}
+          className={styles.form}
+          aria-label="Đăng nhập quản lý"
         >
-          {loading ? "Đang xử lý..." : "Đăng nhập"}
-        </button>
-      </form>
+          <div className={styles.formFields}>
+            <Input
+              id="auth-email"
+              label="Email"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="nhanvien@phongkham.vn"
+              required
+              disabled={loading}
+              autoComplete="email"
+            />
+
+            <Input
+              id="auth-password"
+              label="Mật khẩu"
+              type="password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              placeholder="••••••••"
+              required
+              disabled={loading}
+              autoComplete="current-password"
+            />
+          </div>
+
+          <Button
+            type="submit"
+            variant="primary"
+            loading={loading}
+            fullWidth
+            className={styles.submitButton}
+          >
+            Đăng nhập
+          </Button>
+        </form>
+      </div>
     </div>
   );
 }

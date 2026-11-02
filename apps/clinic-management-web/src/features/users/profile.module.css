@@ -220,6 +220,21 @@
   margin: 2px 0 0;
 }
 
+.fieldError {
+  font-size: 0.75rem;
+  color: var(--danger);
+  font-weight: 500;
+  margin: 4px 0 0;
+}
+
+.inputError {
+  border-color: var(--danger) !important;
+}
+
+.inputError:focus {
+  box-shadow: 0 0 0 2px var(--danger-light) !important;
+}
+
 /* Key Value Row */
 .kvRow {
   display: flex;
