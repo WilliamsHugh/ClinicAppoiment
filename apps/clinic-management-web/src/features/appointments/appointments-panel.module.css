@@ -1,0 +1,483 @@
+/* Appointments Operational Panel Styles */
+
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  width: 100%;
+}
+
+.header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 16px;
+}
+
+.titleArea {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--ink);
+  margin: 0;
+  letter-spacing: -0.02em;
+}
+
+.subtitle {
+  font-size: 0.875rem;
+  color: var(--muted);
+  margin: 0;
+}
+
+.headerActions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+/* Filter Bar */
+.filterBar {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg, 8px);
+  padding: 16px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  box-shadow: var(--shadow-sm);
+}
+
+.filterControls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 14px;
+}
+
+.dateFilterGroup {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dateLabel {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--ink);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.dateInput {
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md, 6px);
+  font-size: 0.875rem;
+  color: var(--ink);
+  background: var(--surface);
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.dateInput:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px var(--primary-light);
+}
+
+.quickBtn {
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md, 6px);
+  background: var(--surface-subtle);
+  color: var(--ink);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.quickBtn:hover {
+  background: var(--surface);
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.searchGroup {
+  flex: 1;
+  min-width: 240px;
+  max-width: 380px;
+}
+
+.searchInput {
+  width: 100%;
+  padding: 8px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md, 6px);
+  font-size: 0.875rem;
+  color: var(--ink);
+  background: var(--surface);
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.searchInput:focus {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px var(--primary-light);
+}
+
+/* Status Filter Tabs */
+.statusTabs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+  scrollbar-width: thin;
+}
+
+.statusTab {
+  padding: 6px 12px;
+  border-radius: var(--radius-full, 999px);
+  font-size: 0.8125rem;
+  font-weight: 500;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--muted);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 0.15s ease;
+}
+
+.statusTab:hover {
+  background: var(--surface-subtle);
+  color: var(--ink);
+}
+
+.statusTabActive {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #ffffff;
+  font-weight: 600;
+}
+
+.statusTabActive:hover {
+  background: var(--primary-hover);
+  color: #ffffff;
+}
+
+/* Data Table Card */
+.tableCard {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg, 8px);
+  box-shadow: var(--shadow-sm);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.tableWrapper {
+  overflow-x: auto;
+  width: 100%;
+  -webkit-overflow-scrolling: touch;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 0.875rem;
+}
+
+.table thead {
+  background: var(--surface-subtle);
+  border-bottom: 1px solid var(--line);
+}
+
+.table th {
+  padding: 12px 16px;
+  font-weight: 600;
+  color: var(--muted);
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  white-space: nowrap;
+}
+
+.table tbody tr {
+  border-bottom: 1px solid var(--line);
+  transition: background 0.1s ease;
+}
+
+.table tbody tr:hover {
+  background: #f8fafc;
+}
+
+.table tbody tr:last-child {
+  border-bottom: none;
+}
+
+.table td {
+  padding: 14px 16px;
+  color: var(--ink);
+  vertical-align: middle;
+}
+
+/* Cell content formatters */
+.timeCell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  white-space: nowrap;
+}
+
+.timeHours {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.timeDate {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.patientCell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.patientName {
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.patientSub {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.doctorCell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.doctorName {
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.specialtyBadge {
+  font-size: 0.75rem;
+  color: var(--muted);
+}
+
+.reasonCell {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--muted);
+  font-size: 0.8125rem;
+}
+
+/* Action buttons */
+.actionGroup {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+}
+
+.actionBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 6px 12px;
+  border-radius: var(--radius-md, 6px);
+  font-size: 0.8125rem;
+  font-weight: 600;
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+  text-decoration: none;
+}
+
+.actionBtnConfirm {
+  background: var(--primary-light);
+  color: var(--primary);
+  border-color: rgba(45, 91, 255, 0.2);
+}
+
+.actionBtnConfirm:hover:not(:disabled) {
+  background: var(--primary);
+  color: #ffffff;
+}
+
+.actionBtnCheckIn {
+  background: var(--info-light);
+  color: var(--info-text);
+  border-color: rgba(2, 132, 199, 0.2);
+}
+
+.actionBtnCheckIn:hover:not(:disabled) {
+  background: var(--info);
+  color: #ffffff;
+}
+
+.actionBtnCancel {
+  background: var(--danger-light);
+  color: var(--danger);
+  border-color: rgba(185, 28, 28, 0.2);
+}
+
+.actionBtnCancel:hover:not(:disabled) {
+  background: var(--danger);
+  color: #ffffff;
+}
+
+.actionBtnNoShow {
+  background: #f1f5f9;
+  color: #475569;
+  border-color: #cbd5e1;
+}
+
+.actionBtnNoShow:hover:not(:disabled) {
+  background: #475569;
+  color: #ffffff;
+}
+
+.actionBtnRecord {
+  background: var(--success-light);
+  color: var(--success);
+  border-color: rgba(21, 128, 61, 0.2);
+}
+
+.actionBtnRecord:hover:not(:disabled) {
+  background: var(--success);
+  color: #ffffff;
+}
+
+.actionBtn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* Conflict alert row */
+.conflictAlert {
+  padding: 8px 16px;
+  background: #fffbeb;
+  border-top: 1px solid #fde68a;
+  border-bottom: 1px solid #fde68a;
+}
+
+/* Toast Notification */
+.toastWrapper {
+  position: fixed;
+  bottom: 24px;
+  right: 24px;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-width: 420px;
+}
+
+.toast {
+  padding: 12px 18px;
+  border-radius: var(--radius-lg, 8px);
+  box-shadow: var(--shadow-lg);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  animation: slideIn 0.2s ease-out;
+}
+
+.toastSuccess {
+  background: var(--success);
+  color: #ffffff;
+}
+
+.toastWarning {
+  background: var(--warning);
+  color: #ffffff;
+}
+
+.toastError {
+  background: var(--danger);
+  color: #ffffff;
+}
+
+.toastClose {
+  background: transparent;
+  border: none;
+  color: inherit;
+  font-size: 1.1rem;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+  opacity: 0.8;
+}
+
+.toastClose:hover {
+  opacity: 1;
+}
+
+/* Pagination bar */
+.paginationBar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 20px;
+  border-top: 1px solid var(--line);
+  background: var(--surface);
+  font-size: 0.875rem;
+  color: var(--muted);
+}
+
+.paginationControls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+@keyframes slideIn {
+  from {
+    transform: translateY(20px);
+    opacity: 0;
+  }
+  to {
+    transform: translateY(0);
+    opacity: 1;
+  }
+}
+
+@media (max-width: 768px) {
+  .filterControls {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .dateFilterGroup {
+    flex-wrap: wrap;
+  }
+
+  .searchGroup {
+    max-width: none;
+  }
+}
