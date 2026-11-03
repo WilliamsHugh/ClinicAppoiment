@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { X } from "lucide-react";
 import type { AppointmentStatus } from "@clinic/shared-types";
 import { useSession } from "../../lib/session/session-context";
 import { createBrowserApiClient, ApiClientError, toUserFriendlyError } from "../../lib/api/client";
@@ -523,7 +524,7 @@ export function AppointmentsPanel() {
               onClick={() => setToast(null)}
               aria-label="Đóng thông báo"
             >
-              ✕
+              <X size={14} aria-hidden="true" />
             </button>
           </div>
         </div>

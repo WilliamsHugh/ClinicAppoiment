@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { AlertTriangle, Info } from "lucide-react";
 import { ConfirmModal } from "../../components/ui/confirm-modal";
 import type { ClinicRole } from "../../lib/session/session";
 import styles from "./users-panel.module.css";
@@ -79,13 +80,21 @@ export function UserRoleModal({
 
         {selectedRole === "ADMIN" && (
           <div className={styles.warningBox} role="alert">
-            ⚠️ <strong>Cảnh báo quyền hạn:</strong> Vai trò Quản trị viên (ADMIN) có toàn quyền cấu hình hệ thống, quản lý tài khoản người dùng và xem thông tin kiểm toán.
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <AlertTriangle size={16} aria-hidden="true" />
+              <strong>Cảnh báo quyền hạn:</strong>
+            </span>{" "}
+            Vai trò Quản trị viên (ADMIN) có toàn quyền cấu hình hệ thống, quản lý tài khoản người dùng và xem thông tin kiểm toán.
           </div>
         )}
 
         {selectedRole === "DOCTOR" && (
           <div className={styles.warningBox}>
-            ℹ️ <strong>Lưu ý:</strong> Bác sĩ cần được phân công chuyên khoa và lịch trực tại Doctor Service để có thể nhận lịch khám.
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <Info size={16} aria-hidden="true" />
+              <strong>Lưu ý:</strong>
+            </span>{" "}
+            Bác sĩ cần được phân công chuyên khoa và lịch trực tại Doctor Service để có thể nhận lịch khám.
           </div>
         )}
       </div>

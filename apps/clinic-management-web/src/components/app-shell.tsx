@@ -4,6 +4,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import React, { useState, type ReactNode } from "react";
+import { Menu, Bell } from "lucide-react";
 import { visibleRoutes } from "../lib/navigation/routes";
 import { useSession } from "../lib/session/session-context";
 import { RouteGuard } from "./route-guard";
@@ -145,7 +146,7 @@ export function AppShell({ children, NotificationSlot }: AppShellProps) {
               aria-expanded={mobileMenuOpen}
               onClick={() => setMobileMenuOpen((open) => !open)}
             >
-              ☰
+              <Menu size={18} aria-hidden="true" />
             </button>
             <span className={styles.topbarSubtitle}>
               Thứ Năm, 19/10/2026 · Múi giờ GMT+7
@@ -166,7 +167,7 @@ export function AppShell({ children, NotificationSlot }: AppShellProps) {
                     title="Thông báo"
                     className={styles.notificationLink}
                   >
-                    <span aria-hidden="true">🔔</span>
+                    <Bell size={16} aria-hidden="true" />
                     <span>Thông báo</span>
                   </Link>
                 )}

@@ -3,6 +3,23 @@
 import React, { useState, useMemo } from "react";
 import Image from "next/image";
 import Link from "next/link";
+import {
+  Calendar,
+  Clock,
+  MapPin,
+  Phone,
+  Search,
+  Star,
+  Stethoscope,
+  Microscope,
+  Ambulance,
+  ClipboardList,
+  Pill,
+  Smartphone,
+  Video,
+  X,
+  Info,
+} from "lucide-react";
 import { useSession } from "../../lib/session/session-context";
 import styles from "./clinic-landing.module.css";
 
@@ -408,20 +425,7 @@ export function ClinicLandingPage({ onSwitchToDashboard }: ClinicLandingPageProp
           </div>
 
           <button type="submit" className={styles.searchSubmitBtn}>
-            <svg
-              width="18"
-              height="18"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2.5"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              aria-hidden="true"
-            >
-              <circle cx="11" cy="11" r="8" />
-              <line x1="21" y1="21" x2="16.65" y2="16.65" />
-            </svg>
+            <Search size={18} aria-hidden="true" />
             Search
           </button>
         </form>
@@ -476,7 +480,10 @@ export function ClinicLandingPage({ onSwitchToDashboard }: ClinicLandingPageProp
 
                     <div className={styles.doctorMetaRow}>
                       <span>{doc.room}</span>
-                      <span>⭐ {doc.rating}</span>
+                      <span style={{ display: "inline-flex", alignItems: "center", gap: 3 }}>
+                        <Star size={13} fill="#eab308" color="#eab308" />
+                        {doc.rating}
+                      </span>
                     </div>
 
                     <div className={styles.doctorMetaRow}>
@@ -520,7 +527,9 @@ export function ClinicLandingPage({ onSwitchToDashboard }: ClinicLandingPageProp
 
         <div className={styles.servicesGrid}>
           <div className={styles.serviceCard}>
-            <div className={styles.serviceIconBox}>🩺</div>
+            <div className={styles.serviceIconBox}>
+              <Stethoscope size={24} aria-hidden="true" />
+            </div>
             <h3 className={styles.serviceTitle}>Khám Chuyên Khoa</h3>
             <p className={styles.serviceText}>
               Đội ngũ bác sĩ đầu ngành các khoa Nhi, Tim mạch, Tai Mũi Họng, Răng hàm mặt, Da liễu
@@ -529,7 +538,9 @@ export function ClinicLandingPage({ onSwitchToDashboard }: ClinicLandingPageProp
           </div>
 
           <div className={styles.serviceCard}>
-            <div className={styles.serviceIconBox}>📅</div>
+            <div className={styles.serviceIconBox}>
+              <Calendar size={24} aria-hidden="true" />
+            </div>
             <h3 className={styles.serviceTitle}>Đặt Lịch Trực Tuyến</h3>
             <p className={styles.serviceText}>
               Chọn ngày giờ khám linh hoạt, đặt lịch hẹn nhanh chóng không cần xếp hàng chờ đợi tại
@@ -538,7 +549,9 @@ export function ClinicLandingPage({ onSwitchToDashboard }: ClinicLandingPageProp
           </div>
 
           <div className={styles.serviceCard}>
-            <div className={styles.serviceIconBox}>🔬</div>
+            <div className={styles.serviceIconBox}>
+              <Microscope size={24} aria-hidden="true" />
+            </div>
             <h3 className={styles.serviceTitle}>Xét Nghiệm &amp; Chẩn Đoán</h3>
             <p className={styles.serviceText}>
               Hệ thống phòng xét nghiệm tự động, máy siêu âm, X-quang kỹ thuật số trả kết quả chính
@@ -547,7 +560,9 @@ export function ClinicLandingPage({ onSwitchToDashboard }: ClinicLandingPageProp
           </div>
 
           <div className={styles.serviceCard}>
-            <div className={styles.serviceIconBox}>🚑</div>
+            <div className={styles.serviceIconBox}>
+              <Ambulance size={24} aria-hidden="true" />
+            </div>
             <h3 className={styles.serviceTitle}>Cấp Cứu &amp; Trực 24/7</h3>
             <p className={styles.serviceText}>
               Phòng khám luôn có đội ngũ bác sĩ và điều dưỡng trực cấp cứu 24/7 sẵn sàng hỗ trợ bệnh
@@ -556,7 +571,9 @@ export function ClinicLandingPage({ onSwitchToDashboard }: ClinicLandingPageProp
           </div>
 
           <div className={styles.serviceCard}>
-            <div className={styles.serviceIconBox}>📋</div>
+            <div className={styles.serviceIconBox}>
+              <ClipboardList size={24} aria-hidden="true" />
+            </div>
             <h3 className={styles.serviceTitle}>Bệnh Án Điện Tử</h3>
             <p className={styles.serviceText}>
               Lưu trữ đơn thuốc, tiền sử bệnh án minh bạch, bảo mật an toàn, dễ dàng tra cứu trên ứng
@@ -565,7 +582,9 @@ export function ClinicLandingPage({ onSwitchToDashboard }: ClinicLandingPageProp
           </div>
 
           <div className={styles.serviceCard}>
-            <div className={styles.serviceIconBox}>💊</div>
+            <div className={styles.serviceIconBox}>
+              <Pill size={24} aria-hidden="true" />
+            </div>
             <h3 className={styles.serviceTitle}>Nhà Thuốc Đạt Chuẩn GPP</h3>
             <p className={styles.serviceText}>
               Cung ứng đầy đủ các loại thuốc đặc trị theo đơn bác sĩ với nguồn gốc xuất xứ rõ ràng và
@@ -619,7 +638,7 @@ export function ClinicLandingPage({ onSwitchToDashboard }: ClinicLandingPageProp
 
             <div className={styles.contactDetailItem}>
               <div className={styles.contactIconCircle} aria-hidden="true">
-                📍
+                <MapPin size={18} />
               </div>
               <div>
                 <div className={styles.contactDetailLabel}>Địa chỉ</div>
@@ -631,7 +650,7 @@ export function ClinicLandingPage({ onSwitchToDashboard }: ClinicLandingPageProp
 
             <div className={styles.contactDetailItem}>
               <div className={styles.contactIconCircle} aria-hidden="true">
-                📞
+                <Phone size={18} />
               </div>
               <div>
                 <div className={styles.contactDetailLabel}>Hotline 24/7</div>
@@ -641,7 +660,7 @@ export function ClinicLandingPage({ onSwitchToDashboard }: ClinicLandingPageProp
 
             <div className={styles.contactDetailItem}>
               <div className={styles.contactIconCircle} aria-hidden="true">
-                🕒
+                <Clock size={18} />
               </div>
               <div>
                 <div className={styles.contactDetailLabel}>Giờ làm việc</div>
@@ -665,8 +684,12 @@ export function ClinicLandingPage({ onSwitchToDashboard }: ClinicLandingPageProp
 
             <div>
               <div className={styles.patientAppBadges}>
-                <span className={styles.appStoreBadge}>📱 Android App (Flutter)</span>
-                <span className={styles.appStoreBadge}>🍏 iOS Patient App</span>
+                <span className={styles.appStoreBadge}>
+                  <Smartphone size={15} aria-hidden="true" /> Android App (Flutter)
+                </span>
+                <span className={styles.appStoreBadge}>
+                  <Smartphone size={15} aria-hidden="true" /> iOS Patient App
+                </span>
               </div>
               <p style={{ margin: "14px 0 0 0", fontSize: "13px", color: "rgba(255,255,255,0.8)" }}>
                 Bệnh nhân đăng ký và sử dụng dịch vụ trực tiếp qua ứng dụng di động.
@@ -688,7 +711,7 @@ export function ClinicLandingPage({ onSwitchToDashboard }: ClinicLandingPageProp
               onClick={() => setIsVideoModalOpen(false)}
               aria-label="Đóng video"
             >
-              ✕
+              <X size={18} aria-hidden="true" />
             </button>
             <h3 style={{ fontSize: "20px", fontWeight: 800, marginTop: 0, color: "#1e293b" }}>
               Giới Thiệu Phòng Khám Health&amp;Human
@@ -711,7 +734,7 @@ export function ClinicLandingPage({ onSwitchToDashboard }: ClinicLandingPageProp
                 gap: 12,
               }}
             >
-              <span style={{ fontSize: "36px" }}>🎥</span>
+              <Video size={40} aria-hidden="true" color="var(--brand-light)" />
               <span style={{ fontSize: "15px", fontWeight: 600 }}>
                 Video Tour Giới Thiệu Phòng Khám (HD)
               </span>
@@ -744,7 +767,7 @@ export function ClinicLandingPage({ onSwitchToDashboard }: ClinicLandingPageProp
               onClick={() => setBookingDoctor(null)}
               aria-label="Đóng"
             >
-              ✕
+              <X size={18} aria-hidden="true" />
             </button>
             <h3 style={{ fontSize: "20px", fontWeight: 800, marginTop: 0, color: "#1e293b" }}>
               Đặt Lịch Khám với {bookingDoctor.name}
@@ -762,11 +785,17 @@ export function ClinicLandingPage({ onSwitchToDashboard }: ClinicLandingPageProp
                 fontSize: "14px",
                 color: "#475569",
                 lineHeight: 1.6,
+                display: "flex",
+                gap: 10,
+                alignItems: "flex-start",
               }}
             >
-              💡 <strong>Dành cho Bệnh nhân:</strong> Để hoàn tất đặt hẹn và nhận vé khám QR, bạn có
-              thể tải ứng dụng <strong>Health&amp;Human Patient App</strong> trên điện thoại hoặc gọi
-              hotline tiếp đón <strong>1900 8899</strong> để được hỗ trợ giữ chỗ nhanh nhất.
+              <Info size={18} color="var(--brand)" style={{ flexShrink: 0, marginTop: 2 }} />
+              <div>
+                <strong>Dành cho Bệnh nhân:</strong> Để hoàn tất đặt hẹn và nhận vé khám QR, bạn có
+                thể tải ứng dụng <strong>Health&amp;Human Patient App</strong> trên điện thoại hoặc gọi
+                hotline tiếp đón <strong>1900 8899</strong> để được hỗ trợ giữ chỗ nhanh nhất.
+              </div>
             </div>
             <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}>
               <button

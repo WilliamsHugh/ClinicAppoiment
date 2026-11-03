@@ -1,5 +1,6 @@
 import React from "react";
 import Link from "next/link";
+import { Inbox, AlertCircle, Lock } from "lucide-react";
 export { SkeletonTable, type SkeletonTableProps } from "./ui/skeleton";
 
 export function LoadingState({ message = "Đang tải dữ liệu..." }: { message?: string }) {
@@ -25,7 +26,9 @@ export interface EmptyStateProps {
 export function EmptyState({ title, message, action, className }: EmptyStateProps) {
   return (
     <section className={`state-card ${action ? "state-card--action" : ""} ${className || ""}`.trim()}>
-      <div className="state-icon" aria-hidden="true">○</div>
+      <div className="state-icon" aria-hidden="true">
+        <Inbox size={22} />
+      </div>
       <h2>{title}</h2>
       <p>{message}</p>
       {action && (
@@ -74,7 +77,9 @@ export function ErrorState({
 }) {
   return (
     <section className={`state-card state-error ${className || ""}`.trim()} role="alert">
-      <div className="state-icon" aria-hidden="true">!</div>
+      <div className="state-icon" aria-hidden="true">
+        <AlertCircle size={22} />
+      </div>
       <h2>Đã xảy ra lỗi</h2>
       <p>{message}</p>
       {requestId && <p className="request-id">Mã yêu cầu: {requestId}</p>}
@@ -107,7 +112,7 @@ export function PermissionDeniedState({
         aria-hidden="true"
         style={{ background: "var(--warning-light, #fef3c7)", color: "var(--warning, #b45309)" }}
       >
-        🔒
+        <Lock size={22} />
       </div>
       <h2>{title}</h2>
       <p>{message}</p>

@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useState, type FormEvent } from "react";
+import { User, Lock, Bell, Monitor } from "lucide-react";
 import { createBrowserApiClient } from "../../lib/api/client";
 import { useSession } from "../../lib/session/session-context";
 import { LoadingState, ErrorState } from "../../components/states";
@@ -225,7 +226,7 @@ export function ProfileForm() {
             className={`${styles.subnavItem} ${activeTab === "personal" ? styles.subnavItemActive : ""}`}
             onClick={() => setActiveTab("personal")}
           >
-            <span>👤</span>
+            <User size={16} aria-hidden="true" />
             <span>Thông tin cá nhân</span>
           </button>
           <button
@@ -233,7 +234,7 @@ export function ProfileForm() {
             className={`${styles.subnavItem} ${activeTab === "security" ? styles.subnavItemActive : ""}`}
             onClick={() => setActiveTab("security")}
           >
-            <span>🔒</span>
+            <Lock size={16} aria-hidden="true" />
             <span>Bảo mật</span>
           </button>
           <button
@@ -241,7 +242,7 @@ export function ProfileForm() {
             className={`${styles.subnavItem} ${activeTab === "notifications" ? styles.subnavItemActive : ""}`}
             onClick={() => setActiveTab("notifications")}
           >
-            <span>🔔</span>
+            <Bell size={16} aria-hidden="true" />
             <span>Thông báo</span>
           </button>
           <button
@@ -249,7 +250,7 @@ export function ProfileForm() {
             className={`${styles.subnavItem} ${activeTab === "sessions" ? styles.subnavItemActive : ""}`}
             onClick={() => setActiveTab("sessions")}
           >
-            <span>💻</span>
+            <Monitor size={16} aria-hidden="true" />
             <span>Phiên đăng nhập</span>
           </button>
         </nav>
@@ -340,7 +341,7 @@ export function ProfileForm() {
                         disabled
                         style={{ border: "none", background: "transparent", width: "100%", outline: "none", color: "inherit" }}
                       />
-                      <span aria-hidden="true">🔒</span>
+                      <Lock size={15} aria-hidden="true" style={{ opacity: 0.6 }} />
                     </div>
                     <p className={styles.fieldDescription}>Do quản trị viên quản lý, không thể tự đổi.</p>
                   </div>

@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { ArrowRight } from "lucide-react";
 import { useSession } from "../../lib/session/session-context";
 import { createBrowserApiClient, type PaginatedData } from "../../lib/api/client";
 import { Button, Skeleton } from "../../components/ui";
@@ -236,8 +237,8 @@ export function StaffDashboard() {
                 {confirmedTodayAppointments.length} bệnh nhân cần tiếp đón · {pendingAppointments.length} lịch chờ duyệt
               </span>
             </div>
-            <Link href="/appointments" className={styles.sectionActionLink}>
-              Quản lý lịch hẹn →
+            <Link href="/appointments" className={styles.sectionActionLink} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+              Quản lý lịch hẹn <ArrowRight size={14} aria-hidden="true" />
             </Link>
           </div>
 
@@ -362,8 +363,8 @@ export function StaffDashboard() {
           <section className={styles.sectionCard} aria-labelledby="doctor-schedules-heading">
             <div className={styles.sectionHeader}>
               <h2 id="doctor-schedules-heading">Bác sĩ &amp; Ca trực</h2>
-              <Link href="/doctors" className={styles.sectionActionLink}>
-                Xem lịch →
+              <Link href="/doctors" className={styles.sectionActionLink} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                Xem lịch <ArrowRight size={14} aria-hidden="true" />
               </Link>
             </div>
             <p style={{ fontSize: "0.875rem", color: "var(--muted)", margin: 0 }}>

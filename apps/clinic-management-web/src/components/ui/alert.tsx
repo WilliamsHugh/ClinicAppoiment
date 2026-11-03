@@ -1,4 +1,5 @@
 import React, { ReactNode } from "react";
+import { CheckCircle2, AlertTriangle, AlertCircle, Info, X } from "lucide-react";
 import styles from "./ui.module.css";
 
 export interface AlertProps {
@@ -21,16 +22,27 @@ export function Alert({ type = "info", variant, title, children, onClose, classN
       ? styles.alertDanger
       : styles.alertInfo;
 
-  const icon =
-    effectiveType === "success" ? "✓" : effectiveType === "warning" ? "⚠" : effectiveType === "danger" ? "✕" : "ℹ";
+  const renderIcon = () => {
+    switch (effectiveType) {
+      case "success":
+        return <CheckCircle2 size={18} aria-hidden="true" />;
+      case "warning":
+        return <AlertTriangle size={18} aria-hidden="true" />;
+      case "danger":
+        return <AlertCircle size={18} aria-hidden="true" />;
+      case "info":
+      default:
+        return <Info size={18} aria-hidden="true" />;
+    }
+  };
 
   return (
     <div
       role="alert"
       className={`${styles.alert} ${typeClass} ${className || ""}`.trim()}
     >
-      <span aria-hidden="true" style={{ fontWeight: 700, fontSize: "1.05rem", lineHeight: 1 }}>
-        {icon}
+      <span aria-hidden="true" style={{ display: "inline-flex", alignItems: "center", flexShrink: 0 }}>
+        {renderIcon()}
       </span>
       <div style={{ flex: 1 }}>
         {title && <strong style={{ display: "block", marginBottom: 2 }}>{title}</strong>}
@@ -46,12 +58,13 @@ export function Alert({ type = "info", variant, title, children, onClose, classN
             border: "none",
             cursor: "pointer",
             padding: 0,
-            fontSize: "1rem",
+            display: "inline-flex",
+            alignItems: "center",
             color: "inherit",
             opacity: 0.7,
           }}
         >
-          ✕
+          <X size={16} aria-hidden="true" />
         </button>
       )}
     </div>

@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { ArrowRight, Clock } from "lucide-react";
 import { useSession } from "../../lib/session/session-context";
 import { createBrowserApiClient, type PaginatedData } from "../../lib/api/client";
 import { Button, Skeleton } from "../../components/ui";
@@ -169,8 +170,8 @@ export function DoctorDashboard() {
                 {formatVietnamDate(now)} · {statusCounts.total} ca khám được phân công
               </span>
             </div>
-            <Link href="/appointments" className={styles.sectionActionLink}>
-              Xem tất cả lịch hẹn →
+            <Link href="/appointments" className={styles.sectionActionLink} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+              Xem tất cả lịch hẹn <ArrowRight size={14} aria-hidden="true" />
             </Link>
           </div>
 
@@ -197,6 +198,9 @@ export function DoctorDashboard() {
                   <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "4px 0" }}>
                     <span
                       style={{
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 6,
                         fontSize: "0.8125rem",
                         fontWeight: 700,
                         color: "var(--info)",
@@ -204,7 +208,7 @@ export function DoctorDashboard() {
                         letterSpacing: "0.05em",
                       }}
                     >
-                      ● Bệnh nhân đang chờ khám ({checkedInList.length})
+                      <Clock size={14} aria-hidden="true" /> Bệnh nhân đang chờ khám ({checkedInList.length})
                     </span>
                   </div>
 

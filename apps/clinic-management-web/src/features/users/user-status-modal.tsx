@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from "react";
+import { ShieldAlert, AlertTriangle } from "lucide-react";
 import { ConfirmModal } from "../../components/ui/confirm-modal";
 import styles from "./users-panel.module.css";
 
@@ -100,13 +101,21 @@ export function UserStatusModal({
 
         {isLocking && (
           <div className={styles.dangerBox} role="alert">
-            ⛔ <strong>Cảnh báo khóa tài khoản:</strong> Tài khoản bị khóa sẽ lập tức mất quyền đăng nhập và không thể thực hiện bất kỳ thao tác nào trên toàn bộ hệ thống.
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <ShieldAlert size={16} aria-hidden="true" />
+              <strong>Cảnh báo khóa tài khoản:</strong>
+            </span>{" "}
+            Tài khoản bị khóa sẽ lập tức mất quyền đăng nhập và không thể thực hiện bất kỳ thao tác nào trên toàn bộ hệ thống.
           </div>
         )}
 
         {selectedStatus === "INACTIVE" && (
           <div className={styles.warningBox}>
-            ⚠️ <strong>Lưu ý:</strong> Tài khoản ở trạng thái chưa kích hoạt sẽ cần xác thực hoặc kích hoạt lại để sử dụng.
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <AlertTriangle size={16} aria-hidden="true" />
+              <strong>Lưu ý:</strong>
+            </span>{" "}
+            Tài khoản ở trạng thái chưa kích hoạt sẽ cần xác thực hoặc kích hoạt lại để sử dụng.
           </div>
         )}
       </div>

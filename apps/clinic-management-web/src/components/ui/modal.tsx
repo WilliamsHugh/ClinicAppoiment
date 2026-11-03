@@ -1,4 +1,5 @@
 import React, { ReactNode, useEffect, useRef } from "react";
+import { X } from "lucide-react";
 import styles from "./ui.module.css";
 
 export interface ModalProps {
@@ -51,7 +52,7 @@ export function Modal({ isOpen, onClose, title, children, footer, maxWidth }: Mo
             aria-label="Đóng"
             onClick={onClose}
           >
-            ✕
+            <X size={18} aria-hidden="true" />
           </button>
         </header>
         <div className={styles.modalBody}>{children}</div>

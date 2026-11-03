@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { CheckCircle2, AlertTriangle, ArrowRight } from "lucide-react";
 import { useSession } from "../../lib/session/session-context";
 import { createBrowserApiClient, type PaginatedData } from "../../lib/api/client";
 import { Badge, Button, Skeleton } from "../../components/ui";
@@ -145,10 +146,17 @@ export function AdminDashboard() {
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
               <Badge variant={isAllHealthy ? "success" : "warning"} size="md">
-                {isAllHealthy ? "✓ Tất cả hoạt động tốt" : "⚠ Cảnh báo dịch vụ"}
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                  {isAllHealthy ? (
+                    <CheckCircle2 size={13} aria-hidden="true" />
+                  ) : (
+                    <AlertTriangle size={13} aria-hidden="true" />
+                  )}
+                  {isAllHealthy ? "Tất cả hoạt động tốt" : "Cảnh báo dịch vụ"}
+                </span>
               </Badge>
-              <Link href="/health" className={styles.sectionActionLink}>
-                Xem chi tiết →
+              <Link href="/health" className={styles.sectionActionLink} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                Xem chi tiết <ArrowRight size={14} aria-hidden="true" />
               </Link>
             </div>
           </div>
@@ -212,8 +220,8 @@ export function AdminDashboard() {
                 Tổng số: {userSummary.total} tài khoản
               </span>
             </div>
-            <Link href="/users" className={styles.sectionActionLink}>
-              Quản lý →
+            <Link href="/users" className={styles.sectionActionLink} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+              Quản lý <ArrowRight size={14} aria-hidden="true" />
             </Link>
           </div>
 

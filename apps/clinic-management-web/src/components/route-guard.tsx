@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, type ReactNode } from "react";
+import { ShieldAlert } from "lucide-react";
 import { canAccessRoute, routeForPath } from "../lib/navigation/routes";
 import { useSession } from "../lib/session/session-context";
 import { LoadingState } from "./states";
@@ -66,12 +67,10 @@ export function RouteGuard({ children }: { children: ReactNode }) {
           display: "flex",
           alignItems: "center",
           justifyContent: "center",
-          fontSize: "1.75rem",
-          fontWeight: 800,
         }}
         aria-hidden="true"
       >
-        ✕
+        <ShieldAlert size={28} />
       </div>
 
       <Badge variant="danger" size="md">

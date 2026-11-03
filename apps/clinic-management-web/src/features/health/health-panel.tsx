@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { CheckCircle2, AlertTriangle, XCircle } from "lucide-react";
 import { ErrorState, LoadingState } from "../../components/states";
 import { Badge, Button } from "../../components/ui";
 import { ApiClientError, createBrowserApiClient } from "../../lib/api/client";
@@ -10,13 +11,31 @@ import { canViewSystemHealth, loadSystemHealth, type SystemHealth } from "./heal
 function getServiceStatusBadge(rawStatus?: string) {
   const s = (rawStatus || "").toLowerCase();
   if (s === "ok" || s === "up" || s === "healthy") {
-    return <Badge variant="success">✓ Hoạt động bình thường</Badge>;
+    return (
+      <Badge variant="success">
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+          <CheckCircle2 size={13} aria-hidden="true" /> Hoạt động bình thường
+        </span>
+      </Badge>
+    );
   }
   if (s === "degraded" || s === "warning") {
-    return <Badge variant="warning">⚠ Cảnh báo suy giảm</Badge>;
+    return (
+      <Badge variant="warning">
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+          <AlertTriangle size={13} aria-hidden="true" /> Cảnh báo suy giảm
+        </span>
+      </Badge>
+    );
   }
   if (s === "down" || s === "unhealthy" || s === "error") {
-    return <Badge variant="danger">✕ Mất kết nối</Badge>;
+    return (
+      <Badge variant="danger">
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+          <XCircle size={13} aria-hidden="true" /> Mất kết nối
+        </span>
+      </Badge>
+    );
   }
   return <Badge variant="neutral">{rawStatus || "Không xác định"}</Badge>;
 }

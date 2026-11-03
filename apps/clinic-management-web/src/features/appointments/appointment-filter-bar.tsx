@@ -1,4 +1,5 @@
 import React from "react";
+import { Calendar } from "lucide-react";
 import type { AppointmentStatus } from "@clinic/shared-types";
 import styles from "./appointments-panel.module.css";
 import { Button } from "../../components/ui";
@@ -45,7 +46,9 @@ export function AppointmentFilterBar({
         {/* Date Selector */}
         <div className={styles.dateFilterGroup}>
           <label htmlFor="appointment-date-filter" className={styles.dateLabel}>
-            <span>📅 Ngày khám:</span>
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
+              <Calendar size={14} aria-hidden="true" /> Ngày khám:
+            </span>
           </label>
           <input
             id="appointment-date-filter"
