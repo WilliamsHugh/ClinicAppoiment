@@ -62,6 +62,10 @@ describe("ClinicLandingPage (Public Clinic Presentation & Introduction)", () => 
 
     const logoImg = container.querySelector('img[alt="Health&Human Clinic Logo"]');
     expect(logoImg).not.toBeNull();
+
+    const header = container.querySelector("header");
+    expect(header).not.toBeNull();
+    expect(header?.className).toContain("headerSticky");
   });
 
   it("renders the hero section with headline, CTAs, doctor visual and floating badges", async () => {
