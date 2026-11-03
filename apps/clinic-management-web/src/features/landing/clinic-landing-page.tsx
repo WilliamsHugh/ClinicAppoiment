@@ -145,8 +145,7 @@ export function ClinicLandingPage({ onSwitchToDashboard }: ClinicLandingPageProp
               priority
             />
             <span className={styles.brandTitle}>
-              <span className={styles.brandTitleTeal}>Health</span>
-              <span className={styles.brandTitleGreen}>care</span>
+              Health<span className={styles.brandAmpersand}>&</span>Human
             </span>
           </Link>
 
@@ -261,15 +260,16 @@ export function ClinicLandingPage({ onSwitchToDashboard }: ClinicLandingPageProp
           {/* Left Hero Content */}
           <div className={styles.heroContent}>
             <h1 id="hero-main-heading" className={styles.heroHeading}>
-              Providing Quality <span className={styles.highlightTeal}>Healthcare</span> For A{" "}
-              <span className={styles.highlightGreen}>Brighter And Healthy Future</span>
+              Providing Quality Care At{" "}
+              <span className={styles.highlightBrand}>Health&Human</span> For A{" "}
+              <span className={styles.highlightAccent}>Brighter And Healthy Future</span>
             </h1>
 
             <p className={styles.heroDescription}>
-              At Our Hospital, We Are Dedicated To Providing Exceptional Medical Care To Our
-              Patients And Their Families. Our Experienced Team Of Medical Professionals,
-              Cutting-Edge Technology, And Compassionate Approach Make Us A Leader In The
-              Healthcare Industry
+              Tại Hệ thống Phòng khám Health&Human, chúng tôi tận tâm mang đến dịch vụ y tế chuẩn
+              mực, an toàn và chuyên nghiệp cho người bệnh cùng gia đình. Đội ngũ bác sĩ giàu
+              kinh nghiệm, trang thiết bị tiên tiến cùng quy trình điều trị toàn diện luôn đồng
+              hành vì sức khỏe của bạn.
             </p>
 
             <div className={styles.heroActionRow}>
@@ -303,16 +303,16 @@ export function ClinicLandingPage({ onSwitchToDashboard }: ClinicLandingPageProp
             {/* Doctor Image */}
             <Image
               src="/images/doctor-figure.png"
-              alt="Bác sĩ chuyên khoa Health&Human"
-              width={330}
-              height={470}
+              alt="Đội ngũ bác sĩ chuyên khoa Health&Human"
+              width={500}
+              height={358}
               className={styles.doctorImage}
               priority
             />
 
             {/* Floating Badge 1: 24/7 Service */}
             <div className={styles.floatingBadgeService}>
-              <span className={styles.badgeNumberTeal}>24/7</span>
+              <span className={styles.badgeNumberBrand}>24/7</span>
               <span className={styles.badgeLabelMuted}>Service</span>
             </div>
 
@@ -321,14 +321,14 @@ export function ClinicLandingPage({ onSwitchToDashboard }: ClinicLandingPageProp
               <span className={styles.professionalsTitle}>Our Professionals</span>
               <div className={styles.avatarStackRow}>
                 <div className={styles.avatarMini}>BS</div>
-                <div className={styles.avatarMini} style={{ backgroundColor: "#dbeafe", color: "#1d4ed8" }}>
+                <div className={styles.avatarMini} style={{ backgroundColor: "var(--brand-light)", color: "var(--brand)" }}>
                   TS
                 </div>
-                <div className={styles.avatarMini} style={{ backgroundColor: "#fef3c7", color: "#b45309" }}>
+                <div className={styles.avatarMini} style={{ backgroundColor: "var(--warning-light)", color: "var(--warning)" }}>
                   CK
                 </div>
-                <div className={styles.avatarMini} style={{ backgroundColor: "#e0e7ff", color: "#4338ca" }}>
-                  NV
+                <div className={styles.avatarMini} style={{ backgroundColor: "var(--info-light)", color: "var(--info)" }}>
+                  DS
                 </div>
                 <span className={styles.badgeCounter}>30+</span>
               </div>
@@ -798,7 +798,7 @@ export function ClinicLandingPage({ onSwitchToDashboard }: ClinicLandingPageProp
                 height={32}
                 style={{ objectFit: "contain" }}
               />
-              <span className={styles.footerBrandTitle}>Healthcare</span>
+              <span className={styles.footerBrandTitle}>Health&amp;Human</span>
             </div>
             <p className={styles.footerBrandText}>
               Hệ thống phòng khám đa khoa kỹ thuật số hiện đại, nâng tầm chất lượng chăm sóc sức

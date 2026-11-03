@@ -31,7 +31,7 @@ describe("Clinic Dashboard Page (M3-UI-DASH-001)", () => {
     expect(html).toContain("Providing Quality");
     expect(html).toContain("Find A Doctor");
     expect(html).toContain("Log In");
-    expect(html).toContain("Healthcare");
+    expect(html).toContain("Health&amp;Human");
   });
 
   it("renders role-specific welcome and actions for DOCTOR", () => {

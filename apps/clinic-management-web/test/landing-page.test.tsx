@@ -51,7 +51,7 @@ describe("ClinicLandingPage (Public Clinic Presentation & Introduction)", () => 
       root.render(<ClinicLandingPage />);
     });
 
-    expect(container.textContent).toContain("Healthcare");
+    expect(container.textContent).toContain("Health&Human");
     expect(container.textContent).toContain("Home");
     expect(container.textContent).toContain("Service");
     expect(container.textContent).toContain("Contact Us");
@@ -70,8 +70,8 @@ describe("ClinicLandingPage (Public Clinic Presentation & Introduction)", () => 
     });
 
     // Hero title
-    expect(container.textContent).toContain("Providing Quality Healthcare For A Brighter And Healthy Future");
-    expect(container.textContent).toContain("At Our Hospital, We Are Dedicated To Providing Exceptional Medical Care");
+    expect(container.textContent).toContain("Providing Quality Care At Health&Human For A Brighter And Healthy Future");
+    expect(container.textContent).toContain("Tại Hệ thống Phòng khám Health&Human");
 
     // Action buttons
     const appointmentsBtn = Array.from(container.querySelectorAll("button")).find(
@@ -91,7 +91,7 @@ describe("ClinicLandingPage (Public Clinic Presentation & Introduction)", () => 
     expect(container.textContent).toContain("30+");
 
     // Doctor image
-    const doctorImg = container.querySelector('img[alt="Bác sĩ chuyên khoa Health&Human"]');
+    const doctorImg = container.querySelector('img[alt="Đội ngũ bác sĩ chuyên khoa Health&Human"]');
     expect(doctorImg).not.toBeNull();
   });
 
