@@ -223,7 +223,7 @@ function RealSessionProvider({ children }: { children: ReactNode }) {
     clearLocalSession();
     if (typeof window !== "undefined") {
       try {
-        window.location.href = "/auth";
+        window.location.href = "/";
       } catch {
         // Safe fallback in test environments
       }

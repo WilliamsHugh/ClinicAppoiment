@@ -1,17 +1,17 @@
 "use client";
 
-import React from "react";
-import Link from "next/link";
+import React, { useState } from "react";
 import { useSession } from "../src/lib/session/session-context";
-import { Button } from "../src/components/ui";
 import { LoadingState, PermissionDeniedState } from "../src/components/states";
 import { DoctorDashboard } from "../src/features/dashboard/doctor-dashboard";
 import { StaffDashboard } from "../src/features/dashboard/staff-dashboard";
 import { AdminDashboard } from "../src/features/dashboard/admin-dashboard";
+import { ClinicLandingPage } from "../src/features/landing/clinic-landing-page";
 import styles from "./dashboard.module.css";
 
-export default function ClinicDashboardPage() {
+export default function ClinicHomePage() {
   const session = useSession();
+  const [viewMode, setViewMode] = useState<"dashboard" | "landing">("dashboard");
 
   if (session.status === "loading") {
     return (
@@ -21,24 +21,23 @@ export default function ClinicDashboardPage() {
     );
   }
 
-  if (session.status === "unauthenticated") {
+  // Any unauthenticated or public visitor always gets the full Clinic Landing Page
+  if (session.status !== "authenticated" || !session.identity) {
+    return <ClinicLandingPage />;
+  }
+
+  const role = session.identity.role;
+
+  // Workforce role (DOCTOR, STAFF, ADMIN) toggled to view the public landing page
+  if (viewMode === "landing") {
     return (
-      <div className={styles.container}>
-        <section className={styles.welcomeBanner} aria-labelledby="welcome-unauth-heading">
-          <div className={styles.welcomeText}>
-            <h1 id="welcome-unauth-heading">Health&amp;Human · Quản Lý Phòng Khám</h1>
-            <p>Vui lòng đăng nhập để truy cập không gian làm việc chuyên nghiệp.</p>
-          </div>
-          <Link href="/auth">
-            <Button variant="primary">Đăng nhập ngay</Button>
-          </Link>
-        </section>
-      </div>
+      <ClinicLandingPage
+        onSwitchToDashboard={() => setViewMode("dashboard")}
+      />
     );
   }
 
-  const role = session.identity?.role;
-
+  // Workforce roles are directed to their fully-functional dashboards
   switch (role) {
     case "DOCTOR":
       return <DoctorDashboard />;

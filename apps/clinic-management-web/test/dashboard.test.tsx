@@ -26,10 +26,12 @@ function renderDashboard(role?: ClinicRole) {
 }
 
 describe("Clinic Dashboard Page (M3-UI-DASH-001)", () => {
-  it("renders unauthenticated prompt when session is unauthenticated", () => {
+  it("renders public clinic introduction landing page when session is unauthenticated", () => {
     const html = renderDashboard();
-    expect(html).toContain("Vui lòng đăng nhập để truy cập");
-    expect(html).toContain("Đăng nhập ngay");
+    expect(html).toContain("Providing Quality");
+    expect(html).toContain("Find A Doctor");
+    expect(html).toContain("Log In");
+    expect(html).toContain("Healthcare");
   });
 
   it("renders role-specific welcome and actions for DOCTOR", () => {

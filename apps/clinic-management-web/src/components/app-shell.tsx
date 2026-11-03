@@ -1,5 +1,6 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import React, { useState, type ReactNode } from "react";
@@ -43,8 +44,8 @@ export function AppShell({ children, NotificationSlot }: AppShellProps) {
   const session = useSession();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  // Bypass AppShell chrome for /auth so the login/registration page renders full-canvas centered
-  if (pathname === "/auth") {
+  // Bypass AppShell chrome for /auth and for public unauthenticated visitors on /
+  if (pathname === "/auth" || (pathname === "/" && session.status !== "authenticated")) {
     return <RouteGuard>{children}</RouteGuard>;
   }
 
@@ -76,12 +77,14 @@ export function AppShell({ children, NotificationSlot }: AppShellProps) {
             href="/"
             onClick={() => setMobileMenuOpen(false)}
           >
-            <span
+            <Image
+              src="/images/logo.png"
+              alt="Health&Human Logo"
+              width={28}
+              height={28}
               className={`${styles.brandMark} brand-mark`}
-              aria-hidden="true"
-            >
-              +
-            </span>
+              style={{ objectFit: "contain", padding: 2 }}
+            />
             <span className={styles.brandText}>Health&amp;Human</span>
           </Link>
         </div>
