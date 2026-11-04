@@ -58,13 +58,8 @@ export function AdminDashboard() {
   const [loading, setLoading] = useState(!cachedAdminHealth);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [now, setNow] = useState<Date>(new Date());
+  const [now] = useState<Date>(() => new Date());
   const [lastHealthChecked, setLastHealthChecked] = useState<Date | null>(cachedAdminLastChecked);
-
-  useEffect(() => {
-    const timer = setInterval(() => setNow(new Date()), 60000);
-    return () => clearInterval(timer);
-  }, []);
 
   const loadData = useCallback(async (isBackground = false) => {
     if (session.status !== "authenticated" || session.identity?.role !== "ADMIN") return;

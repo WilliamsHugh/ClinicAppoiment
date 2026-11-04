@@ -118,4 +118,16 @@ describe("PageHeader Component & Registry", () => {
     expect(fallbackHtml).toContain(">Hồ sơ cá nhân</h1>");
     expect(fallbackHtml).toContain("Quản lý thông tin tài khoản, bảo mật và cài đặt làm việc trong phòng khám.");
   });
+
+  it("renders Xin chào welcome banner fallback for / and never shows 'Tổng quan' text or clock time", () => {
+    const fallbackHtml = renderToStaticMarkup(React.createElement(RouteLoadingFallback, { pathname: "/" }));
+
+    // Must render Xin chào
+    expect(fallbackHtml).toContain("Xin chào");
+    // Must NOT render Tổng quan in page heading
+    expect(fallbackHtml).not.toContain("Tổng quan</h1>");
+    expect(fallbackHtml).not.toContain("Tổng quan</h2>");
+    // Must contain Giờ Việt Nam UTC+7
+    expect(fallbackHtml).toContain("Giờ Việt Nam UTC+7");
+  });
 });

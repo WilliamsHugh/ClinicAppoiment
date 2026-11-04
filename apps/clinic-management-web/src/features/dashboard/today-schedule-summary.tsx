@@ -72,7 +72,7 @@ export function TodayScheduleSummary({
         <div className={styles.welcomeText}>
           <h1>Xin chào, {session.identity?.displayName || "Đồng nghiệp"}</h1>
           <p>
-            {formatVietnamDate(now)} · {formatVietnamTime(now.toISOString())} (Giờ Việt Nam UTC+7)
+            {formatVietnamDate(now)} (Giờ Việt Nam UTC+7)
           </p>
         </div>
         <div className={styles.welcomeMeta}>
