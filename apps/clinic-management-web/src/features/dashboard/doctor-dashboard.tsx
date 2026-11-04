@@ -30,10 +30,16 @@ export interface AppointmentItem {
   specialtyName?: string;
 }
 
+// Module-level in-memory cache to preserve appointments across tab switches
+let cachedDoctorAppointments: AppointmentItem[] | null = null;
+
 export function DoctorDashboard() {
   const session = useSession();
-  const [appointments, setAppointments] = useState<AppointmentItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [appointments, setAppointments] = useState<AppointmentItem[]>(
+    cachedDoctorAppointments ?? []
+  );
+  const [loading, setLoading] = useState(!cachedDoctorAppointments);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [now, setNow] = useState<Date>(new Date());
 
@@ -42,16 +48,22 @@ export function DoctorDashboard() {
     return () => clearInterval(timer);
   }, []);
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (isBackground = false) => {
     if (session.status !== "authenticated") return;
-    setLoading(true);
+    if (isBackground) {
+      setIsRefreshing(true);
+    } else {
+      setLoading(true);
+    }
     setError(null);
     try {
       const api = createBrowserApiClient(session);
       const res = await api.get<PaginatedData<AppointmentItem>>("/api/v1/appointments", {
         query: { page: 1, limit: 100 },
       });
-      setAppointments(res.data.items || []);
+      const items = res.data.items || [];
+      setAppointments(items);
+      cachedDoctorAppointments = items;
     } catch (caught: unknown) {
       setError(
         caught instanceof Error
@@ -60,12 +72,13 @@ export function DoctorDashboard() {
       );
     } finally {
       setLoading(false);
+      setIsRefreshing(false);
     }
   }, [session]);
 
   useEffect(() => {
     if (session.status === "authenticated") {
-      void loadData();
+      void loadData(Boolean(cachedDoctorAppointments));
     }
   }, [session.status, loadData]);
 
@@ -153,11 +166,11 @@ export function DoctorDashboard() {
       <TodayScheduleSummary
         session={session}
         now={now}
-        loading={loading}
-        onRefresh={loadData}
+        loading={isRefreshing || loading}
+        onRefresh={() => void loadData(false)}
       />
 
-      {error && <ErrorState message={error} onRetry={loadData} />}
+      {error && <ErrorState message={error} onRetry={() => void loadData(false)} />}
 
       {/* 2-column Layout: Primary Task (Lịch khám ưu tiên) vs Secondary Task (Thống kê tiến độ) */}
       <div className={styles.dashboardGrid}>
@@ -316,7 +329,7 @@ export function DoctorDashboard() {
           <div className={styles.sectionHeader}>
             <h2 id="doctor-summary-heading">Tiến độ hôm nay</h2>
             <span style={{ fontSize: "0.8125rem", color: "var(--muted)" }}>
-              Tổng: {statusCounts.total}
+              Tổng: {loading && !cachedDoctorAppointments ? "..." : statusCounts.total}
             </span>
           </div>
 
@@ -327,7 +340,7 @@ export function DoctorDashboard() {
                 <span>Đang chờ khám (đã check-in)</span>
               </div>
               <span className={styles.summaryItemCount} style={{ color: "var(--info)" }}>
-                {statusCounts.checkedIn}
+                {loading && !cachedDoctorAppointments ? <Skeleton height={20} width={24} /> : statusCounts.checkedIn}
               </span>
             </div>
 
@@ -337,7 +350,7 @@ export function DoctorDashboard() {
                 <span>Sắp tới (đã xác nhận)</span>
               </div>
               <span className={styles.summaryItemCount}>
-                {statusCounts.confirmed}
+                {loading && !cachedDoctorAppointments ? <Skeleton height={20} width={24} /> : statusCounts.confirmed}
               </span>
             </div>
 
@@ -347,7 +360,7 @@ export function DoctorDashboard() {
                 <span>Đã khám xong (hoàn tất)</span>
               </div>
               <span className={styles.summaryItemCount} style={{ color: "var(--success)" }}>
-                {statusCounts.completed}
+                {loading && !cachedDoctorAppointments ? <Skeleton height={20} width={24} /> : statusCounts.completed}
               </span>
             </div>
 
@@ -357,7 +370,7 @@ export function DoctorDashboard() {
                 <span>Chờ xác nhận</span>
               </div>
               <span className={styles.summaryItemCount} style={{ color: "var(--warning)" }}>
-                {statusCounts.pending}
+                {loading && !cachedDoctorAppointments ? <Skeleton height={20} width={24} /> : statusCounts.pending}
               </span>
             </div>
 
@@ -367,7 +380,7 @@ export function DoctorDashboard() {
                 <span>Đã hủy / vắng mặt</span>
               </div>
               <span className={styles.summaryItemCount} style={{ color: "var(--muted)" }}>
-                {statusCounts.cancelledOrNoShow}
+                {loading && !cachedDoctorAppointments ? <Skeleton height={20} width={24} /> : statusCounts.cancelledOrNoShow}
               </span>
             </div>
           </div>

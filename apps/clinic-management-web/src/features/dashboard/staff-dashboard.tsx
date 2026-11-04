@@ -36,10 +36,16 @@ interface DayVolume {
   isToday: boolean;
 }
 
+// Module-level in-memory cache to preserve appointments across tab switches
+let cachedStaffAppointments: AppointmentItem[] | null = null;
+
 export function StaffDashboard() {
   const session = useSession();
-  const [appointments, setAppointments] = useState<AppointmentItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [appointments, setAppointments] = useState<AppointmentItem[]>(
+    cachedStaffAppointments ?? []
+  );
+  const [loading, setLoading] = useState(!cachedStaffAppointments);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [now, setNow] = useState<Date>(new Date());
   const [queueTab, setQueueTab] = useState<"ALL" | "CONFIRMED" | "PENDING">("ALL");
@@ -49,16 +55,22 @@ export function StaffDashboard() {
     return () => clearInterval(timer);
   }, []);
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (isBackground = false) => {
     if (session.status !== "authenticated") return;
-    setLoading(true);
+    if (isBackground) {
+      setIsRefreshing(true);
+    } else {
+      setLoading(true);
+    }
     setError(null);
     try {
       const api = createBrowserApiClient(session);
       const res = await api.get<PaginatedData<AppointmentItem>>("/api/v1/appointments", {
         query: { page: 1, limit: 100 },
       });
-      setAppointments(res.data.items || []);
+      const items = res.data.items || [];
+      setAppointments(items);
+      cachedStaffAppointments = items;
     } catch (caught: unknown) {
       setError(
         caught instanceof Error
@@ -67,12 +79,13 @@ export function StaffDashboard() {
       );
     } finally {
       setLoading(false);
+      setIsRefreshing(false);
     }
   }, [session]);
 
   useEffect(() => {
     if (session.status === "authenticated") {
-      void loadData();
+      void loadData(Boolean(cachedStaffAppointments));
     }
   }, [session.status, loadData]);
 
@@ -185,18 +198,18 @@ export function StaffDashboard() {
       <TodayScheduleSummary
         session={session}
         now={now}
-        loading={loading}
-        onRefresh={loadData}
+        loading={isRefreshing || loading}
+        onRefresh={() => void loadData(false)}
       />
 
-      {error && <ErrorState message={error} onRetry={loadData} />}
+      {error && <ErrorState message={error} onRetry={() => void loadData(false)} />}
 
       {/* Thống kê tổng quan ngày (Primary Numbers for Reception) */}
       <section aria-label="Số liệu tổng quan trong ngày" className={styles.statGrid}>
         <article className={styles.statCard}>
           <span className={styles.statLabel}>Lịch khám hôm nay</span>
           <span className={styles.statValue}>
-            {loading ? <Skeleton height={32} width={50} /> : stats.total}
+            {loading && !cachedStaffAppointments ? <Skeleton height={32} width={50} /> : stats.total}
           </span>
           <span className={styles.statDesc}>Tổng lượt khám tiếp nhận trong ngày</span>
         </article>
@@ -204,7 +217,7 @@ export function StaffDashboard() {
         <article className={styles.statCard}>
           <span className={styles.statLabel}>Đang chờ tiếp đón</span>
           <span className={styles.statValue} style={{ color: "var(--primary)" }}>
-            {loading ? <Skeleton height={32} width={50} /> : stats.waiting}
+            {loading && !cachedStaffAppointments ? <Skeleton height={32} width={50} /> : stats.waiting}
           </span>
           <span className={styles.statDesc}>Bệnh nhân chờ đón tiếp hoặc đang chờ khám</span>
         </article>
@@ -212,7 +225,7 @@ export function StaffDashboard() {
         <article className={styles.statCard}>
           <span className={styles.statLabel}>Đã hoàn thành</span>
           <span className={styles.statValue} style={{ color: "var(--success)" }}>
-            {loading ? <Skeleton height={32} width={50} /> : stats.completed}
+            {loading && !cachedStaffAppointments ? <Skeleton height={32} width={50} /> : stats.completed}
           </span>
           <span className={styles.statDesc}>Ca khám đã hoàn tất bệnh án</span>
         </article>
@@ -220,7 +233,7 @@ export function StaffDashboard() {
         <article className={styles.statCard}>
           <span className={styles.statLabel}>Đã hủy / Vắng mặt</span>
           <span className={styles.statValue} style={{ color: "var(--danger)" }}>
-            {loading ? <Skeleton height={32} width={50} /> : stats.cancelled}
+            {loading && !cachedStaffAppointments ? <Skeleton height={32} width={50} /> : stats.cancelled}
           </span>
           <span className={styles.statDesc}>Bệnh nhân hủy hoặc không đến hẹn</span>
         </article>

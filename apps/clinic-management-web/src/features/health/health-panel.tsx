@@ -40,22 +40,42 @@ function getServiceStatusBadge(rawStatus?: string) {
   return <Badge variant="neutral">{rawStatus || "Không xác định"}</Badge>;
 }
 
+const STATIC_PANEL_SERVICES = [
+  { key: "api-gateway", title: "API Gateway" },
+  { key: "users", title: "User Service" },
+  { key: "doctors", title: "Doctor Service" },
+  { key: "appointments", title: "Appointment Service" },
+  { key: "medicalRecords", title: "Medical Record Service" },
+  { key: "notifications", title: "Notification Service" },
+];
+
+let cachedSystemHealth: SystemHealth | null = null;
+let cachedHealthLastChecked: Date | null = null;
+
 export function HealthPanel() {
   const session = useSession();
   const client = useMemo(() => createBrowserApiClient(session), [session]);
-  const [health, setHealth] = useState<SystemHealth | null>(null);
-  const [loading, setLoading] = useState(false);
+  const [health, setHealth] = useState<SystemHealth | null>(cachedSystemHealth);
+  const [loading, setLoading] = useState(!cachedSystemHealth);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<ApiClientError | null>(null);
-  const [lastChecked, setLastChecked] = useState<Date | null>(null);
+  const [lastChecked, setLastChecked] = useState<Date | null>(cachedHealthLastChecked);
 
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (isBackground = false) => {
     if (!canViewSystemHealth(session)) return;
-    setLoading(true);
+    if (isBackground) {
+      setIsRefreshing(true);
+    } else {
+      setLoading(true);
+    }
     setError(null);
     try {
       const result = await loadSystemHealth(client, session);
       setHealth(result.data);
-      setLastChecked(new Date());
+      cachedSystemHealth = result.data;
+      const checkedAt = new Date();
+      setLastChecked(checkedAt);
+      cachedHealthLastChecked = checkedAt;
     } catch (caught) {
       setError(
         caught instanceof ApiClientError
@@ -64,11 +84,12 @@ export function HealthPanel() {
       );
     } finally {
       setLoading(false);
+      setIsRefreshing(false);
     }
   }, [client, session]);
 
   useEffect(() => {
-    void refresh();
+    void refresh(Boolean(cachedSystemHealth));
   }, [refresh]);
 
   if (session.status === "loading") {
@@ -77,46 +98,16 @@ export function HealthPanel() {
   if (!canViewSystemHealth(session)) {
     return <ErrorState message="Trang này chỉ dành cho quản trị viên đã đăng nhập." />;
   }
-  if (loading && !health) {
-    return (
-      <section className="health-panel" style={{ display: "flex", flexDirection: "column", gap: 20 }} aria-busy="true">
-        <div className="panel-heading">
-          <div>
-            <p className="eyebrow">API Gateway &amp; Microservices</p>
-            <h2 style={{ margin: 0 }}>Hạ tầng hệ thống</h2>
-            <span style={{ fontSize: "0.8rem", color: "var(--muted)", marginTop: 4, display: "block" }}>
-              Đang kết nối và kiểm tra trạng thái các dịch vụ...
-            </span>
-          </div>
-        </div>
-        <div
-          style={{
-            background: "var(--surface)",
-            border: "1px solid var(--line)",
-            borderRadius: "var(--radius-lg)",
-            padding: "20px 24px",
-          }}
-        >
-          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16 }}>
-            <Skeleton height={24} width={160} />
-            <Skeleton height={32} width={100} borderRadius="var(--radius-md)" />
-          </div>
-          <SkeletonTable rows={5} cols={3} />
-        </div>
-      </section>
-    );
-  }
   if (error) {
     return (
       <ErrorState
         message={error.message}
         requestId={error.requestId}
-        onRetry={() => void refresh()}
+        onRetry={() => void refresh(false)}
       />
     );
   }
 
-  const services = Object.entries(health?.services ?? {});
   const isAllHealthy =
     (health?.status || "").toLowerCase() === "ok" ||
     (health?.status || "").toLowerCase() === "up" ||
@@ -132,7 +123,7 @@ export function HealthPanel() {
         month: "2-digit",
         year: "numeric",
       }).format(lastChecked)
-    : "Vừa xong";
+    : "Đang kiểm tra";
 
   return (
     <section className="health-panel" style={{ display: "flex", flexDirection: "column", gap: 20 }}>
@@ -141,47 +132,57 @@ export function HealthPanel() {
           <p className="eyebrow">API Gateway &amp; Microservices</p>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 4 }}>
             <h2 style={{ margin: 0 }}>Hạ tầng hệ thống</h2>
-            <Badge variant={isAllHealthy ? "success" : "warning"} size="md">
-              {isAllHealthy ? "Tất cả hoạt động tốt" : health?.status ?? "Đang kiểm tra"}
-            </Badge>
+            {health ? (
+              <Badge variant={isAllHealthy ? "success" : "warning"} size="md">
+                {isAllHealthy ? "Tất cả hoạt động tốt" : health.status ?? "Đang kiểm tra"}
+              </Badge>
+            ) : (
+              <Skeleton height={24} width={140} borderRadius="var(--radius-full)" />
+            )}
           </div>
           <span style={{ fontSize: "0.8rem", color: "var(--muted)", marginTop: 4, display: "block" }}>
-            Lần kiểm tra gần nhất: {formattedTime} (Giờ Việt Nam UTC+7)
+            {isRefreshing
+              ? "Đang kiểm tra lại dịch vụ..."
+              : `Lần kiểm tra gần nhất: ${formattedTime} (Giờ Việt Nam UTC+7)`}
           </span>
         </div>
-        <Button variant="outline" onClick={() => void refresh()} loading={loading}>
-          {loading ? "Đang tải…" : "Kiểm tra lại"}
+        <Button variant="outline" onClick={() => void refresh(false)} loading={loading || isRefreshing}>
+          {loading || isRefreshing ? "Đang tải…" : "Kiểm tra lại"}
         </Button>
       </div>
 
-      {services.length === 0 ? (
-        <div style={{ padding: 24, textAlign: "center", color: "var(--muted)" }}>
-          <p>Gateway chưa trả về danh sách dịch vụ hoặc không có dịch vụ nào được cấu hình.</p>
-        </div>
-      ) : (
-        <div className="health-grid">
-          {services.map(([name, value]) => {
-            const statusStr = typeof value === "string" ? value : value.status ?? "";
-            const version = typeof value === "object" && value !== null && "version" in value
-              ? String(value.version)
-              : undefined;
+      <div className="health-grid">
+        {STATIC_PANEL_SERVICES.map((svc) => {
+          const liveData =
+            health?.services?.[svc.key] ??
+            health?.services?.[svc.key.toLowerCase()] ??
+            health?.services?.[svc.key.replace(/-/g, "")];
+          const statusStr = typeof liveData === "string" ? liveData : liveData?.status;
+          const version = typeof liveData === "object" && liveData !== null && "version" in liveData
+            ? String(liveData.version)
+            : undefined;
 
-            return (
-              <article key={name} className="health-service" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                  <h3 style={{ margin: 0, textTransform: "capitalize" }}>{name.replace(/-/g, " ")}</h3>
-                </div>
-                <div>{getServiceStatusBadge(statusStr)}</div>
-                {version && (
-                  <span style={{ fontSize: "0.75rem", color: "var(--muted)" }}>
-                    Phiên bản: {version}
-                  </span>
+          return (
+            <article key={svc.key} className="health-service" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                <h3 style={{ margin: 0, textTransform: "capitalize" }}>{svc.title}</h3>
+              </div>
+              <div>
+                {statusStr ? (
+                  getServiceStatusBadge(statusStr)
+                ) : (
+                  <Skeleton height={24} width={140} borderRadius="var(--radius-full)" />
                 )}
-              </article>
-            );
-          })}
-        </div>
-      )}
+              </div>
+              {version && (
+                <span style={{ fontSize: "0.75rem", color: "var(--muted)" }}>
+                  Phiên bản: {version}
+                </span>
+              )}
+            </article>
+          );
+        })}
+      </div>
     </section>
   );
 }

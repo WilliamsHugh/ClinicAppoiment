@@ -29,20 +29,27 @@ export interface SkeletonTableProps {
   cols?: number;
   columns?: number;
   className?: string;
+  headers?: string[];
 }
 
-export function SkeletonTable({ rows = 5, cols, columns = 4, className }: SkeletonTableProps) {
-  const colCount = cols ?? columns;
+export function SkeletonTable({ rows = 5, cols, columns = 4, className, headers }: SkeletonTableProps) {
+  const colCount = headers ? headers.length : (cols ?? columns);
   return (
     <div role="region" aria-label="Đang tải bảng dữ liệu" aria-busy="true" className={className}>
       <table className={styles.skeletonTable}>
         <thead>
           <tr>
-            {Array.from({ length: colCount }).map((_, c) => (
-              <th key={c}>
-                <Skeleton height={18} width="70%" />
-              </th>
-            ))}
+            {headers
+              ? headers.map((headerText, i) => (
+                  <th key={i} style={{ color: "var(--muted)", fontWeight: 600, fontSize: "0.8125rem", textAlign: "left" }}>
+                    {headerText}
+                  </th>
+                ))
+              : Array.from({ length: colCount }).map((_, c) => (
+                  <th key={c}>
+                    <Skeleton height={18} width="70%" />
+                  </th>
+                ))}
           </tr>
         </thead>
         <tbody>

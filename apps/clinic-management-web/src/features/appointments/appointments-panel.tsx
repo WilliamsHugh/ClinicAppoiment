@@ -413,7 +413,14 @@ export function AppointmentsPanel() {
 
       {/* Main Content Area / State Matrix */}
       {loading ? (
-        <SkeletonTable rows={8} cols={role === "DOCTOR" ? 4 : 6} />
+        <SkeletonTable
+          rows={8}
+          headers={
+            role === "DOCTOR"
+              ? ["Giờ khám", "Bệnh nhân", "Trạng thái", "Thao tác"]
+              : ["Giờ khám", "Bệnh nhân", "Bác sĩ", "Chuyên khoa", "Trạng thái", "Thao tác"]
+          }
+        />
       ) : error ? (
         <ErrorState
           message={error}

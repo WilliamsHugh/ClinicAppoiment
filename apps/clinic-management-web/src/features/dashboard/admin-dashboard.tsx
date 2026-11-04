@@ -24,29 +24,55 @@ interface UserSummary {
   total: number;
 }
 
+export interface ServiceDefinition {
+  key: string;
+  name: string;
+}
+
+export const STATIC_SYSTEM_SERVICES: ServiceDefinition[] = [
+  { key: "api-gateway", name: "Cổng API Gateway" },
+  { key: "users", name: "Dịch vụ Người dùng (User Service)" },
+  { key: "doctors", name: "Dịch vụ Bác sĩ (Doctor Service)" },
+  { key: "appointments", name: "Dịch vụ Lịch hẹn (Appointment Service)" },
+  { key: "medicalRecords", name: "Dịch vụ Bệnh án (Medical Record Service)" },
+  { key: "notifications", name: "Dịch vụ Thông báo (Notification Service)" },
+];
+
+// Module-level in-memory cache to preserve state across tab switches (Stale-While-Revalidate)
+let cachedAdminHealth: SystemHealthData | null = null;
+let cachedAdminUserSummary: UserSummary | null = null;
+let cachedAdminLastChecked: Date | null = null;
+
 export function AdminDashboard() {
   const session = useSession();
-  const [health, setHealth] = useState<SystemHealthData | null>(null);
-  const [userSummary, setUserSummary] = useState<UserSummary>({
-    doctors: 0,
-    staff: 0,
-    admins: 0,
-    patients: 0,
-    total: 0,
-  });
-  const [loading, setLoading] = useState(true);
+  const [health, setHealth] = useState<SystemHealthData | null>(cachedAdminHealth);
+  const [userSummary, setUserSummary] = useState<UserSummary>(
+    cachedAdminUserSummary ?? {
+      doctors: 0,
+      staff: 0,
+      admins: 0,
+      patients: 0,
+      total: 0,
+    }
+  );
+  const [loading, setLoading] = useState(!cachedAdminHealth);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [now, setNow] = useState<Date>(new Date());
-  const [lastHealthChecked, setLastHealthChecked] = useState<Date | null>(null);
+  const [lastHealthChecked, setLastHealthChecked] = useState<Date | null>(cachedAdminLastChecked);
 
   useEffect(() => {
     const timer = setInterval(() => setNow(new Date()), 60000);
     return () => clearInterval(timer);
   }, []);
 
-  const loadData = useCallback(async () => {
+  const loadData = useCallback(async (isBackground = false) => {
     if (session.status !== "authenticated" || session.identity?.role !== "ADMIN") return;
-    setLoading(true);
+    if (isBackground) {
+      setIsRefreshing(true);
+    } else {
+      setLoading(true);
+    }
     setError(null);
     try {
       const api = createBrowserApiClient(session);
@@ -65,7 +91,10 @@ export function AdminDashboard() {
       const healthRes = await healthPromise;
       if (healthRes?.data) {
         setHealth(healthRes.data);
-        setLastHealthChecked(new Date());
+        cachedAdminHealth = healthRes.data;
+        const checkedAt = new Date();
+        setLastHealthChecked(checkedAt);
+        cachedAdminLastChecked = checkedAt;
       }
 
       const doctors = doctorRes?.data?.total ?? 0;
@@ -73,13 +102,15 @@ export function AdminDashboard() {
       const admins = adminRes?.data?.total ?? 0;
       const patients = patientRes?.data?.total ?? 0;
 
-      setUserSummary({
+      const summary: UserSummary = {
         doctors,
         staff,
         admins,
         patients,
         total: doctors + staff + admins + patients,
-      });
+      };
+      setUserSummary(summary);
+      cachedAdminUserSummary = summary;
     } catch (caught: unknown) {
       setError(
         caught instanceof Error
@@ -88,12 +119,13 @@ export function AdminDashboard() {
       );
     } finally {
       setLoading(false);
+      setIsRefreshing(false);
     }
   }, [session]);
 
   useEffect(() => {
     if (session.status === "authenticated" && session.identity?.role === "ADMIN") {
-      void loadData();
+      void loadData(Boolean(cachedAdminHealth));
     }
   }, [session.status, session.identity?.role, loadData]);
 
@@ -102,36 +134,16 @@ export function AdminDashboard() {
     (health?.status || "").toLowerCase() === "up" ||
     (health?.status || "").toLowerCase() === "healthy";
 
-  const servicesList = health?.services
-    ? Object.entries(health.services)
-    : [
-        ["api-gateway", "ok"],
-        ["users", "ok"],
-        ["doctors", "ok"],
-        ["appointments", "ok"],
-        ["medicalRecords", "ok"],
-        ["notifications", "ok"],
-      ];
-
-  const serviceLabels: Record<string, string> = {
-    "api-gateway": "Cổng API Gateway",
-    users: "Dịch vụ Người dùng (User Service)",
-    doctors: "Dịch vụ Bác sĩ (Doctor Service)",
-    appointments: "Dịch vụ Lịch hẹn (Appointment Service)",
-    medicalRecords: "Dịch vụ Bệnh án (Medical Record Service)",
-    notifications: "Dịch vụ Thông báo (Notification Service)",
-  };
-
   return (
     <div className={styles.container}>
       <TodayScheduleSummary
         session={session}
         now={now}
-        loading={loading}
-        onRefresh={loadData}
+        loading={isRefreshing || loading}
+        onRefresh={() => void loadData(false)}
       />
 
-      {error && <ErrorState message={error} onRetry={loadData} />}
+      {error && <ErrorState message={error} onRetry={() => void loadData(false)} />}
 
       {/* 2-column Layout: Cột chính là Trạng thái hệ thống thực, Cột phụ là Thống kê User theo role */}
       <div className={styles.dashboardGrid}>
@@ -141,20 +153,28 @@ export function AdminDashboard() {
             <div>
               <h2 id="system-health-heading">Sức khỏe hệ thống</h2>
               <span style={{ fontSize: "0.8125rem", color: "var(--muted)" }}>
-                Kiểm tra lúc: {lastHealthChecked ? formatVietnamTime(lastHealthChecked.toISOString()) : "Đang kiểm tra"}
+                {isRefreshing
+                  ? "Đang kiểm tra lại dịch vụ..."
+                  : lastHealthChecked
+                  ? `Kiểm tra lúc: ${formatVietnamTime(lastHealthChecked.toISOString())}`
+                  : "Đang kiểm tra kết nối"}
               </span>
             </div>
             <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-              <Badge variant={isAllHealthy ? "success" : "warning"} size="md">
-                <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-                  {isAllHealthy ? (
-                    <CheckCircle2 size={13} aria-hidden="true" />
-                  ) : (
-                    <AlertTriangle size={13} aria-hidden="true" />
-                  )}
-                  {isAllHealthy ? "Tất cả hoạt động tốt" : "Cảnh báo dịch vụ"}
-                </span>
-              </Badge>
+              {health ? (
+                <Badge variant={isAllHealthy ? "success" : "warning"} size="md">
+                  <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                    {isAllHealthy ? (
+                      <CheckCircle2 size={13} aria-hidden="true" />
+                    ) : (
+                      <AlertTriangle size={13} aria-hidden="true" />
+                    )}
+                    {isAllHealthy ? "Tất cả hoạt động tốt" : "Cảnh báo dịch vụ"}
+                  </span>
+                </Badge>
+              ) : (
+                <Skeleton height={24} width={150} borderRadius="var(--radius-full)" />
+              )}
               <Link href="/health" className={styles.sectionActionLink} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
                 Xem chi tiết <ArrowRight size={14} aria-hidden="true" />
               </Link>
@@ -175,20 +195,22 @@ export function AdminDashboard() {
                 </tr>
               </thead>
               <tbody>
-                {servicesList.map(([key, val]) => {
-                  const statusStr = String(val).toLowerCase();
-                  const isOk = statusStr === "ok" || statusStr === "up";
+                {STATIC_SYSTEM_SERVICES.map((svc) => {
+                  const rawVal = health?.services?.[svc.key];
+                  const statusStr = rawVal ? String(rawVal).toLowerCase() : "";
+                  const isOk = statusStr === "ok" || statusStr === "up" || statusStr === "healthy";
+
                   return (
-                    <tr key={key}>
+                    <tr key={svc.key}>
                       <td style={{ fontWeight: 600 }}>
-                        {serviceLabels[key] || key}
+                        {svc.name}
                       </td>
                       <td style={{ color: "var(--muted)", fontFamily: "monospace", fontSize: "0.8125rem" }}>
-                        {key}
+                        {svc.key}
                       </td>
                       <td>
-                        {loading ? (
-                          <Skeleton height={20} width={120} />
+                        {loading && !health ? (
+                          <Skeleton height={20} width={120} borderRadius="var(--radius-full)" />
                         ) : (
                           <Badge variant={isOk ? "success" : "danger"} size="sm">
                             {isOk ? "Hoạt động bình thường" : "Mất kết nối"}
@@ -217,7 +239,7 @@ export function AdminDashboard() {
             <div>
               <h2 id="user-stats-heading">Quản trị người dùng</h2>
               <span style={{ fontSize: "0.8125rem", color: "var(--muted)" }}>
-                Tổng số: {userSummary.total} tài khoản
+                Tổng số: {loading && !cachedAdminUserSummary ? "..." : `${userSummary.total} tài khoản`}
               </span>
             </div>
             <Link href="/users" className={styles.sectionActionLink} style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
@@ -236,7 +258,7 @@ export function AdminDashboard() {
                 <span>Bác sĩ (DOCTOR)</span>
               </div>
               <span className={styles.summaryItemCount}>
-                {loading ? <Skeleton height={20} width={30} /> : userSummary.doctors}
+                {loading && !cachedAdminUserSummary ? <Skeleton height={20} width={30} /> : userSummary.doctors}
               </span>
             </div>
 
@@ -246,7 +268,7 @@ export function AdminDashboard() {
                 <span>Nhân viên phòng khám (STAFF)</span>
               </div>
               <span className={styles.summaryItemCount}>
-                {loading ? <Skeleton height={20} width={30} /> : userSummary.staff}
+                {loading && !cachedAdminUserSummary ? <Skeleton height={20} width={30} /> : userSummary.staff}
               </span>
             </div>
 
@@ -256,7 +278,7 @@ export function AdminDashboard() {
                 <span>Quản trị viên (ADMIN)</span>
               </div>
               <span className={styles.summaryItemCount}>
-                {loading ? <Skeleton height={20} width={30} /> : userSummary.admins}
+                {loading && !cachedAdminUserSummary ? <Skeleton height={20} width={30} /> : userSummary.admins}
               </span>
             </div>
 
@@ -266,7 +288,7 @@ export function AdminDashboard() {
                 <span>Bệnh nhân (PATIENT)</span>
               </div>
               <span className={styles.summaryItemCount}>
-                {loading ? <Skeleton height={20} width={30} /> : userSummary.patients}
+                {loading && !cachedAdminUserSummary ? <Skeleton height={20} width={30} /> : userSummary.patients}
               </span>
             </div>
           </div>
