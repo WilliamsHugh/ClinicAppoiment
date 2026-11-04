@@ -25,9 +25,15 @@ export function NotificationsPanel() {
   const [markingIds, setMarkingIds] = useState<Set<string>>(new Set());
   const [markingAll, setMarkingAll] = useState(false);
 
-  const loadNotifications = useCallback(async () => {
+  const [isRefreshing, setIsRefreshing] = useState(false);
+
+  const loadNotifications = useCallback(async (isRefresh = false) => {
     if (session.status !== "authenticated") return;
-    setLoading(true);
+    if (isRefresh && items.length > 0) {
+      setIsRefreshing(true);
+    } else {
+      setLoading(true);
+    }
     setError(null);
 
     try {
@@ -57,8 +63,9 @@ export function NotificationsPanel() {
       );
     } finally {
       setLoading(false);
+      setIsRefreshing(false);
     }
-  }, [client, session.status, page, limit, filter]);
+  }, [client, session.status, page, limit, filter, items.length]);
 
   useEffect(() => {
     if (session.status === "authenticated") {
@@ -132,7 +139,41 @@ export function NotificationsPanel() {
   };
 
   if (session.status === "loading") {
-    return <SkeletonPage title={true} tableRows={5} tableCols={4} />;
+    return (
+      <div className={styles.container} aria-busy="true">
+        <header className={styles.header}>
+          <div className={styles.headerText}>
+            <p className="eyebrow">Trung tâm thông báo</p>
+            <h1>Thông báo</h1>
+            <p>Theo dõi các sự kiện lịch hẹn, hồ sơ bệnh án và cập nhật điều hành phòng khám.</p>
+          </div>
+        </header>
+
+        <section className={styles.filterBar} aria-label="Bộ lọc thông báo">
+          <div className={styles.tabGroup} role="tablist">
+            <Button variant="primary" size="sm" disabled>Tất cả</Button>
+            <Button variant="secondary" size="sm" disabled>Chưa đọc</Button>
+            <Button variant="secondary" size="sm" disabled>Đã đọc</Button>
+          </div>
+        </section>
+
+        <section aria-label="Danh sách thông báo" className={styles.listContainer}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            {[1, 2, 3, 4].map((i) => (
+              <div key={i} className={styles.skeletonCard}>
+                <div style={{ display: "flex", gap: 8 }}>
+                  <Skeleton height={20} width={70} />
+                  <Skeleton height={20} width={60} />
+                  <Skeleton height={20} width={180} />
+                </div>
+                <Skeleton height={16} width="85%" />
+                <Skeleton height={14} width="40%" />
+              </div>
+            ))}
+          </div>
+        </section>
+      </div>
+    );
   }
 
   if (session.status !== "authenticated") {
@@ -164,10 +205,10 @@ export function NotificationsPanel() {
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => void loadNotifications()}
-            disabled={loading}
+            onClick={() => void loadNotifications(true)}
+            disabled={loading || isRefreshing}
           >
-            {loading ? "Đang tải…" : "Làm mới"}
+            {isRefreshing || loading ? "Đang tải…" : "Làm mới"}
           </Button>
         </div>
       </header>
@@ -210,11 +251,11 @@ export function NotificationsPanel() {
       </section>
 
       {/* Error state */}
-      {error && <ErrorState message={error} onRetry={() => void loadNotifications()} />}
+      {error && <ErrorState message={error} onRetry={() => void loadNotifications(false)} />}
 
       {/* Main Content / Notification List */}
       <section aria-label="Danh sách thông báo" className={styles.listContainer}>
-        {loading && items.length === 0 ? (
+        {loading ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             {[1, 2, 3, 4].map((i) => (
               <div key={i} className={styles.skeletonCard}>

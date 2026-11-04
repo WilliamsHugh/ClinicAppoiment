@@ -274,7 +274,27 @@ export function MedicalRecordsPanel() {
 
   // Auth / Permission Verification
   if (session.status === "loading") {
-    return <SkeletonPage title={true} tableRows={5} tableCols={4} />;
+    return (
+      <section className="page-stack" aria-busy="true">
+        <header className="page-heading">
+          <p className="eyebrow">Medical Record Service</p>
+          <h1>Hồ sơ khám bệnh</h1>
+          <p>Ghi nhận triệu chứng, chẩn đoán, kế hoạch điều trị và kê đơn thuốc cho bệnh nhân.</p>
+        </header>
+        <div className={styles.panel}>
+          <Skeleton height={24} width="40%" className={styles.fieldGroup} />
+          <div style={{ marginTop: 16 }}>
+            <Skeleton height={42} width="100%" />
+          </div>
+          <div style={{ marginTop: 16 }}>
+            <Skeleton height={80} width="100%" />
+          </div>
+          <div style={{ marginTop: 16 }}>
+            <Skeleton height={120} width="100%" />
+          </div>
+        </div>
+      </section>
+    );
   }
 
   const userRole = session.identity?.role;

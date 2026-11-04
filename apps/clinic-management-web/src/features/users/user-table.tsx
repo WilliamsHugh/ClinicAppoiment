@@ -66,7 +66,7 @@ export function UserTable({
   onEditRole,
   onEditStatus,
 }: UserTableProps) {
-  if (loading && users.length === 0) {
+  if (loading) {
     return (
       <div className={styles.tableCard}>
         <SkeletonTable

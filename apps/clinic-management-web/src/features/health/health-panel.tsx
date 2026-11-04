@@ -93,7 +93,38 @@ export function HealthPanel() {
   }, [refresh]);
 
   if (session.status === "loading") {
-    return <SkeletonPage title={true} tableRows={5} tableCols={3} />;
+    return (
+      <section className="health-panel" style={{ display: "flex", flexDirection: "column", gap: 20 }} aria-busy="true">
+        <div className="panel-heading">
+          <div>
+            <p className="eyebrow">API Gateway &amp; Microservices</p>
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 4 }}>
+              <h2 style={{ margin: 0 }}>Hạ tầng hệ thống</h2>
+              <Skeleton height={24} width={140} borderRadius="var(--radius-full)" />
+            </div>
+            <span style={{ fontSize: "0.8rem", color: "var(--muted)", marginTop: 4, display: "block" }}>
+              Đang kết nối và kiểm tra trạng thái các dịch vụ...
+            </span>
+          </div>
+          <Button variant="outline" disabled>
+            Kiểm tra lại
+          </Button>
+        </div>
+
+        <div className="health-grid">
+          {STATIC_PANEL_SERVICES.map((svc) => (
+            <article key={svc.key} className="health-service" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                <h3 style={{ margin: 0, textTransform: "capitalize" }}>{svc.title}</h3>
+              </div>
+              <div>
+                <Skeleton height={24} width={140} borderRadius="var(--radius-full)" />
+              </div>
+            </article>
+          ))}
+        </div>
+      </section>
+    );
   }
   if (!canViewSystemHealth(session)) {
     return <ErrorState message="Trang này chỉ dành cho quản trị viên đã đăng nhập." />;

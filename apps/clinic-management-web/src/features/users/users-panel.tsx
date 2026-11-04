@@ -124,7 +124,50 @@ export function UsersPanel() {
 
   // Auth / Role Verification
   if (session.status === "loading") {
-    return <SkeletonPage title={true} tableRows={8} tableCols={5} />;
+    return (
+      <div className={styles.container} aria-busy="true">
+        <header className={styles.header}>
+          <div>
+            <h1 className={styles.title}>Quản lý tài khoản</h1>
+            <p className={styles.subtitle}>
+              Quản trị danh sách người dùng, phân quyền vai trò và kiểm soát trạng thái hoạt động tài khoản.
+            </p>
+          </div>
+        </header>
+
+        <div className={styles.filterBar}>
+          <div className={styles.searchForm}>
+            <input
+              type="text"
+              className={styles.searchInput}
+              placeholder="Tìm theo tên, email, số điện thoại..."
+              disabled
+              aria-label="Tìm kiếm người dùng"
+            />
+            <Button type="button" variant="primary" size="md" disabled>
+              Tìm
+            </Button>
+          </div>
+          <select className={styles.select} disabled aria-label="Lọc theo vai trò">
+            <option>Tất cả vai trò</option>
+          </select>
+          <select className={styles.select} disabled aria-label="Lọc theo trạng thái">
+            <option>Tất cả trạng thái</option>
+          </select>
+        </div>
+
+        <UserTable
+          users={[]}
+          loading={true}
+          page={1}
+          limit={10}
+          total={0}
+          onPageChange={() => {}}
+          onEditRole={() => {}}
+          onEditStatus={() => {}}
+        />
+      </div>
+    );
   }
 
   if (!isAdmin) {
