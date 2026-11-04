@@ -16,6 +16,7 @@ import {
 } from "./doctor-api";
 import { DoctorList } from "./doctor-list";
 import { SchedulePanel } from "./schedule-panel";
+import { PageHeader } from "../../components/page-header";
 import styles from "./doctors-panel.module.css";
 
 const weekdays = ["Chủ nhật", "Thứ hai", "Thứ ba", "Thứ tư", "Thứ năm", "Thứ sáu", "Thứ bảy"];
@@ -248,13 +249,7 @@ export function DoctorPanel() {
 
   return (
     <div className={styles.stack}>
-      <header className={styles.header}>
-        <p className="eyebrow">Doctor Service</p>
-        <h1 className={styles.title}>Bác sĩ và lịch làm việc</h1>
-        <p className={styles.muted}>
-          Giờ phòng khám: Việt Nam (UTC+7). Khung giờ có thể thay đổi trước khi đặt lịch thành công.
-        </p>
-      </header>
+      <PageHeader pathname="/doctors" />
 
       {error && (
         <div role="alert" className={styles.error}>

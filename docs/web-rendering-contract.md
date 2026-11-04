@@ -21,7 +21,34 @@ Do not use a generic full-page spinner for a known data layout. A page-wide skel
 reserved for the brief session/route boundary when the intended page cannot yet be
 identified. Once the route and role are known, use that page’s skeleton composition.
 
-### 1.1 First load and later refresh
+### 1.1 Header continuity is an invariant
+
+The loading fallback and the populated page **must render the same page header**. A
+fallback must not invent a shorter title, a different section title, alternate helper
+text, or a different header layout that is replaced after session/API loading.
+
+- Use the same shared header component and the same static page-header configuration
+  in the fallback and the populated page. Do not maintain two copies of header markup or
+  separate fallback-only title strings.
+- Keep the same heading level, eyebrow, title text, subtitle text, action slots, order,
+  alignment, spacing, and responsive behavior across both states.
+- If a header value depends on authenticated identity or role and is not yet known, keep
+  the same slot and geometry; use a value placeholder in that slot. Do not replace the
+  whole header or substitute a different page title.
+- Role-specific static copy must not change after session restoration. Use shared
+  role-neutral copy in the header, or place role-specific information in a separate
+  content region that appears consistently after authorization.
+- For dashboard greetings, keep the greeting structure stable and skeleton only the
+  identity value until the session resolves. The landing page and authenticated dashboard
+  are separate page modes; do not show one as the loading header for the other.
+- A route-loading fallback must reuse the page header; matching the title string alone
+  is insufficient if the hierarchy, subtitle, actions, or layout visibly change.
+
+This rule is stricter than “keep the title visible”: the header must be visually and
+semantically the same before and after loading. A reviewer should not be able to identify
+the transition by a changed page header.
+
+### 1.2 First load and later refresh
 
 - **First load with no usable data:** Keep the page frame, headings, filters, and
   section labels visible. Show skeletons where API content will appear.
@@ -39,7 +66,7 @@ identified. Once the route and role are known, use that page’s skeleton compos
 - **Successful mutation:** Update the authoritative value in place and announce the
   result. Do not revert to a page-level loading screen.
 
-### 1.2 Skeleton shape and semantics
+### 1.3 Skeleton shape and semantics
 
 - Skeleton dimensions and count must follow the actual populated layout and current
   role’s columns. Use the existing `Skeleton`, `SkeletonTable`, `SkeletonCard`,
@@ -55,7 +82,7 @@ identified. Once the route and role are known, use that page’s skeleton compos
   to identify the loading state.
 - Loading, empty, error, permission-denied, and stale data must remain visually distinct.
 
-### 1.3 Data and trust boundaries
+### 1.4 Data and trust boundaries
 
 - All live data remains sourced through the shared browser API client and API Gateway.
   No browser database access or direct business-service calls.
@@ -363,6 +390,9 @@ For every independently loaded region, define these states in implementation/rev
 
 ## 6. Review checklist
 
+- [ ] Fallback and populated page use the same header component/configuration and render
+  the same heading text, hierarchy, subtitle, actions, spacing, and responsive layout.
+- [ ] Session-dependent header values occupy the same slot without changing the header.
 - [ ] Stable page frame, headings, filter labels, and table headers appear without
   waiting for unrelated API values.
 - [ ] Each skeleton matches the exact region and role-specific populated structure.

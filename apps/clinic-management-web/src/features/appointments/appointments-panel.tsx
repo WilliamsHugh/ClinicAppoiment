@@ -18,6 +18,7 @@ import {
 import { appointmentApi, type Appointment } from "./appointment-api";
 import { AppointmentFilterBar } from "./appointment-filter-bar";
 import { AppointmentsTable } from "./appointments-table";
+import { PageHeader } from "../../components/page-header";
 import styles from "./appointments-panel.module.css";
 
 interface ConfirmDialogState {
@@ -401,16 +402,7 @@ export function AppointmentsPanel() {
   return (
     <div className={styles.panel}>
       {/* Page Header */}
-      <header className={styles.header}>
-        <div className={styles.titleArea}>
-          <h1 className={styles.title}>Quản lý lịch hẹn</h1>
-          <p className={styles.subtitle}>
-            {role === "DOCTOR"
-              ? "Danh sách bệnh nhân hẹn khám với bạn hôm nay và các ngày đã chọn."
-              : "Theo dõi, tiếp đón, xác nhận và xử lý lịch khám của toàn phòng khám."}
-          </p>
-        </div>
-      </header>
+      <PageHeader pathname="/appointments" />
 
       {/* Filter Bar */}
       <AppointmentFilterBar

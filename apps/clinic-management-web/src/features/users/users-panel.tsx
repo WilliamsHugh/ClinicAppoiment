@@ -10,6 +10,7 @@ import type { ClinicRole } from "../../lib/session/session";
 import { UserTable, type UserItem } from "./user-table";
 import { UserRoleModal } from "./user-role-modal";
 import { UserStatusModal, type UserStatus } from "./user-status-modal";
+import { PageHeader } from "../../components/page-header";
 import styles from "./users-panel.module.css";
 
 export function UsersPanel() {
@@ -126,14 +127,7 @@ export function UsersPanel() {
   if (session.status === "loading") {
     return (
       <div className={styles.container} aria-busy="true">
-        <header className={styles.header}>
-          <div>
-            <h1 className={styles.title}>Quản lý tài khoản</h1>
-            <p className={styles.subtitle}>
-              Quản trị danh sách người dùng, phân quyền vai trò và kiểm soát trạng thái hoạt động tài khoản.
-            </p>
-          </div>
-        </header>
+        <PageHeader pathname="/users" />
 
         <div className={styles.filterBar}>
           <div className={styles.searchForm}>
@@ -182,14 +176,7 @@ export function UsersPanel() {
 
   return (
     <div className={styles.container}>
-      <header className={styles.header}>
-        <div>
-          <h1 className={styles.title}>Quản lý tài khoản</h1>
-          <p className={styles.subtitle}>
-            Quản trị danh sách người dùng, phân quyền vai trò và kiểm soát trạng thái hoạt động tài khoản.
-          </p>
-        </div>
-      </header>
+      <PageHeader pathname="/users" />
 
       {/* Top Alerts */}
       {actionSuccess && (

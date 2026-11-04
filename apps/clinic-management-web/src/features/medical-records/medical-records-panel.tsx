@@ -10,6 +10,7 @@ import { ApiClientError, createBrowserApiClient } from "../../lib/api/client";
 import { useSession } from "../../lib/session/session-context";
 import { AppointmentSelector, type AppointmentOption } from "./appointment-selector";
 import { PrescriptionForm, type PrescriptionItem, type PrescriptionItemErrors } from "./prescription-form";
+import { PageHeader } from "../../components/page-header";
 import styles from "./medical-records-panel.module.css";
 
 export interface MedicalRecordItem {
@@ -276,11 +277,7 @@ export function MedicalRecordsPanel() {
   if (session.status === "loading") {
     return (
       <section className="page-stack" aria-busy="true">
-        <header className="page-heading">
-          <p className="eyebrow">Medical Record Service</p>
-          <h1>Hồ sơ khám bệnh</h1>
-          <p>Ghi nhận triệu chứng, chẩn đoán, kế hoạch điều trị và kê đơn thuốc cho bệnh nhân.</p>
-        </header>
+        <PageHeader pathname="/medical-records" />
         <div className={styles.panel}>
           <Skeleton height={24} width="40%" className={styles.fieldGroup} />
           <div style={{ marginTop: 16 }}>
@@ -311,10 +308,7 @@ export function MedicalRecordsPanel() {
   if (loading) {
     return (
       <section className="page-stack">
-        <header className="page-heading">
-          <p className="eyebrow">Medical Record Service</p>
-          <h1>Hồ sơ khám bệnh</h1>
-        </header>
+        <PageHeader pathname="/medical-records" />
         <div className={styles.panel}>
           <Skeleton height={24} width="40%" className={styles.fieldGroup} />
           <div style={{ marginTop: 16 }}>
@@ -345,11 +339,7 @@ export function MedicalRecordsPanel() {
 
   return (
     <section className="page-stack">
-      <header className="page-heading">
-        <p className="eyebrow">Medical Record Service</p>
-        <h1>Hồ sơ khám bệnh</h1>
-        <p>Ghi nhận triệu chứng, chẩn đoán, kế hoạch điều trị và kê đơn thuốc cho bệnh nhân.</p>
-      </header>
+      <PageHeader pathname="/medical-records" />
 
       {/* Top Notification Alerts */}
       {successMessage && (

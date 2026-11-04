@@ -7,6 +7,7 @@ import { Pagination } from "../../components/pagination";
 import { ApiClientError, createBrowserApiClient } from "../../lib/api/client";
 import { useSession } from "../../lib/session/session-context";
 import { Notification, NotificationItem } from "./notification-item";
+import { PageHeader } from "../../components/page-header";
 import styles from "./notifications-panel.module.css";
 
 export type NotificationFilter = "ALL" | "UNREAD" | "READ";
@@ -141,13 +142,16 @@ export function NotificationsPanel() {
   if (session.status === "loading") {
     return (
       <div className={styles.container} aria-busy="true">
-        <header className={styles.header}>
-          <div className={styles.headerText}>
-            <p className="eyebrow">Trung tâm thông báo</p>
-            <h1>Thông báo</h1>
-            <p>Theo dõi các sự kiện lịch hẹn, hồ sơ bệnh án và cập nhật điều hành phòng khám.</p>
-          </div>
-        </header>
+        <PageHeader
+          pathname="/notifications"
+          actions={
+            <div className={styles.headerActions}>
+              <Button variant="ghost" size="sm" disabled>
+                Làm mới
+              </Button>
+            </div>
+          }
+        />
 
         <section className={styles.filterBar} aria-label="Bộ lọc thông báo">
           <div className={styles.tabGroup} role="tablist">
@@ -183,35 +187,32 @@ export function NotificationsPanel() {
   return (
     <div className={styles.container}>
       {/* Header */}
-      <header className={styles.header}>
-        <div className={styles.headerText}>
-          <p className="eyebrow">Trung tâm thông báo</p>
-          <h1>Thông báo</h1>
-          <p>Theo dõi các sự kiện lịch hẹn, hồ sơ bệnh án và cập nhật điều hành phòng khám.</p>
-        </div>
-
-        <div className={styles.headerActions}>
-          {unreadOnPage.length > 0 && (
+      <PageHeader
+        pathname="/notifications"
+        actions={
+          <div className={styles.headerActions}>
+            {unreadOnPage.length > 0 && (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={handleMarkAllRead}
+                loading={markingAll}
+                disabled={loading || markingAll}
+              >
+                Đánh dấu tất cả đã đọc ({unreadOnPage.length})
+              </Button>
+            )}
             <Button
-              variant="secondary"
+              variant="ghost"
               size="sm"
-              onClick={handleMarkAllRead}
-              loading={markingAll}
-              disabled={loading || markingAll}
+              onClick={() => void loadNotifications(true)}
+              disabled={loading || isRefreshing}
             >
-              Đánh dấu tất cả đã đọc ({unreadOnPage.length})
+              {isRefreshing || loading ? "Đang tải…" : "Làm mới"}
             </Button>
-          )}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => void loadNotifications(true)}
-            disabled={loading || isRefreshing}
-          >
-            {isRefreshing || loading ? "Đang tải…" : "Làm mới"}
-          </Button>
-        </div>
-      </header>
+          </div>
+        }
+      />
 
       {/* Filter Tabs & Quick Summary */}
       <section className={styles.filterBar} aria-label="Bộ lọc thông báo">

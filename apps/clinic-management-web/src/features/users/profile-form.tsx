@@ -6,6 +6,7 @@ import { createBrowserApiClient } from "../../lib/api/client";
 import { useSession } from "../../lib/session/session-context";
 import { LoadingState, ErrorState } from "../../components/states";
 import { Button, Badge, Alert, ConfirmModal, Skeleton } from "../../components/ui";
+import { PageHeader } from "../../components/page-header";
 import styles from "./profile.module.css";
 
 export interface OwnProfile {
@@ -179,12 +180,7 @@ export function ProfileForm() {
   if (loading) {
     return (
       <div className={styles.container} aria-busy="true">
-        <div className={styles.pageHeader}>
-          <h1 className={styles.pageTitle}>Hồ sơ cá nhân</h1>
-          <p className={styles.pageSubtitle}>
-            Quản lý thông tin tài khoản, bảo mật và cài đặt làm việc trong phòng khám.
-          </p>
-        </div>
+        <PageHeader pathname="/profile" />
         <div className={styles.layout}>
           <div className={styles.subnav}>
             <div className={`${styles.subnavItem} ${styles.subnavItemActive}`}>
@@ -251,12 +247,7 @@ export function ProfileForm() {
   return (
     <div className={styles.container}>
       {/* Page Title */}
-      <div className={styles.pageHeader}>
-        <h1 className={styles.pageTitle}>Hồ sơ cá nhân</h1>
-        <p className={styles.pageSubtitle}>
-          Quản lý thông tin tài khoản, bảo mật và cài đặt làm việc trong phòng khám.
-        </p>
-      </div>
+      <PageHeader pathname="/profile" />
 
       {notice && (
         <Alert type="success" title="Thành công" onClose={() => setNotice(null)}>

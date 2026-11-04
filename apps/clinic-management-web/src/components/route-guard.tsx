@@ -8,6 +8,7 @@ import { canAccessRoute, routeForPath, type AppRoute } from "../lib/navigation/r
 import { useSession } from "../lib/session/session-context";
 import { LoadingState } from "./states";
 import { Badge, Button, Skeleton, SkeletonTable, SkeletonCard } from "./ui";
+import { PageHeader } from "./page-header";
 
 export const STATIC_HEALTH_SERVICES = [
   { key: "api-gateway", title: "API Gateway" },
@@ -22,14 +23,7 @@ export function RouteLoadingFallback({ pathname, route }: { pathname: string; ro
   if (pathname.startsWith("/appointments")) {
     return (
       <div className="page-stack" aria-busy="true" aria-label="Đang nạp dữ liệu lịch hẹn">
-        <header className="page-heading">
-          <h1 style={{ fontSize: "1.5rem", fontWeight: 700, margin: "0 0 6px 0", color: "var(--ink)" }}>
-            Quản lý lịch hẹn
-          </h1>
-          <p style={{ margin: 0, color: "var(--muted)", fontSize: "0.875rem" }}>
-            Theo dõi, tiếp đón, xác nhận và xử lý lịch khám của toàn phòng khám.
-          </p>
-        </header>
+        <PageHeader pathname="/appointments" />
 
         <section
           style={{
@@ -79,14 +73,7 @@ export function RouteLoadingFallback({ pathname, route }: { pathname: string; ro
   if (pathname.startsWith("/users")) {
     return (
       <div className="page-stack" aria-busy="true" aria-label="Đang nạp danh sách tài khoản">
-        <header className="page-heading">
-          <h1 style={{ fontSize: "1.5rem", fontWeight: 700, margin: "0 0 6px 0", color: "var(--ink)" }}>
-            Quản lý tài khoản
-          </h1>
-          <p style={{ margin: 0, color: "var(--muted)", fontSize: "0.875rem" }}>
-            Quản trị danh sách người dùng, phân quyền vai trò và kiểm soát trạng thái hoạt động tài khoản.
-          </p>
-        </header>
+        <PageHeader pathname="/users" />
 
         <div
           style={{
@@ -122,17 +109,19 @@ export function RouteLoadingFallback({ pathname, route }: { pathname: string; ro
   if (pathname.startsWith("/doctors")) {
     return (
       <div className="page-stack" aria-busy="true" aria-label="Đang nạp danh sách bác sĩ">
+        <PageHeader pathname="/doctors" />
+
         <section
           style={{
             background: "var(--surface)",
             border: "1px solid var(--line)",
             borderRadius: "var(--radius-lg)",
             padding: "20px",
+            marginTop: 16,
             marginBottom: 20,
           }}
           aria-label="Tìm bác sĩ"
         >
-          <h2 style={{ fontSize: "1.25rem", margin: "0 0 16px 0", color: "var(--ink)" }}>Tìm bác sĩ</h2>
           <div style={{ display: "flex", gap: 12, flexWrap: "wrap", marginBottom: 16 }}>
             <div style={{ display: "flex", flexDirection: "column", gap: 6, flex: 1, minWidth: 200 }}>
               <span style={{ fontSize: "0.8125rem", color: "var(--muted)" }}>Tên bác sĩ</span>
@@ -159,17 +148,7 @@ export function RouteLoadingFallback({ pathname, route }: { pathname: string; ro
   if (pathname.startsWith("/medical-records")) {
     return (
       <div className="page-stack" aria-busy="true" aria-label="Đang nạp hồ sơ khám">
-        <header className="page-heading">
-          <p className="eyebrow" style={{ fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--brand)", margin: "0 0 4px 0", fontWeight: 700 }}>
-            Medical Record Service
-          </p>
-          <h1 style={{ fontSize: "1.5rem", fontWeight: 700, margin: "0 0 6px 0", color: "var(--ink)" }}>
-            Hồ sơ khám bệnh
-          </h1>
-          <p style={{ margin: 0, color: "var(--muted)", fontSize: "0.875rem" }}>
-            Ghi nhận triệu chứng, chẩn đoán, kế hoạch điều trị và kê đơn thuốc cho bệnh nhân.
-          </p>
-        </header>
+        <PageHeader pathname="/medical-records" />
 
         <section
           style={{
@@ -196,19 +175,16 @@ export function RouteLoadingFallback({ pathname, route }: { pathname: string; ro
   if (pathname.startsWith("/notifications")) {
     return (
       <div className="page-stack" aria-busy="true" aria-label="Đang nạp trung tâm thông báo">
-        <header className="page-heading" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-          <div>
-            <p className="eyebrow" style={{ fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--brand)", margin: "0 0 4px 0", fontWeight: 700 }}>
-              Trung tâm thông báo
-            </p>
-            <h1 style={{ fontSize: "1.5rem", fontWeight: 700, margin: "0 0 6px 0", color: "var(--ink)" }}>
-              Thông báo
-            </h1>
-            <p style={{ margin: 0, color: "var(--muted)", fontSize: "0.875rem" }}>
-              Theo dõi các sự kiện lịch hẹn, hồ sơ bệnh án và cập nhật điều hành phòng khám.
-            </p>
-          </div>
-        </header>
+        <PageHeader
+          pathname="/notifications"
+          actions={
+            <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+              <Button variant="ghost" size="sm" disabled>
+                Làm mới
+              </Button>
+            </div>
+          }
+        />
 
         <div style={{ display: "flex", gap: 8, margin: "16px 0 20px 0" }}>
           <Button variant="primary" size="sm" disabled>Tất cả</Button>
@@ -228,14 +204,7 @@ export function RouteLoadingFallback({ pathname, route }: { pathname: string; ro
   if (pathname.startsWith("/profile")) {
     return (
       <div className="page-stack" aria-busy="true" aria-label="Đang nạp hồ sơ cá nhân">
-        <header className="page-heading">
-          <h1 style={{ fontSize: "1.5rem", fontWeight: 700, margin: "0 0 6px 0", color: "var(--ink)" }}>
-            Hồ sơ cá nhân
-          </h1>
-          <p style={{ margin: 0, color: "var(--muted)", fontSize: "0.875rem" }}>
-            Quản lý thông tin tài khoản, bảo mật và cài đặt làm việc trong phòng khám.
-          </p>
-        </header>
+        <PageHeader pathname="/profile" />
 
         <div style={{ display: "flex", gap: 24, marginTop: 16 }}>
           <div style={{ width: 200, display: "flex", flexDirection: "column", gap: 8 }}>
@@ -264,42 +233,43 @@ export function RouteLoadingFallback({ pathname, route }: { pathname: string; ro
   if (pathname.startsWith("/health")) {
     return (
       <div className="page-stack" aria-busy="true" aria-label="Đang nạp thông tin hạ tầng hệ thống">
-        <header className="page-heading" style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-          <div>
-            <p className="eyebrow" style={{ fontSize: "0.75rem", textTransform: "uppercase", letterSpacing: "0.05em", color: "var(--brand)", margin: "0 0 4px 0", fontWeight: 700 }}>
-              API Gateway &amp; Microservices
-            </p>
-            <h1 style={{ fontSize: "1.5rem", fontWeight: 700, margin: "0 0 6px 0", color: "var(--ink)" }}>
-              Hạ tầng hệ thống
-            </h1>
-            <span style={{ fontSize: "0.8rem", color: "var(--muted)", display: "block" }}>
-              Đang kết nối và kiểm tra trạng thái các dịch vụ...
-            </span>
-          </div>
-          <Button variant="outline" disabled>Kiểm tra lại</Button>
-        </header>
+        <PageHeader pathname="/health" />
 
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: 16, marginTop: 20 }}>
-          {STATIC_HEALTH_SERVICES.map((svc) => (
-            <article key={svc.key} style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: "var(--radius-lg)", padding: "20px", display: "flex", flexDirection: "column", gap: 8 }}>
-              <h3 style={{ margin: 0, textTransform: "capitalize", fontSize: "1.1rem" }}>{svc.title}</h3>
-              <div>
+        <section className="health-panel" style={{ display: "flex", flexDirection: "column", gap: 20, marginTop: 16 }}>
+          <div className="panel-heading">
+            <div>
+              <p className="eyebrow">API Gateway &amp; Microservices</p>
+              <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 4 }}>
+                <h2 style={{ margin: 0 }}>Hạ tầng hệ thống</h2>
                 <Skeleton height={24} width={140} borderRadius="var(--radius-full)" />
               </div>
-            </article>
-          ))}
-        </div>
+              <span style={{ fontSize: "0.8rem", color: "var(--muted)", marginTop: 4, display: "block" }}>
+                Đang kết nối và kiểm tra trạng thái các dịch vụ...
+              </span>
+            </div>
+            <Button variant="outline" disabled>Kiểm tra lại</Button>
+          </div>
+
+          <div className="health-grid">
+            {STATIC_HEALTH_SERVICES.map((svc) => (
+              <article key={svc.key} className="health-service" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                  <h3 style={{ margin: 0, textTransform: "capitalize" }}>{svc.title}</h3>
+                </div>
+                <div>
+                  <Skeleton height={24} width={140} borderRadius="var(--radius-full)" />
+                </div>
+              </article>
+            ))}
+          </div>
+        </section>
       </div>
     );
   }
 
   return (
     <div className="page-stack" aria-busy="true" aria-live="polite">
-      <header className="page-heading">
-        <h1 style={{ fontSize: "1.5rem", fontWeight: 700, margin: "0 0 6px 0", color: "var(--ink)" }}>
-          {route?.label || "Đang tải giao diện..."}
-        </h1>
-      </header>
+      <PageHeader title={route?.label || "Đang tải giao diện..."} />
       <div style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: "var(--radius-lg)", padding: "24px", marginTop: 16 }}>
         <Skeleton height={28} width={240} style={{ marginBottom: 16 }} />
         <Skeleton height={20} width="80%" style={{ marginBottom: 12 }} />
