@@ -23,6 +23,7 @@
 12. [Information Architecture and Navigation](#12-information-architecture-and-navigation)
 13. [Core Workflow Specifications](#13-core-workflow-specifications)
 14. [Page Specifications](#14-page-specifications)
+   - [Web render and loading strategy](web-rendering-contract.md)
 15. [Accessibility Requirements](#15-accessibility-requirements)
 16. [Responsive Behavior](#16-responsive-behavior)
 17. [Data, Privacy, and Safety](#17-data-and-privacy-rules)
@@ -630,6 +631,14 @@ Trang `/auth` là **unauthenticated route** — `AppShell` (sidebar + topbar) **
 | Populated | Appointment cards with status chips |
 | Error | `AppErrorState`: error message, "Thử lại" retry button |
 | Offline | Stale data badge + "Đang ngoại tuyến — hiển thị dữ liệu lưu trữ" notice |
+
+### 14.7 Web: Render and Loading Strategy
+
+The detailed render contract for every Clinic Management Web route, page region,
+skeleton, refresh, partial-data, empty, and error state is maintained in
+[`docs/web-rendering-contract.md`](web-rendering-contract.md). It supplements this
+section and §11; it does not change role permissions, API ownership, or the visual
+tokens defined here.
 
 ---
 

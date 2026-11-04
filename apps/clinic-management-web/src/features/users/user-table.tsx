@@ -69,7 +69,10 @@ export function UserTable({
   if (loading && users.length === 0) {
     return (
       <div className={styles.tableCard}>
-        <SkeletonTable rows={8} cols={5} />
+        <SkeletonTable
+          rows={8}
+          headers={["Họ và tên", "Email / Số điện thoại", "Vai trò", "Trạng thái", "Thao tác"]}
+        />
       </div>
     );
   }
@@ -84,7 +87,11 @@ export function UserTable({
   }
 
   return (
-    <div className={styles.tableCard}>
+    <div
+      className={styles.tableCard}
+      aria-busy={loading ? "true" : undefined}
+      style={{ opacity: loading ? 0.8 : 1, transition: "opacity 0.2s ease" }}
+    >
       <div className={styles.tableContainer}>
         <table className={styles.table} aria-label="Danh sách tài khoản người dùng">
           <thead>

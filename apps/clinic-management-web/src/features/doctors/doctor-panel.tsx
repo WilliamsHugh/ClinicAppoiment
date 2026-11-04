@@ -334,7 +334,11 @@ export function DoctorPanel() {
                   />
                 </label>
                 {detailLoading ? (
-                  <p>Đang cập nhật khung giờ...</p>
+                  <div className={styles.chips} aria-busy="true" aria-label="Đang nạp khung giờ khả dụng">
+                    <Skeleton height={28} width={130} borderRadius="var(--radius-full)" />
+                    <Skeleton height={28} width={130} borderRadius="var(--radius-full)" />
+                    <Skeleton height={28} width={130} borderRadius="var(--radius-full)" />
+                  </div>
                 ) : slots.length === 0 ? (
                   <p>Không có khung giờ phù hợp trong ngày này.</p>
                 ) : (
@@ -358,28 +362,38 @@ export function DoctorPanel() {
         <section className={styles.card} aria-label="Quản lý chuyên khoa">
           <h2>Quản lý chuyên khoa</h2>
           <div className={styles.list}>
-            {specialties.map((item) => (
-              <div key={item.id} className={styles.listRow}>
-                <span>
-                  {item.name} {!item.isActive && "(ngừng hoạt động)"}
-                </span>
-                <button type="button" disabled={busy} onClick={() => editSpecialty(item)}>
-                  Sửa
-                </button>
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() =>
-                    void mutate(
-                      () => api.updateSpecialty(item.id, { isActive: !item.isActive }),
-                      "Đã cập nhật chuyên khoa."
-                    )
-                  }
-                >
-                  {item.isActive ? "Ngừng" : "Kích hoạt"}
-                </button>
+            {loading && specialties.length === 0 ? (
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }} aria-busy="true">
+                <Skeleton height={36} width="100%" />
+                <Skeleton height={36} width="100%" />
+                <Skeleton height={36} width="100%" />
               </div>
-            ))}
+            ) : specialties.length === 0 ? (
+              <p className={styles.muted}>Chưa có chuyên khoa nào được cấu hình.</p>
+            ) : (
+              specialties.map((item) => (
+                <div key={item.id} className={styles.listRow}>
+                  <span>
+                    {item.name} {!item.isActive && "(ngừng hoạt động)"}
+                  </span>
+                  <button type="button" disabled={busy} onClick={() => editSpecialty(item)}>
+                    Sửa
+                  </button>
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() =>
+                      void mutate(
+                        () => api.updateSpecialty(item.id, { isActive: !item.isActive }),
+                        "Đã cập nhật chuyên khoa."
+                      )
+                    }
+                  >
+                    {item.isActive ? "Ngừng" : "Kích hoạt"}
+                  </button>
+                </div>
+              ))
+            )}
           </div>
           <form
             className={styles.form}

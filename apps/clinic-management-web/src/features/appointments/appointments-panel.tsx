@@ -13,6 +13,7 @@ import {
   SkeletonTable,
   ConfirmModal,
   Button,
+  Alert,
 } from "../../components/ui";
 import { appointmentApi, type Appointment } from "./appointment-api";
 import { AppointmentFilterBar } from "./appointment-filter-bar";
@@ -45,6 +46,8 @@ export function AppointmentsPanel() {
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [totalCount, setTotalCount] = useState<number>(0);
   const [loading, setLoading] = useState<boolean>(true);
+  const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
+  const [isStaleData, setIsStaleData] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
   const [errorRequestId, setErrorRequestId] = useState<string | undefined>();
 
@@ -118,68 +121,85 @@ export function AppointmentsPanel() {
   }, [api, isAuthorized]);
 
   // Load appointments
-  const fetchAppointments = useCallback(async () => {
-    if (!isAuthorized) return;
-    setLoading(true);
-    setError(null);
-    setErrorRequestId(undefined);
-
-    try {
-      // Create local day boundaries for from/to
-      const from = new Date(`${selectedDate}T00:00:00`).toISOString();
-      const to = new Date(`${selectedDate}T23:59:59.999`).toISOString();
-
-      const res = await api.list({
-        from,
-        to,
-        status: selectedStatus === "ALL" ? undefined : selectedStatus,
-        page,
-        limit: 20,
-      });
-
-      const items = res.data.items;
-      setAppointments(items);
-      setTotalCount(res.data.total ?? items.length);
-
-      // Resolve patient names asynchronously
-      const unresolvedPatientIds = items
-        .map((a) => a.patientId)
-        .filter((id) => !patientsMap[id]);
-
-      if (unresolvedPatientIds.length > 0) {
-        const uniqueIds = Array.from(new Set(unresolvedPatientIds));
-        Promise.allSettled(
-          uniqueIds.map((pid) => {
-            const appt = items.find((a) => a.patientId === pid);
-            return api.getPatient(pid, appt?.id);
-          })
-        ).then((results) => {
-          setPatientsMap((prev) => {
-            const updated = { ...prev };
-            results.forEach((r, idx) => {
-              const pid = uniqueIds[idx];
-              if (r.status === "fulfilled" && r.value.data.fullName) {
-                updated[pid] = r.value.data.fullName;
-              }
-            });
-            return updated;
-          });
-        });
-      }
-    } catch (err: unknown) {
-      if (err instanceof ApiClientError) {
-        setError(toUserFriendlyError(err));
-        setErrorRequestId(err.requestId);
+  const fetchAppointments = useCallback(
+    async (isRefresh = false) => {
+      if (!isAuthorized) return;
+      if (isRefresh && appointments.length > 0) {
+        setIsRefreshing(true);
       } else {
-        setError("Không thể tải danh sách lịch hẹn. Vui lòng kiểm tra kết nối.");
+        setLoading(true);
       }
-    } finally {
-      setLoading(false);
-    }
-  }, [api, isAuthorized, selectedDate, selectedStatus, page, patientsMap]);
+      setError(null);
+      setErrorRequestId(undefined);
+
+      try {
+        // Create local day boundaries for from/to
+        const from = new Date(`${selectedDate}T00:00:00`).toISOString();
+        const to = new Date(`${selectedDate}T23:59:59.999`).toISOString();
+
+        const res = await api.list({
+          from,
+          to,
+          status: selectedStatus === "ALL" ? undefined : selectedStatus,
+          page,
+          limit: 20,
+        });
+
+        const items = res.data.items;
+        setAppointments(items);
+        setTotalCount(res.data.total ?? items.length);
+        setIsStaleData(false);
+
+        // Resolve patient names asynchronously
+        const unresolvedPatientIds = items
+          .map((a) => a.patientId)
+          .filter((id) => !patientsMap[id]);
+
+        if (unresolvedPatientIds.length > 0) {
+          const uniqueIds = Array.from(new Set(unresolvedPatientIds));
+          Promise.allSettled(
+            uniqueIds.map((pid) => {
+              const appt = items.find((a) => a.patientId === pid);
+              return api.getPatient(pid, appt?.id);
+            })
+          ).then((results) => {
+            setPatientsMap((prev) => {
+              const updated = { ...prev };
+              results.forEach((r, idx) => {
+                const pid = uniqueIds[idx];
+                if (r.status === "fulfilled" && r.value.data.fullName) {
+                  updated[pid] = r.value.data.fullName;
+                }
+              });
+              return updated;
+            });
+          });
+        }
+      } catch (err: unknown) {
+        if (appointments.length > 0) {
+          setIsStaleData(true);
+          showToast(
+            "Không thể cập nhật danh sách lịch hẹn mới nhất. Đang hiển thị kết quả gần nhất.",
+            "warning"
+          );
+        } else {
+          if (err instanceof ApiClientError) {
+            setError(toUserFriendlyError(err));
+            setErrorRequestId(err.requestId);
+          } else {
+            setError("Không thể tải danh sách lịch hẹn. Vui lòng kiểm tra kết nối.");
+          }
+        }
+      } finally {
+        setLoading(false);
+        setIsRefreshing(false);
+      }
+    },
+    [api, isAuthorized, selectedDate, selectedStatus, page, patientsMap, appointments.length, showToast]
+  );
 
   useEffect(() => {
-    fetchAppointments();
+    fetchAppointments(false);
   }, [selectedDate, selectedStatus, page]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Filter client-side search query
@@ -406,13 +426,13 @@ export function AppointmentsPanel() {
         }}
         search={searchQuery}
         onSearchChange={setSearchQuery}
-        onRefresh={fetchAppointments}
+        onRefresh={() => void fetchAppointments(true)}
         onReset={handleResetFilters}
-        loading={loading}
+        loading={loading || isRefreshing}
       />
 
       {/* Main Content Area / State Matrix */}
-      {loading ? (
+      {loading && appointments.length === 0 ? (
         <SkeletonTable
           rows={8}
           headers={
@@ -421,11 +441,11 @@ export function AppointmentsPanel() {
               : ["Giờ khám", "Bệnh nhân", "Bác sĩ", "Chuyên khoa", "Trạng thái", "Thao tác"]
           }
         />
-      ) : error ? (
+      ) : error && appointments.length === 0 ? (
         <ErrorState
           message={error}
           requestId={errorRequestId}
-          onRetry={fetchAppointments}
+          onRetry={() => void fetchAppointments(false)}
         />
       ) : filteredAppointments.length === 0 ? (
         isFiltered ? (
@@ -443,12 +463,22 @@ export function AppointmentsPanel() {
             message={`Không tìm thấy lịch hẹn nào trong ngày ${selectedDate}.`}
             action={{
               label: "Làm mới",
-              onClick: fetchAppointments,
+              onClick: () => void fetchAppointments(false),
             }}
           />
         )
       ) : (
-        <>
+        <div
+          aria-busy={isRefreshing ? "true" : undefined}
+          style={{ opacity: isRefreshing ? 0.75 : 1, transition: "opacity 0.2s ease" }}
+        >
+          {isStaleData && (
+            <div style={{ marginBottom: 16 }}>
+              <Alert variant="warning" title="Dữ liệu chưa thể cập nhật">
+                Không thể kết nối đến máy chủ để làm mới lịch hẹn. Đang hiển thị kết quả đã lưu gần nhất.
+              </Alert>
+            </div>
+          )}
           <AppointmentsTable
             appointments={filteredAppointments}
             role={role}
@@ -493,7 +523,7 @@ export function AppointmentsPanel() {
               </div>
             </div>
           )}
-        </>
+        </div>
       )}
 
       {/* Destructive Action Confirmation Modal */}

@@ -5,7 +5,7 @@ import Link from "next/link";
 import { ArrowRight, Clock } from "lucide-react";
 import { useSession } from "../../lib/session/session-context";
 import { createBrowserApiClient, type PaginatedData } from "../../lib/api/client";
-import { Button, Skeleton } from "../../components/ui";
+import { Button, Skeleton, Alert } from "../../components/ui";
 import { EmptyState, ErrorState } from "../../components/states";
 import { StatusBadge } from "../../components/status-badge";
 import {
@@ -170,7 +170,16 @@ export function DoctorDashboard() {
         onRefresh={() => void loadData(false)}
       />
 
-      {error && <ErrorState message={error} onRetry={() => void loadData(false)} />}
+      {error && appointments.length === 0 && (
+        <ErrorState message={error} onRetry={() => void loadData(false)} />
+      )}
+      {error && appointments.length > 0 && (
+        <div style={{ marginBottom: 16 }}>
+          <Alert variant="warning" title="Dữ liệu chưa thể cập nhật">
+            {error}. Đang hiển thị danh sách ca khám đã lưu gần nhất.
+          </Alert>
+        </div>
+      )}
 
       {/* 2-column Layout: Primary Task (Lịch khám ưu tiên) vs Secondary Task (Thống kê tiến độ) */}
       <div className={styles.dashboardGrid}>

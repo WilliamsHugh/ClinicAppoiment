@@ -5,7 +5,7 @@ import Link from "next/link";
 import { CheckCircle2, AlertTriangle, ArrowRight } from "lucide-react";
 import { useSession } from "../../lib/session/session-context";
 import { createBrowserApiClient, type PaginatedData } from "../../lib/api/client";
-import { Badge, Button, Skeleton } from "../../components/ui";
+import { Badge, Button, Skeleton, Alert } from "../../components/ui";
 import { ErrorState } from "../../components/states";
 import { TodayScheduleSummary, formatVietnamDate, formatVietnamTime } from "./today-schedule-summary";
 import styles from "./dashboard.module.css";
@@ -143,7 +143,14 @@ export function AdminDashboard() {
         onRefresh={() => void loadData(false)}
       />
 
-      {error && <ErrorState message={error} onRetry={() => void loadData(false)} />}
+      {error && !health && <ErrorState message={error} onRetry={() => void loadData(false)} />}
+      {error && health && (
+        <div style={{ marginBottom: 16 }}>
+          <Alert variant="warning" title="Dữ liệu chưa thể cập nhật">
+            {error}. Đang hiển thị thông tin hệ thống đã lưu gần nhất.
+          </Alert>
+        </div>
+      )}
 
       {/* 2-column Layout: Cột chính là Trạng thái hệ thống thực, Cột phụ là Thống kê User theo role */}
       <div className={styles.dashboardGrid}>

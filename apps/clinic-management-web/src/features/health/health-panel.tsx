@@ -98,7 +98,7 @@ export function HealthPanel() {
   if (!canViewSystemHealth(session)) {
     return <ErrorState message="Trang này chỉ dành cho quản trị viên đã đăng nhập." />;
   }
-  if (error) {
+  if (error && !health) {
     return (
       <ErrorState
         message={error.message}
@@ -132,7 +132,11 @@ export function HealthPanel() {
           <p className="eyebrow">API Gateway &amp; Microservices</p>
           <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 4 }}>
             <h2 style={{ margin: 0 }}>Hạ tầng hệ thống</h2>
-            {health ? (
+            {error ? (
+              <Badge variant="warning" size="md">
+                Kết quả cũ (Chưa cập nhật)
+              </Badge>
+            ) : health ? (
               <Badge variant={isAllHealthy ? "success" : "warning"} size="md">
                 {isAllHealthy ? "Tất cả hoạt động tốt" : health.status ?? "Đang kiểm tra"}
               </Badge>
@@ -143,6 +147,8 @@ export function HealthPanel() {
           <span style={{ fontSize: "0.8rem", color: "var(--muted)", marginTop: 4, display: "block" }}>
             {isRefreshing
               ? "Đang kiểm tra lại dịch vụ..."
+              : error
+              ? `Lần kiểm tra thành công gần nhất: ${formattedTime} (Giờ Việt Nam UTC+7)`
               : `Lần kiểm tra gần nhất: ${formattedTime} (Giờ Việt Nam UTC+7)`}
           </span>
         </div>
@@ -150,6 +156,12 @@ export function HealthPanel() {
           {loading || isRefreshing ? "Đang tải…" : "Kiểm tra lại"}
         </Button>
       </div>
+
+      {error && (
+        <div style={{ padding: "12px 16px", borderRadius: "var(--radius-md)", background: "var(--warning-light)", border: "1px solid var(--warning)", color: "var(--warning)" }}>
+          <span>Lần kiểm tra lại gần nhất thất bại: {error.message}. Đang hiển thị kết quả lưu trước đó.</span>
+        </div>
+      )}
 
       <div className="health-grid">
         {STATIC_PANEL_SERVICES.map((svc) => {
