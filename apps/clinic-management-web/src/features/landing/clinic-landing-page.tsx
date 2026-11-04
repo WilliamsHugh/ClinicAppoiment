@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useMemo } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import {
@@ -19,6 +19,10 @@ import {
   Video,
   X,
   Info,
+  ChevronDown,
+  ChevronUp,
+  ArrowRight,
+  Menu,
 } from "lucide-react";
 import { useSession } from "../../lib/session/session-context";
 import styles from "./clinic-landing.module.css";
@@ -90,6 +94,94 @@ const SAMPLE_DOCTORS: DoctorItem[] = [
   },
 ];
 
+interface BlogArticle {
+  id: string;
+  title: string;
+  category: string;
+  doctor: string;
+  readTime: string;
+  summary: string;
+  content: string[];
+}
+
+const SAMPLE_BLOGS: BlogArticle[] = [
+  {
+    id: "blog-1",
+    title: "5 Thói quen đơn giản giúp duy trì trái tim khỏe mạnh mỗi ngày",
+    category: "Tim mạch",
+    doctor: "ThS. BS Lê Thị Mai",
+    readTime: "5 phút đọc",
+    summary:
+      "Tăng cường sức khỏe tim mạch bắt đầu từ chế độ ăn giảm muối, 30 phút đi bộ mỗi ngày và duy trì giấc ngủ đủ 7-8 tiếng.",
+    content: [
+      "Bệnh lý tim mạch hiện là nguyên nhân hàng đầu gây ảnh hưởng sức khỏe lâu dài. Tuy nhiên, hơn 80% các biến cố tim mạch sớm có thể phòng ngừa bằng cách thay đổi lối sống chủ động.",
+      "Thứ nhất, hạn chế lượng natri dưới 2g/ngày (khoảng 1 thìa cà phê muối). Thứ hai, duy trì vận động thể chất vừa sức ít nhất 150 phút mỗi tuần. Thứ ba, nói không với thuốc lá và kiểm soát cân nặng hợp lý.",
+      "Đặc biệt, khám định kỳ đo điện tâm đồ và siêu âm tim hàng năm giúp phát hiện sớm các nguy cơ xơ vữa mạch máu từ giai đoạn tiền lâm sàng.",
+    ],
+  },
+  {
+    id: "blog-2",
+    title: "Hướng dẫn chăm sóc và tăng cường miễn dịch cho trẻ khi giao mùa",
+    category: "Nhi khoa",
+    doctor: "BS. CKI Trần Văn An",
+    readTime: "4 phút đọc",
+    summary:
+      "Thời tiết giao mùa khiến trẻ nhỏ dễ mắc các bệnh đường hô hấp. Cùng chuyên gia Nhi khoa tìm hiểu các bước phòng ngừa hiệu quả.",
+    content: [
+      "Trẻ em dưới 5 tuổi có hệ thống miễn dịch chưa hoàn thiện, là đối tượng dễ bị tấn công bởi virus cúm, RSV và vi khuẩn gây viêm phế quản.",
+      "Phụ huynh cần giữ ấm vùng cổ ngực, vệ sinh mũi họng hàng ngày bằng nước muối sinh lý, và tiêm chủng vắc-xin đầy đủ đúng lịch.",
+      "Khi trẻ có biểu hiện sốt cao liên tục trên 38.5 độ C, thở nhanh rút lõm lồng ngực hoặc li bì bú kém, cần đưa trẻ đến cơ sở y tế chuyên khoa ngay để được thăm khám kịp thời.",
+    ],
+  },
+  {
+    id: "blog-3",
+    title: "Khám sức khỏe tổng quát định kỳ: Những danh mục thiết yếu bạn cần biết",
+    category: "Nội tổng quát",
+    doctor: "BS. Phạm Quốc Huy",
+    readTime: "6 phút đọc",
+    summary:
+      "Tầm soát sức khỏe định kỳ không chỉ kiểm tra cơ bản mà còn phát hiện sớm tiểu đường, mỡ máu cao và bệnh lý gan mật tiềm ẩn.",
+    content: [
+      "Nhiều bệnh lý chuyển hóa như đái tháo đường týp 2 hay rối loạn lipid máu thường diễn tiến âm thầm mà không có triệu chứng cảnh báo rõ rệt.",
+      "Một gói khám sức khỏe tổng quát chuẩn cần bao gồm: xét nghiệm huyết học, sinh hóa máu (đường huyết, men gan, chức năng thận, mỡ máu), siêu âm ổ bụng tổng quát và chụp X-quang tim phổi.",
+      "Chủ động kiểm tra sức khỏe 6-12 tháng/lần là cách đầu tư thông minh và bền vững nhất cho chất lượng cuộc sống của bản thân và gia đình.",
+    ],
+  },
+];
+
+interface FaqItem {
+  question: string;
+  answer: string;
+}
+
+const FAQ_LIST: FaqItem[] = [
+  {
+    question: "Làm thế nào để tôi đặt lịch hẹn khám tại Health&Human?",
+    answer:
+      "Bạn có thể dễ dàng đặt lịch bằng 3 cách: (1) Sử dụng thanh tìm kiếm bác sĩ ngay trên trang chủ để xem lịch và đăng ký, (2) Tải ứng dụng di động Health&Human Patient App để chủ động chọn ngày giờ và nhận vé QR điện tử, hoặc (3) Gọi trực tiếp hotline tiếp đón 1900 8899 phục vụ 24/7.",
+  },
+  {
+    question: "Quy trình check-in không cần bốc số tại phòng khám hoạt động ra sao?",
+    answer:
+      "Sau khi đăng ký thành công qua ứng dụng hoặc tổng đài, bạn sẽ có một mã QR định danh cuộc hẹn. Khi đến phòng khám, bạn chỉ cần đưa mã QR trước máy Kiosk thông minh tại sảnh tiếp đón để xác nhận có mặt trong 3 giây và vào thẳng phòng khám chuyên khoa theo giờ hẹn.",
+  },
+  {
+    question: "Phòng khám có chấp nhận BHYT và bảo lãnh viện phí tư nhân không?",
+    answer:
+      "Có. Health&Human áp dụng đầy đủ quyền lợi Bảo hiểm Y tế nhà nước theo đúng quy định. Đồng thời, phòng khám liên kết bảo lãnh viện phí trực tiếp với hơn 20 công ty bảo hiểm uy tín (Bảo Việt, PTI, Manulife, Prudential, PVI, v.v.), giúp bệnh nhân được bồi hoàn thanh toán nhanh chóng.",
+  },
+  {
+    question: "Tôi có thể xem lại kết quả xét nghiệm và đơn thuốc sau khi khám ở đâu?",
+    answer:
+      "Toàn bộ hồ sơ bệnh án điện tử, kết quả xét nghiệm, chẩn đoán hình ảnh và đơn thuốc sẽ được cập nhật tức thì trên ứng dụng Health&Human Patient App ngay sau khi bác sĩ kết luận buổi khám. Bạn có thể tra cứu và tải về bất kỳ lúc nào.",
+  },
+  {
+    question: "Thời gian làm việc và tiếp nhận cấp cứu của phòng khám?",
+    answer:
+      "Phòng khám làm việc từ Thứ Hai đến Chủ Nhật, khung giờ 07:00 – 20:30 hàng ngày. Khu vực cấp cứu lưu bệnh và đường dây nóng hỗ trợ khẩn cấp 1900 8899 luôn hoạt động liên tục 24/7.",
+  },
+];
+
 export interface ClinicLandingPageProps {
   onSwitchToDashboard?: () => void;
 }
@@ -103,6 +195,16 @@ export function ClinicLandingPage({ onSwitchToDashboard }: ClinicLandingPageProp
   const [availableOnly, setAvailableOnly] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
 
+  // Active navigation tracking & mobile menu
+  const [activeSection, setActiveSection] = useState<string>("home");
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+
+  // FAQ accordion state
+  const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(0);
+
+  // Blog reading modal state
+  const [readingBlog, setReadingBlog] = useState<BlogArticle | null>(null);
+
   // Video modal state
   const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
   // Booking prompt modal state
@@ -111,6 +213,43 @@ export function ClinicLandingPage({ onSwitchToDashboard }: ClinicLandingPageProp
   const isAuthenticated = session.status === "authenticated" && !!session.identity;
   const userRole = session.identity?.role;
   const isWorkforceRole = userRole === "DOCTOR" || userRole === "STAFF" || userRole === "ADMIN";
+
+  // Dynamic scroll listener to track the active section
+  useEffect(() => {
+    const handleScroll = () => {
+      // If near the top, always highlight Home
+      if (window.scrollY < 280) {
+        setActiveSection("home");
+        return;
+      }
+
+      // If document is scrollable and reached the bottom, highlight contact
+      const isScrollable = document.documentElement.scrollHeight > window.innerHeight + 100;
+      if (isScrollable && window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 70) {
+        setActiveSection("contact");
+        return;
+      }
+
+      const scrollPosition = window.scrollY + 140;
+      const sections = ["services", "help", "blogs", "contact"];
+
+      for (let i = sections.length - 1; i >= 0; i--) {
+        const id = sections[i];
+        const el = document.getElementById(id);
+        if (el) {
+          const top = el.offsetTop;
+          if (scrollPosition >= top) {
+            setActiveSection(id);
+            break;
+          }
+        }
+      }
+    };
+
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    handleScroll();
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
 
   const filteredDoctors = useMemo(() => {
     return SAMPLE_DOCTORS.filter((doc) => {
@@ -138,9 +277,21 @@ export function ClinicLandingPage({ onSwitchToDashboard }: ClinicLandingPageProp
   };
 
   const scrollToSection = (id: string) => {
+    setActiveSection(id);
+    setIsMobileMenuOpen(false);
+    if (id === "home") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+      return;
+    }
     const el = document.getElementById(id);
     if (el) {
-      el.scrollIntoView({ behavior: "smooth" });
+      const headerOffset = 72;
+      const elementPosition = el.getBoundingClientRect().top;
+      const offsetPosition = elementPosition + window.pageYOffset - headerOffset;
+      window.scrollTo({
+        top: offsetPosition,
+        behavior: "smooth",
+      });
     }
   };
 
@@ -152,7 +303,14 @@ export function ClinicLandingPage({ onSwitchToDashboard }: ClinicLandingPageProp
       <header className={styles.headerSticky}>
         <div className={styles.headerContainer}>
           {/* Brand & Logo */}
-          <Link href="/" className={styles.brandGroup}>
+          <a
+            href="#home"
+            className={styles.brandGroup}
+            onClick={(e) => {
+              e.preventDefault();
+              scrollToSection("home");
+            }}
+          >
             <Image
               src="/images/logo.png"
               alt="Health&Human Clinic Logo"
@@ -164,66 +322,68 @@ export function ClinicLandingPage({ onSwitchToDashboard }: ClinicLandingPageProp
             <span className={styles.brandTitle}>
               Health<span className={styles.brandAmpersand}>&</span>Human
             </span>
-          </Link>
+          </a>
 
           {/* Nav Links */}
           <nav aria-label="Main Navigation">
             <ul className={styles.navLinks}>
               <li className={styles.navLinkItem}>
-                <a href="#" className={`${styles.navLink} ${styles.navLinkActive}`}>
+                <button
+                  type="button"
+                  className={`${styles.navLink} ${activeSection === "home" ? styles.navLinkActive : ""}`}
+                  onClick={() => scrollToSection("home")}
+                >
                   Home
-                </a>
+                </button>
               </li>
               <li className={styles.navLinkItem}>
-                <a
-                  href="#services"
-                  className={styles.navLink}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    scrollToSection("services");
-                  }}
+                <button
+                  type="button"
+                  className={`${styles.navLink} ${activeSection === "services" ? styles.navLinkActive : ""}`}
+                  onClick={() => scrollToSection("services")}
                 >
                   Service
-                </a>
+                </button>
               </li>
               <li className={styles.navLinkItem}>
-                <a
-                  href="#contact"
-                  className={styles.navLink}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    scrollToSection("contact");
-                  }}
+                <button
+                  type="button"
+                  className={`${styles.navLink} ${activeSection === "contact" ? styles.navLinkActive : ""}`}
+                  onClick={() => scrollToSection("contact")}
                 >
                   Contact Us
-                </a>
+                </button>
               </li>
               <li className={styles.navLinkItem}>
-                <a
-                  href="#about"
-                  className={styles.navLink}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    scrollToSection("about");
-                  }}
+                <button
+                  type="button"
+                  className={`${styles.navLink} ${activeSection === "help" ? styles.navLinkActive : ""}`}
+                  onClick={() => scrollToSection("help")}
                 >
                   Help
-                </a>
+                </button>
               </li>
               <li className={styles.navLinkItem}>
-                <a
-                  href="#blogs"
-                  className={styles.navLink}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    scrollToSection("blogs");
-                  }}
+                <button
+                  type="button"
+                  className={`${styles.navLink} ${activeSection === "blogs" ? styles.navLinkActive : ""}`}
+                  onClick={() => scrollToSection("blogs")}
                 >
                   Blogs
-                </a>
+                </button>
               </li>
             </ul>
           </nav>
+
+          {/* Mobile Menu Toggle Button */}
+          <button
+            type="button"
+            className={styles.mobileMenuToggle}
+            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+            aria-label={isMobileMenuOpen ? "Đóng menu điều hướng" : "Mở menu điều hướng"}
+          >
+            {isMobileMenuOpen ? <X size={22} /> : <Menu size={22} />}
+          </button>
 
           {/* Auth Actions */}
           <div className={styles.authActionGroup}>
@@ -269,10 +429,56 @@ export function ClinicLandingPage({ onSwitchToDashboard }: ClinicLandingPageProp
         </div>
       </header>
 
+      {/* Mobile Navigation Drawer */}
+      {isMobileMenuOpen && (
+        <div className={styles.mobileNavDrawer} role="dialog" aria-modal="true">
+          <button
+            type="button"
+            className={`${styles.mobileNavLink} ${activeSection === "home" ? styles.mobileNavLinkActive : ""}`}
+            onClick={() => scrollToSection("home")}
+          >
+            <span>Home</span>
+            <ArrowRight size={16} />
+          </button>
+          <button
+            type="button"
+            className={`${styles.mobileNavLink} ${activeSection === "services" ? styles.mobileNavLinkActive : ""}`}
+            onClick={() => scrollToSection("services")}
+          >
+            <span>Service</span>
+            <ArrowRight size={16} />
+          </button>
+          <button
+            type="button"
+            className={`${styles.mobileNavLink} ${activeSection === "contact" ? styles.mobileNavLinkActive : ""}`}
+            onClick={() => scrollToSection("contact")}
+          >
+            <span>Contact Us</span>
+            <ArrowRight size={16} />
+          </button>
+          <button
+            type="button"
+            className={`${styles.mobileNavLink} ${activeSection === "help" ? styles.mobileNavLinkActive : ""}`}
+            onClick={() => scrollToSection("help")}
+          >
+            <span>Help</span>
+            <ArrowRight size={16} />
+          </button>
+          <button
+            type="button"
+            className={`${styles.mobileNavLink} ${activeSection === "blogs" ? styles.mobileNavLinkActive : ""}`}
+            onClick={() => scrollToSection("blogs")}
+          >
+            <span>Blogs</span>
+            <ArrowRight size={16} />
+          </button>
+        </div>
+      )}
+
       {/* --------------------------------------------------------------------
           2. Hero Section
           -------------------------------------------------------------------- */}
-      <section className={styles.heroSection} aria-labelledby="hero-main-heading">
+      <section id="home" className={styles.heroSection} aria-labelledby="hero-main-heading">
         <div className={styles.heroGrid}>
           {/* Left Hero Content */}
           <div className={styles.heroContent}>
@@ -622,7 +828,91 @@ export function ClinicLandingPage({ onSwitchToDashboard }: ClinicLandingPageProp
       </section>
 
       {/* --------------------------------------------------------------------
-          6. Contact & Patient App Section (#contact)
+          6. Help & Frequently Asked Questions (#help)
+          -------------------------------------------------------------------- */}
+      <section id="help" className={styles.helpSection} aria-labelledby="help-heading">
+        <div className={styles.helpContainer}>
+          <div className={styles.sectionHeader}>
+            <div className={styles.sectionSubtitle}>Hỗ Trợ Bệnh Nhân</div>
+            <h2 id="help-heading" className={styles.sectionTitle}>
+              Trung Tâm Trợ Giúp &amp; Giải Đáp Thắc Mắc
+            </h2>
+            <p className={styles.sectionDesc}>
+              Giải đáp nhanh các câu hỏi thường gặp về quy trình đặt lịch, khám chữa bệnh và thanh
+              toán bảo hiểm tại Health&amp;Human.
+            </p>
+          </div>
+
+          <div className={styles.faqList}>
+            {FAQ_LIST.map((faq, idx) => {
+              const isOpen = openFaqIndex === idx;
+              return (
+                <div
+                  key={idx}
+                  className={`${styles.faqItem} ${isOpen ? styles.faqItemOpen : ""}`}
+                >
+                  <button
+                    type="button"
+                    className={styles.faqQuestionBtn}
+                    onClick={() => setOpenFaqIndex(isOpen ? null : idx)}
+                    aria-expanded={isOpen}
+                  >
+                    <span>{faq.question}</span>
+                    <span className={styles.faqIcon}>
+                      {isOpen ? <ChevronUp size={20} /> : <ChevronDown size={20} />}
+                    </span>
+                  </button>
+                  {isOpen && <div className={styles.faqAnswer}>{faq.answer}</div>}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      {/* --------------------------------------------------------------------
+          7. Medical Blogs & Health Guide (#blogs)
+          -------------------------------------------------------------------- */}
+      <section id="blogs" className={styles.blogsSection} aria-labelledby="blogs-heading">
+        <div className={styles.blogsContainer}>
+          <div className={styles.sectionHeader}>
+            <div className={styles.sectionSubtitle}>Cẩm Nang Sức Khỏe</div>
+            <h2 id="blogs-heading" className={styles.sectionTitle}>
+              Tin Tức &amp; Kiến Thức Y Khoa
+            </h2>
+            <p className={styles.sectionDesc}>
+              Thông tin y học thường thức được biên soạn bởi đội ngũ bác sĩ chuyên khoa Health&amp;Human.
+            </p>
+          </div>
+
+          <div className={styles.blogsGrid}>
+            {SAMPLE_BLOGS.map((blog) => (
+              <article key={blog.id} className={styles.blogCard}>
+                <div className={styles.blogContent}>
+                  <span className={styles.blogCategoryBadge}>{blog.category}</span>
+                  <h3 className={styles.blogTitle}>{blog.title}</h3>
+                  <p className={styles.blogSummary}>{blog.summary}</p>
+                  <div className={styles.blogMetaRow}>
+                    <span>
+                      {blog.doctor} · {blog.readTime}
+                    </span>
+                    <button
+                      type="button"
+                      className={styles.blogReadBtn}
+                      onClick={() => setReadingBlog(blog)}
+                    >
+                      Đọc tiếp <ArrowRight size={14} />
+                    </button>
+                  </div>
+                </div>
+              </article>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* --------------------------------------------------------------------
+          8. Contact & Patient App Section (#contact)
           -------------------------------------------------------------------- */}
       <section id="contact" className={styles.contactSection} aria-labelledby="contact-heading">
         <div className={styles.contactGrid}>
@@ -814,9 +1104,94 @@ export function ClinicLandingPage({ onSwitchToDashboard }: ClinicLandingPageProp
       )}
 
       {/* --------------------------------------------------------------------
+          Blog Article Reading Modal
+          -------------------------------------------------------------------- */}
+      {readingBlog && (
+        <div className={styles.modalOverlay} role="dialog" aria-modal="true">
+          <div className={styles.modalContent} style={{ maxWidth: 640 }}>
+            <button
+              type="button"
+              className={styles.modalCloseBtn}
+              onClick={() => setReadingBlog(null)}
+              aria-label="Đóng bài viết"
+            >
+              <X size={18} aria-hidden="true" />
+            </button>
+            <span className={styles.blogCategoryBadge}>{readingBlog.category}</span>
+            <h3
+              style={{
+                fontSize: "22px",
+                fontWeight: 800,
+                margin: "8px 0 10px 0",
+                color: "#1e293b",
+                lineHeight: 1.35,
+              }}
+            >
+              {readingBlog.title}
+            </h3>
+            <p
+              style={{
+                color: "var(--brand)",
+                fontSize: "13.5px",
+                fontWeight: 600,
+                margin: "0 0 18px 0",
+              }}
+            >
+              Tác giả: {readingBlog.doctor} · {readingBlog.readTime}
+            </p>
+            <div
+              style={{
+                color: "#475569",
+                lineHeight: 1.7,
+                fontSize: "15px",
+                display: "flex",
+                flexDirection: "column",
+                gap: "14px",
+              }}
+            >
+              {readingBlog.content.map((paragraph, pIdx) => (
+                <p key={pIdx} style={{ margin: 0 }}>
+                  {paragraph}
+                </p>
+              ))}
+            </div>
+            <div
+              style={{
+                marginTop: 24,
+                paddingTop: 16,
+                borderTop: "1px solid #e2e8f0",
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+              }}
+            >
+              <button
+                type="button"
+                className={styles.logInBtn}
+                onClick={() => {
+                  setReadingBlog(null);
+                  scrollToSection("find-doctor");
+                }}
+              >
+                Đặt Lịch Khám Chuyên Khoa
+              </button>
+              <button
+                type="button"
+                className={styles.signUpBtn}
+                style={{ borderColor: "#cbd5e1", color: "#64748b" }}
+                onClick={() => setReadingBlog(null)}
+              >
+                Đóng
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* --------------------------------------------------------------------
           9. Footer
           -------------------------------------------------------------------- */}
-      <footer id="blogs" className={styles.footerContainer}>
+      <footer className={styles.footerContainer}>
         <div className={styles.footerInner}>
           <div className={styles.footerBrandCol}>
             <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
@@ -839,22 +1214,50 @@ export function ClinicLandingPage({ onSwitchToDashboard }: ClinicLandingPageProp
             <h4 className={styles.footerColTitle}>Dịch vụ</h4>
             <ul className={styles.footerLinkList}>
               <li>
-                <a href="#services" className={styles.footerLink}>
+                <a
+                  href="#services"
+                  className={styles.footerLink}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    scrollToSection("services");
+                  }}
+                >
                   Khám Nhi khoa
                 </a>
               </li>
               <li>
-                <a href="#services" className={styles.footerLink}>
+                <a
+                  href="#services"
+                  className={styles.footerLink}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    scrollToSection("services");
+                  }}
+                >
                   Khám Tim mạch
                 </a>
               </li>
               <li>
-                <a href="#services" className={styles.footerLink}>
+                <a
+                  href="#services"
+                  className={styles.footerLink}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    scrollToSection("services");
+                  }}
+                >
                   Tai Mũi Họng
                 </a>
               </li>
               <li>
-                <a href="#services" className={styles.footerLink}>
+                <a
+                  href="#services"
+                  className={styles.footerLink}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    scrollToSection("services");
+                  }}
+                >
                   Nội tổng quát
                 </a>
               </li>
@@ -865,23 +1268,51 @@ export function ClinicLandingPage({ onSwitchToDashboard }: ClinicLandingPageProp
             <h4 className={styles.footerColTitle}>Hỗ trợ</h4>
             <ul className={styles.footerLinkList}>
               <li>
-                <a href="#find-doctor" className={styles.footerLink}>
+                <a
+                  href="#find-doctor"
+                  className={styles.footerLink}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    scrollToSection("find-doctor");
+                  }}
+                >
                   Tra cứu bác sĩ
                 </a>
               </li>
               <li>
-                <a href="#contact" className={styles.footerLink}>
-                  Hướng dẫn đặt lịch
+                <a
+                  href="#help"
+                  className={styles.footerLink}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    scrollToSection("help");
+                  }}
+                >
+                  Câu hỏi thường gặp (FAQ)
                 </a>
               </li>
               <li>
-                <a href="#contact" className={styles.footerLink}>
-                  Bảo hiểm y tế
+                <a
+                  href="#blogs"
+                  className={styles.footerLink}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    scrollToSection("blogs");
+                  }}
+                >
+                  Cẩm nang y khoa
                 </a>
               </li>
               <li>
-                <a href="#about" className={styles.footerLink}>
-                  Câu hỏi thường gặp
+                <a
+                  href="#contact"
+                  className={styles.footerLink}
+                  onClick={(e) => {
+                    e.preventDefault();
+                    scrollToSection("contact");
+                  }}
+                >
+                  Liên hệ phòng khám
                 </a>
               </li>
             </ul>

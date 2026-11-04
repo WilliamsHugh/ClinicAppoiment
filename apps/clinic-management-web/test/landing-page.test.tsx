@@ -178,4 +178,124 @@ describe("ClinicLandingPage (Public Clinic Presentation & Introduction)", () => 
 
     expect(onSwitchMock).toHaveBeenCalled();
   });
+
+  it("handles navigation buttons click and toggles active state smoothly", async () => {
+    // Mock window.scrollTo
+    const originalScrollTo = window.scrollTo;
+    window.scrollTo = vi.fn();
+
+    await act(async () => {
+      root.render(<ClinicLandingPage />);
+    });
+
+    const nav = container.querySelector("nav")!;
+    const navButtons = Array.from(nav.querySelectorAll("button"));
+    const homeBtn = navButtons.find((b) => b.textContent?.trim() === "Home")!;
+    const serviceBtn = navButtons.find((b) => b.textContent?.trim() === "Service")!;
+    const helpBtn = navButtons.find((b) => b.textContent?.trim() === "Help")!;
+    const blogsBtn = navButtons.find((b) => b.textContent?.trim() === "Blogs")!;
+    const contactBtn = navButtons.find((b) => b.textContent?.trim() === "Contact Us")!;
+
+    expect(homeBtn).toBeDefined();
+    expect(serviceBtn).toBeDefined();
+    expect(helpBtn).toBeDefined();
+    expect(blogsBtn).toBeDefined();
+    expect(contactBtn).toBeDefined();
+
+    // Default active is home
+    expect(homeBtn.className).toContain("navLinkActive");
+    expect(serviceBtn.className).not.toContain("navLinkActive");
+
+    // Click Service
+    await act(async () => {
+      serviceBtn.click();
+    });
+    expect(serviceBtn.className).toContain("navLinkActive");
+    expect(homeBtn.className).not.toContain("navLinkActive");
+
+    // Click Help
+    await act(async () => {
+      helpBtn.click();
+    });
+    expect(helpBtn.className).toContain("navLinkActive");
+
+    // Click Blogs
+    await act(async () => {
+      blogsBtn.click();
+    });
+    expect(blogsBtn.className).toContain("navLinkActive");
+
+    // Click Home again -> calls window.scrollTo({ top: 0, behavior: 'smooth' })
+    await act(async () => {
+      homeBtn.click();
+    });
+    expect(homeBtn.className).toContain("navLinkActive");
+    expect(window.scrollTo).toHaveBeenCalledWith({ top: 0, behavior: "smooth" });
+
+    window.scrollTo = originalScrollTo;
+  });
+
+  it("interactively toggles Help FAQ accordion answers", async () => {
+    await act(async () => {
+      root.render(<ClinicLandingPage />);
+    });
+
+    // Check Help section title
+    expect(container.textContent).toContain("Trung Tâm Trợ Giúp & Giải Đáp Thắc Mắc");
+
+    // Find first FAQ button
+    const firstFaqBtn = Array.from(container.querySelectorAll("button")).find((b) =>
+      b.textContent?.includes("Làm thế nào để tôi đặt lịch hẹn khám tại Health&Human?")
+    )!;
+    expect(firstFaqBtn).toBeDefined();
+
+    // Initially index 0 is open
+    expect(container.textContent).toContain("Bạn có thể dễ dàng đặt lịch bằng 3 cách");
+
+    // Toggle close
+    await act(async () => {
+      firstFaqBtn.click();
+    });
+    expect(container.textContent).not.toContain("Bạn có thể dễ dàng đặt lịch bằng 3 cách");
+
+    // Toggle open again
+    await act(async () => {
+      firstFaqBtn.click();
+    });
+    expect(container.textContent).toContain("Bạn có thể dễ dàng đặt lịch bằng 3 cách");
+  });
+
+  it("opens and closes medical blog article reading modal", async () => {
+    await act(async () => {
+      root.render(<ClinicLandingPage />);
+    });
+
+    expect(container.textContent).toContain("Tin Tức & Kiến Thức Y Khoa");
+    expect(container.textContent).toContain("5 Thói quen đơn giản giúp duy trì trái tim khỏe mạnh");
+
+    // Find and click "Đọc tiếp" for cardiology article
+    const readBtn = Array.from(container.querySelectorAll("button")).find(
+      (b) => b.textContent?.includes("Đọc tiếp")
+    )!;
+
+    await act(async () => {
+      readBtn.click();
+    });
+
+    // Modal is opened
+    expect(container.textContent).toContain("Tác giả: ThS. BS Lê Thị Mai");
+    expect(container.textContent).toContain("Bệnh lý tim mạch hiện là nguyên nhân hàng đầu");
+    expect(container.textContent).toContain("Đặt Lịch Khám Chuyên Khoa");
+
+    // Close modal
+    const closeBtn = Array.from(container.querySelectorAll("button")).find(
+      (b) => b.textContent === "Đóng" || b.getAttribute("aria-label") === "Đóng bài viết"
+    )!;
+
+    await act(async () => {
+      closeBtn.click();
+    });
+
+    expect(container.textContent).not.toContain("Tác giả: ThS. BS Lê Thị Mai");
+  });
 });
