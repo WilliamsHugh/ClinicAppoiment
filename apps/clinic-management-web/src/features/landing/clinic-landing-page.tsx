@@ -223,15 +223,15 @@ export function ClinicLandingPage({ onSwitchToDashboard }: ClinicLandingPageProp
         return;
       }
 
-      // If document is scrollable and reached the bottom, highlight contact
+      // If document is scrollable and reached the bottom, highlight blogs
       const isScrollable = document.documentElement.scrollHeight > window.innerHeight + 100;
       if (isScrollable && window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 70) {
-        setActiveSection("contact");
+        setActiveSection("blogs");
         return;
       }
 
       const scrollPosition = window.scrollY + 140;
-      const sections = ["services", "help", "blogs", "contact"];
+      const sections = ["services", "contact", "help", "blogs"];
 
       for (let i = sections.length - 1; i >= 0; i--) {
         const id = sections[i];
@@ -828,7 +828,85 @@ export function ClinicLandingPage({ onSwitchToDashboard }: ClinicLandingPageProp
       </section>
 
       {/* --------------------------------------------------------------------
-          6. Help & Frequently Asked Questions (#help)
+          6. Contact & Patient App Section (#contact)
+          -------------------------------------------------------------------- */}
+      <section id="contact" className={styles.contactSection} aria-labelledby="contact-heading">
+        <div className={styles.contactGrid}>
+          {/* Clinic Contact Info */}
+          <div className={styles.contactInfoCol}>
+            <h2 id="contact-heading" className={styles.contactTitle}>
+              Liên Hệ &amp; Vị Trí Phòng Khám
+            </h2>
+            <p className={styles.contactDesc}>
+              Health&amp;Human luôn sẵn lòng lắng nghe và tư vấn giải pháp sức khỏe tốt nhất cho bạn
+              và gia đình.
+            </p>
+
+            <div className={styles.contactDetailItem}>
+              <div className={styles.contactIconCircle} aria-hidden="true">
+                <MapPin size={18} />
+              </div>
+              <div>
+                <div className={styles.contactDetailLabel}>Địa chỉ</div>
+                <div className={styles.contactDetailValue}>
+                  Số 123 Đường Y Dược, Phường Bến Nghé, Quận 1, TP. Hồ Chí Minh
+                </div>
+              </div>
+            </div>
+
+            <div className={styles.contactDetailItem}>
+              <div className={styles.contactIconCircle} aria-hidden="true">
+                <Phone size={18} />
+              </div>
+              <div>
+                <div className={styles.contactDetailLabel}>Hotline 24/7</div>
+                <div className={styles.contactDetailValue}>1900 8899 · (028) 3822 5588</div>
+              </div>
+            </div>
+
+            <div className={styles.contactDetailItem}>
+              <div className={styles.contactIconCircle} aria-hidden="true">
+                <Clock size={18} />
+              </div>
+              <div>
+                <div className={styles.contactDetailLabel}>Giờ làm việc</div>
+                <div className={styles.contactDetailValue}>
+                  Thứ 2 – Chủ Nhật: 07:00 – 20:30 (Cấp cứu trực 24/7)
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Patient App CTA Card */}
+          <div className={styles.patientAppCard}>
+            <div>
+              <h3 className={styles.patientAppTitle}>Ứng Dụng Đặt Lịch Cho Bệnh Nhân</h3>
+              <p className={styles.patientAppText}>
+                Tải ứng dụng <strong>Health&amp;Human Patient App</strong> trên điện thoại để đặt lịch
+                khám với bác sĩ, nhận mã QR check-in không cần bốc số, và theo dõi kết quả xét nghiệm
+                ngay trên máy của bạn.
+              </p>
+            </div>
+
+            <div>
+              <div className={styles.patientAppBadges}>
+                <span className={styles.appStoreBadge}>
+                  <Smartphone size={15} aria-hidden="true" /> Android App (Flutter)
+                </span>
+                <span className={styles.appStoreBadge}>
+                  <Smartphone size={15} aria-hidden="true" /> iOS Patient App
+                </span>
+              </div>
+              <p style={{ margin: "14px 0 0 0", fontSize: "13px", color: "rgba(255,255,255,0.8)" }}>
+                Bệnh nhân đăng ký và sử dụng dịch vụ trực tiếp qua ứng dụng di động.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* --------------------------------------------------------------------
+          7. Help & Frequently Asked Questions (#help)
           -------------------------------------------------------------------- */}
       <section id="help" className={styles.helpSection} aria-labelledby="help-heading">
         <div className={styles.helpContainer}>
@@ -907,84 +985,6 @@ export function ClinicLandingPage({ onSwitchToDashboard }: ClinicLandingPageProp
                 </div>
               </article>
             ))}
-          </div>
-        </div>
-      </section>
-
-      {/* --------------------------------------------------------------------
-          8. Contact & Patient App Section (#contact)
-          -------------------------------------------------------------------- */}
-      <section id="contact" className={styles.contactSection} aria-labelledby="contact-heading">
-        <div className={styles.contactGrid}>
-          {/* Clinic Contact Info */}
-          <div className={styles.contactInfoCol}>
-            <h2 id="contact-heading" className={styles.contactTitle}>
-              Liên Hệ &amp; Vị Trí Phòng Khám
-            </h2>
-            <p className={styles.contactDesc}>
-              Health&amp;Human luôn sẵn lòng lắng nghe và tư vấn giải pháp sức khỏe tốt nhất cho bạn
-              và gia đình.
-            </p>
-
-            <div className={styles.contactDetailItem}>
-              <div className={styles.contactIconCircle} aria-hidden="true">
-                <MapPin size={18} />
-              </div>
-              <div>
-                <div className={styles.contactDetailLabel}>Địa chỉ</div>
-                <div className={styles.contactDetailValue}>
-                  Số 123 Đường Y Dược, Phường Bến Nghé, Quận 1, TP. Hồ Chí Minh
-                </div>
-              </div>
-            </div>
-
-            <div className={styles.contactDetailItem}>
-              <div className={styles.contactIconCircle} aria-hidden="true">
-                <Phone size={18} />
-              </div>
-              <div>
-                <div className={styles.contactDetailLabel}>Hotline 24/7</div>
-                <div className={styles.contactDetailValue}>1900 8899 · (028) 3822 5588</div>
-              </div>
-            </div>
-
-            <div className={styles.contactDetailItem}>
-              <div className={styles.contactIconCircle} aria-hidden="true">
-                <Clock size={18} />
-              </div>
-              <div>
-                <div className={styles.contactDetailLabel}>Giờ làm việc</div>
-                <div className={styles.contactDetailValue}>
-                  Thứ 2 – Chủ Nhật: 07:00 – 20:30 (Cấp cứu trực 24/7)
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Patient App CTA Card */}
-          <div className={styles.patientAppCard}>
-            <div>
-              <h3 className={styles.patientAppTitle}>Ứng Dụng Đặt Lịch Cho Bệnh Nhân</h3>
-              <p className={styles.patientAppText}>
-                Tải ứng dụng <strong>Health&amp;Human Patient App</strong> trên điện thoại để đặt lịch
-                khám với bác sĩ, nhận mã QR check-in không cần bốc số, và theo dõi kết quả xét nghiệm
-                ngay trên máy của bạn.
-              </p>
-            </div>
-
-            <div>
-              <div className={styles.patientAppBadges}>
-                <span className={styles.appStoreBadge}>
-                  <Smartphone size={15} aria-hidden="true" /> Android App (Flutter)
-                </span>
-                <span className={styles.appStoreBadge}>
-                  <Smartphone size={15} aria-hidden="true" /> iOS Patient App
-                </span>
-              </div>
-              <p style={{ margin: "14px 0 0 0", fontSize: "13px", color: "rgba(255,255,255,0.8)" }}>
-                Bệnh nhân đăng ký và sử dụng dịch vụ trực tiếp qua ứng dụng di động.
-              </p>
-            </div>
           </div>
         </div>
       </section>
