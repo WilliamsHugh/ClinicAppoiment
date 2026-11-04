@@ -25,6 +25,7 @@ import {
   Menu,
 } from "lucide-react";
 import { useSession } from "../../lib/session/session-context";
+import { Skeleton } from "../../components/ui";
 import styles from "./clinic-landing.module.css";
 
 interface DoctorItem {
@@ -415,6 +416,11 @@ export function ClinicLandingPage({ onSwitchToDashboard }: ClinicLandingPageProp
                   Đăng xuất
                 </button>
               </>
+            ) : session.status === "loading" ? (
+              <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                <Skeleton width={74} height={32} borderRadius="var(--radius-md)" />
+                <Skeleton width={74} height={32} borderRadius="var(--radius-md)" />
+              </div>
             ) : (
               <>
                 <Link href="/auth" className={styles.signUpBtn}>

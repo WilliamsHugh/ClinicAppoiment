@@ -1,3 +1,5 @@
+"use client";
+
 import React from "react";
 import { Modal } from "./modal";
 import { Button } from "./button";

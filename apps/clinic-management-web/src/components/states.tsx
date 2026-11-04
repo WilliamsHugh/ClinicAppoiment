@@ -1,7 +1,7 @@
 import React from "react";
 import Link from "next/link";
 import { Inbox, AlertCircle, Lock } from "lucide-react";
-export { SkeletonTable, type SkeletonTableProps } from "./ui/skeleton";
+export { Skeleton, SkeletonTable, SkeletonCard, SkeletonList, SkeletonPage, type SkeletonTableProps, type SkeletonProps } from "./ui/skeleton";
 
 export function LoadingState({ message = "Đang tải dữ liệu..." }: { message?: string }) {
   return (

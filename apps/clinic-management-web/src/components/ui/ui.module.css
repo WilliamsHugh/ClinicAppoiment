@@ -318,6 +318,35 @@
   border-bottom: 1px solid var(--line);
 }
 
+/* Card Skeleton */
+.skeletonCard {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* List Skeleton */
+.skeletonList {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+/* Form Skeleton */
+.skeletonForm {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg);
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
 /* Spinner small */
 .btnSpinner {
   width: 14px;

@@ -1,5 +1,5 @@
-import { LoadingState } from "../src/components/states";
+import { SkeletonPage } from "../src/components/ui/skeleton";
 
 export default function Loading() {
-  return <LoadingState message="Đang tải giao diện quản lý..." />;
+  return <SkeletonPage title={true} tableRows={6} tableCols={5} />;
 }

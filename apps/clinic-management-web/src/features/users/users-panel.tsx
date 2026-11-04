@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useState, useTransition } from "react";
-import { LoadingState, PermissionDeniedState } from "../../components/states";
+import { SkeletonPage, PermissionDeniedState } from "../../components/states";
 import { Alert } from "../../components/ui/alert";
 import { Button } from "../../components/ui/button";
 import { createBrowserApiClient, type PaginatedData } from "../../lib/api/client";
@@ -124,7 +124,7 @@ export function UsersPanel() {
 
   // Auth / Role Verification
   if (session.status === "loading") {
-    return <LoadingState message="Đang kiểm tra quyền quản trị..." />;
+    return <SkeletonPage title={true} tableRows={8} tableCols={5} />;
   }
 
   if (!isAdmin) {

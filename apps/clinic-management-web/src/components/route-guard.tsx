@@ -6,7 +6,7 @@ import { useEffect, type ReactNode } from "react";
 import { ShieldAlert } from "lucide-react";
 import { canAccessRoute, routeForPath } from "../lib/navigation/routes";
 import { useSession } from "../lib/session/session-context";
-import { LoadingState } from "./states";
+import { LoadingState, SkeletonPage } from "./states";
 import { Badge, Button } from "./ui";
 
 export function RouteGuard({ children }: { children: ReactNode }) {
@@ -29,7 +29,7 @@ export function RouteGuard({ children }: { children: ReactNode }) {
 
   if (!route?.roles) return <>{children}</>;
   if (session.status === "loading") {
-    return <LoadingState message="Đang kiểm tra quyền truy cập..." />;
+    return <SkeletonPage title={true} tableRows={6} tableCols={5} />;
   }
   if (session.status === "unauthenticated") {
     return <LoadingState message="Đang chuyển hướng đến trang đăng nhập..." />;

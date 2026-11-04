@@ -1,5 +1,5 @@
 import React, { type FormEvent } from "react";
-import { EmptyState, LoadingState } from "../../components/states";
+import { EmptyState, SkeletonCard } from "../../components/states";
 import { Pagination } from "../../components/pagination";
 import type { Doctor, Page, Specialty } from "./doctor-api";
 import { SpecialtyFilter } from "./specialty-filter";
@@ -57,7 +57,16 @@ export function DoctorList({
       </form>
 
       {loading ? (
-        <LoadingState message="Đang tải bác sĩ..." />
+        <div aria-label="Đang tải bác sĩ..." aria-busy="true">
+          <span style={{ position: "absolute", width: 1, height: 1, padding: 0, margin: -1, overflow: "hidden", clip: "rect(0, 0, 0, 0)", border: 0 }}>
+            Đang tải bác sĩ...
+          </span>
+          <div className={styles.list}>
+            {Array.from({ length: 4 }).map((_, i) => (
+              <SkeletonCard key={i} />
+            ))}
+          </div>
+        </div>
       ) : doctors.items.length === 0 ? (
         <EmptyState
           title="Chưa có bác sĩ phù hợp"

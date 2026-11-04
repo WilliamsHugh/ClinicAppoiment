@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
-import { ErrorState, LoadingState } from "../../components/states";
+import { ErrorState, Skeleton, SkeletonPage } from "../../components/states";
 import { createBrowserApiClient } from "../../lib/api/client";
 import { useSession } from "../../lib/session/session-context";
 import {
@@ -238,7 +238,7 @@ export function DoctorPanel() {
   }
 
   if (session.status === "loading") {
-    return <LoadingState message="Đang kiểm tra phiên đăng nhập..." />;
+    return <SkeletonPage title={true} tableRows={5} tableCols={4} />;
   }
   if (session.status !== "authenticated" || !role || role === "PATIENT") {
     return (
@@ -307,7 +307,14 @@ export function DoctorPanel() {
       {selectedId && (
         <section className={styles.card} aria-label="Chi tiết bác sĩ">
           {detailLoading && !selected ? (
-            <LoadingState message="Đang tải chi tiết..." />
+            <div style={{ display: "flex", flexDirection: "column", gap: 12 }} aria-busy="true">
+              <Skeleton height={24} width={180} />
+              <Skeleton height={16} width="80%" />
+              <Skeleton height={14} width="40%" />
+              <div style={{ marginTop: 12 }}>
+                <Skeleton height={38} width="100%" />
+              </div>
+            </div>
           ) : (
             selected && (
               <>

@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { Button, Skeleton } from "../../components/ui";
-import { EmptyState, ErrorState, LoadingState } from "../../components/states";
+import { EmptyState, ErrorState, SkeletonPage } from "../../components/states";
 import { Pagination } from "../../components/pagination";
 import { ApiClientError, createBrowserApiClient } from "../../lib/api/client";
 import { useSession } from "../../lib/session/session-context";
@@ -132,7 +132,7 @@ export function NotificationsPanel() {
   };
 
   if (session.status === "loading") {
-    return <LoadingState message="Đang kiểm tra phiên làm việc..." />;
+    return <SkeletonPage title={true} tableRows={5} tableCols={4} />;
   }
 
   if (session.status !== "authenticated") {

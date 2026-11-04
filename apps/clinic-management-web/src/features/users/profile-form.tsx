@@ -5,7 +5,7 @@ import { User, Lock, Bell, Monitor } from "lucide-react";
 import { createBrowserApiClient } from "../../lib/api/client";
 import { useSession } from "../../lib/session/session-context";
 import { LoadingState, ErrorState } from "../../components/states";
-import { Button, Badge, Alert, ConfirmModal } from "../../components/ui";
+import { Button, Badge, Alert, ConfirmModal, Skeleton } from "../../components/ui";
 import styles from "./profile.module.css";
 
 export interface OwnProfile {
@@ -177,7 +177,60 @@ export function ProfileForm() {
   }
 
   if (loading) {
-    return <LoadingState message="Đang tải hồ sơ cá nhân..." />;
+    return (
+      <div className={styles.container} aria-busy="true">
+        <div className={styles.pageHeader}>
+          <h1 className={styles.pageTitle}>Hồ sơ cá nhân</h1>
+          <p className={styles.pageSubtitle}>
+            Quản lý thông tin tài khoản, bảo mật và cài đặt làm việc trong phòng khám.
+          </p>
+        </div>
+        <div className={styles.layout}>
+          <div className={styles.subnav}>
+            <div className={`${styles.subnavItem} ${styles.subnavItemActive}`}>
+              <User size={16} />
+              <span>Thông tin chung</span>
+            </div>
+            <div className={styles.subnavItem}>
+              <Lock size={16} />
+              <span>Bảo mật</span>
+            </div>
+            <div className={styles.subnavItem}>
+              <Bell size={16} />
+              <span>Thông báo</span>
+            </div>
+          </div>
+          <div className={styles.stack}>
+            <div className={styles.card}>
+              <div className={styles.profileHeader}>
+                <Skeleton width={64} height={64} borderRadius="50%" />
+                <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 8 }}>
+                  <Skeleton height={20} width={180} />
+                  <Skeleton height={14} width={100} />
+                </div>
+              </div>
+              <div style={{ marginTop: 24, display: "flex", flexDirection: "column", gap: 16 }}>
+                <div>
+                  <Skeleton height={14} width={100} style={{ marginBottom: 6 }} />
+                  <Skeleton height={38} width="100%" />
+                </div>
+                <div>
+                  <Skeleton height={14} width={100} style={{ marginBottom: 6 }} />
+                  <Skeleton height={38} width="100%" />
+                </div>
+                <div>
+                  <Skeleton height={14} width={100} style={{ marginBottom: 6 }} />
+                  <Skeleton height={38} width="100%" />
+                </div>
+                <div style={{ marginTop: 12 }}>
+                  <Skeleton height={36} width={140} borderRadius="var(--radius-md)" />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   if (!profile) {

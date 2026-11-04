@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CheckCircle2, AlertTriangle, XCircle } from "lucide-react";
-import { ErrorState, LoadingState } from "../../components/states";
+import { ErrorState, Skeleton, SkeletonTable, SkeletonPage } from "../../components/states";
 import { Badge, Button } from "../../components/ui";
 import { ApiClientError, createBrowserApiClient } from "../../lib/api/client";
 import { useSession } from "../../lib/session/session-context";
@@ -72,13 +72,39 @@ export function HealthPanel() {
   }, [refresh]);
 
   if (session.status === "loading") {
-    return <LoadingState message="Đang kiểm tra quyền truy cập..." />;
+    return <SkeletonPage title={true} tableRows={5} tableCols={3} />;
   }
   if (!canViewSystemHealth(session)) {
     return <ErrorState message="Trang này chỉ dành cho quản trị viên đã đăng nhập." />;
   }
   if (loading && !health) {
-    return <LoadingState message="Đang kiểm tra kết nối các microservices..." />;
+    return (
+      <section className="health-panel" style={{ display: "flex", flexDirection: "column", gap: 20 }} aria-busy="true">
+        <div className="panel-heading">
+          <div>
+            <p className="eyebrow">API Gateway &amp; Microservices</p>
+            <h2 style={{ margin: 0 }}>Hạ tầng hệ thống</h2>
+            <span style={{ fontSize: "0.8rem", color: "var(--muted)", marginTop: 4, display: "block" }}>
+              Đang kết nối và kiểm tra trạng thái các dịch vụ...
+            </span>
+          </div>
+        </div>
+        <div
+          style={{
+            background: "var(--surface)",
+            border: "1px solid var(--line)",
+            borderRadius: "var(--radius-lg)",
+            padding: "20px 24px",
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16 }}>
+            <Skeleton height={24} width={160} />
+            <Skeleton height={32} width={100} borderRadius="var(--radius-md)" />
+          </div>
+          <SkeletonTable rows={5} cols={3} />
+        </div>
+      </section>
+    );
   }
   if (error) {
     return (

@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { EmptyState, ErrorState, LoadingState, PermissionDeniedState } from "../../components/states";
+import { EmptyState, ErrorState, PermissionDeniedState, SkeletonPage } from "../../components/states";
 import { Alert } from "../../components/ui/alert";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
@@ -274,7 +274,7 @@ export function MedicalRecordsPanel() {
 
   // Auth / Permission Verification
   if (session.status === "loading") {
-    return <LoadingState message="Đang kiểm tra phiên làm việc..." />;
+    return <SkeletonPage title={true} tableRows={5} tableCols={4} />;
   }
 
   const userRole = session.identity?.role;

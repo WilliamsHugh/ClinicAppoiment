@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { useSession } from "../src/lib/session/session-context";
-import { LoadingState, PermissionDeniedState } from "../src/components/states";
+import { PermissionDeniedState } from "../src/components/states";
 import { DoctorDashboard } from "../src/features/dashboard/doctor-dashboard";
 import { StaffDashboard } from "../src/features/dashboard/staff-dashboard";
 import { AdminDashboard } from "../src/features/dashboard/admin-dashboard";
@@ -13,15 +13,8 @@ export default function ClinicHomePage() {
   const session = useSession();
   const [viewMode, setViewMode] = useState<"dashboard" | "landing">("dashboard");
 
-  if (session.status === "loading") {
-    return (
-      <div className={styles.container}>
-        <LoadingState message="Đang tải phiên làm việc..." />
-      </div>
-    );
-  }
-
-  // Any unauthenticated or public visitor always gets the full Clinic Landing Page
+  // While session is initializing or for any public/unauthenticated visitor,
+  // render the full static Clinic Landing Page immediately to minimize latency.
   if (session.status !== "authenticated" || !session.identity) {
     return <ClinicLandingPage />;
   }
