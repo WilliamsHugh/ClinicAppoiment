@@ -1,0 +1,14 @@
+{
+  "name": "@clinic/openapi-contract-tests",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "vitest run",
+    "test:live": "node --test test/live-openapi.mjs"
+  },
+  "devDependencies": {
+    "@apidevtools/swagger-parser": "^12.1.0",
+    "vitest": "^3.2.7"
+  }
+}

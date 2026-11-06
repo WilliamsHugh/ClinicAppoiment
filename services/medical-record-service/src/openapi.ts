@@ -32,6 +32,9 @@ export const openapi = {
     } }
   } },
   paths: {
+    "/health": { get: { summary: "Check Medical Record database readiness", security: [],
+      responses: { "200": response({ type: "object", properties: { service: { type: "string" }, status: { type: "string" } } }),
+        "503": error } } },
     "/api/v1/medical-records": {
       get: { summary: "List records visible to the actor", security: [{ bearerAuth: [] }],
         parameters: ["page", "limit", "patientId", "doctorId", "appointmentId"].map((name) => ({

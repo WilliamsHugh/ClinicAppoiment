@@ -24,6 +24,9 @@ export const openapi = {
     } }
   } },
   paths: {
+    "/health": { get: { summary: "Check Notification database readiness", security: [],
+      responses: { "200": response({ type: "object", properties: { service: { type: "string" }, status: { type: "string" } } }),
+        "503": error } } },
     "/api/v1/notifications": {
       get: { summary: "List the actor's notifications", security: [{ bearerAuth: [] }],
         parameters: [
@@ -32,7 +35,9 @@ export const openapi = {
           { name: "status", in: "query", schema: { type: "string", enum: ["UNREAD", "READ", "FAILED"] } }
         ], responses: { "200": response({ type: "object", required: ["items", "page", "limit", "total"],
           properties: { items: { type: "array", items: { $ref: "#/components/schemas/Notification" } },
-            page: { type: "integer" }, limit: { type: "integer" }, total: { type: "integer" } } }), ...publicErrors } }
+            page: { type: "integer" }, limit: { type: "integer" }, total: { type: "integer" } } }), ...publicErrors } },
+      post: { summary: "Notification creation is restricted to internal events", security: [{ bearerAuth: [] }],
+        responses: { "403": error } }
     },
     "/api/v1/notifications/{id}": { get: { summary: "Read an owned notification", security: [{ bearerAuth: [] }],
       parameters: [id], responses: { "200": response({ $ref: "#/components/schemas/Notification" }), ...publicErrors } } },

@@ -10,6 +10,7 @@ import { internalCredentialsFromEnv, requireInternalCaller } from "./internal-au
 import { createPatientLookupHandler } from "./internal-patients.js";
 import { createPatientScopeVerifier, PatientScopeUnavailableError } from "./patient-scope.js";
 import { UserRepository } from "./repository.js";
+import { swaggerDocument } from "./openapi.js";
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) throw new Error("DATABASE_URL is required by User Service");
@@ -75,107 +76,6 @@ const listPatientsQuerySchema = z.object({
   q: z.string().trim().optional(),
   appointmentId: idSchema.optional(),
 });
-
-const internalTokenSecurity = [{ internalToken: [] }];
-const errorResponse = (description: string) => ({ description, content: {
-  "application/json": { schema: { $ref: "#/components/schemas/Error" } },
-} });
-const uuidParameter = (name: string) => ({ name, in: "path", required: true,
-  schema: { type: "string", format: "uuid" } });
-const internalErrorResponses = {
-  "400": { description: "Invalid UUID", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
-  "401": { description: "Missing or invalid caller credential", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
-  "404": { description: "User or patient not found", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
-  "503": { description: "Internal authentication is not configured", content: { "application/json": { schema: { $ref: "#/components/schemas/Error" } } } },
-};
-const internalSuccess = (schemaName: string) => ({ description: "Found", content: {
-  "application/json": { schema: { type: "object", required: ["success", "data"], properties: {
-    success: { type: "boolean", enum: [true] }, data: { $ref: `#/components/schemas/${schemaName}` },
-  } } },
-} });
-
-const swaggerDocument = {
-  openapi: "3.0.3",
-  info: { title: "User Service API", version: "0.1.0", description: "Quản lý xác thực, người dùng và hồ sơ bệnh nhân" },
-  components: {
-    securitySchemes: { internalToken: { type: "apiKey", in: "header", name: "X-Internal-Token",
-      description: "Distinct backend-only credential for each caller" } },
-    schemas: {
-      Error: { type: "object", required: ["success", "error"], properties: {
-        success: { type: "boolean", enum: [false] },
-        error: { type: "object", required: ["code", "message", "details"], properties: {
-          code: { type: "string" }, message: { type: "string" }, details: { type: "array", items: {} },
-        } },
-      } },
-      DoctorEligibility: { type: "object", required: ["id", "role", "status"], properties: {
-        id: { type: "string", format: "uuid", description: "Application User ID, not Supabase Auth ID" },
-        role: { type: "string", enum: ["PATIENT", "DOCTOR", "STAFF", "ADMIN"] },
-        status: { type: "string", enum: ["ACTIVE", "INACTIVE", "LOCKED"] },
-      } },
-      PatientReference: { type: "object", required: ["id", "userId"], properties: {
-        id: { type: "string", format: "uuid", description: "Patient profile ID" },
-        userId: { type: "string", format: "uuid", description: "Application User ID" },
-      } },
-      VerifiedIdentity: { type: "object", required: ["id", "authUserId", "role", "status"], properties: {
-        id: { type: "string", format: "uuid" }, authUserId: { type: "string", format: "uuid" },
-        role: { type: "string", enum: ["PATIENT", "DOCTOR", "STAFF", "ADMIN"] },
-        status: { type: "string", enum: ["ACTIVE", "INACTIVE", "LOCKED"] },
-      } },
-    },
-  },
-  paths: {
-    "/health": { get: { summary: "Kiểm tra tình trạng service" } },
-    "/api/v1/auth/register": { post: { summary: "Đăng ký tài khoản bệnh nhân (PATIENT)" } },
-    "/api/v1/auth/login": { post: { summary: "Đăng nhập hệ thống" } },
-    "/api/v1/auth/refresh": { post: { summary: "Làm mới access token bằng refresh token" } },
-    "/api/v1/auth/logout": { post: { summary: "Đăng xuất và hủy phiên" } },
-    "/api/v1/auth/me": { get: { summary: "Lấy thông tin tài khoản hiện tại" } },
-    "/api/v1/users": { get: { summary: "Danh sách người dùng (ADMIN)" } },
-    "/api/v1/users/{id}": { get: { summary: "Xem chi tiết người dùng (ADMIN)" } },
-    "/api/v1/users/{id}/status": { patch: { summary: "Cập nhật trạng thái người dùng (ADMIN)" } },
-    "/api/v1/users/{id}/role": { patch: { summary: "Cập nhật vai trò người dùng (ADMIN)" } },
-    "/api/v1/users/me": {
-      get: { summary: "Xem hồ sơ cá nhân của người dùng hiện tại" },
-      patch: { summary: "Cập nhật hồ sơ cá nhân của người dùng hiện tại" }
-    },
-    "/api/v1/patients": { get: {
-      summary: "Search patients; Doctor access requires an appointment scope check",
-      responses: { "503": errorResponse("Doctor or Appointment scope verification is unavailable") },
-    } },
-    "/api/v1/patients/{id}": {
-      get: { summary: "Xem chi tiết hồ sơ bệnh nhân",
-        parameters: [uuidParameter("id"), { name: "appointmentId", in: "query", required: false,
-          description: "Required for DOCTOR; checks assignment through Doctor and Appointment services",
-          schema: { type: "string", format: "uuid" } }],
-        responses: { "503": errorResponse("Doctor or Appointment scope verification is unavailable") },
-      },
-      patch: { summary: "Cập nhật hồ sơ bệnh nhân (Bệnh nhân chính mình hoặc ADMIN)" }
-    },
-    "/internal/v1/auth/verify": { get: {
-      summary: "Xác minh access token cho API Gateway", security: internalTokenSecurity,
-      parameters: [{ name: "Authorization", in: "header", required: true,
-        schema: { type: "string", example: "Bearer <access token>" } }],
-      responses: { "200": internalSuccess("VerifiedIdentity"),
-        "401": internalErrorResponses["401"], "404": internalErrorResponses["404"],
-        "503": internalErrorResponses["503"] },
-    } },
-    "/internal/v1/users/{userId}/doctor-eligibility": { get: {
-      summary: "Application role and status for Doctor account linking", security: internalTokenSecurity,
-      parameters: [uuidParameter("userId")],
-      responses: { "200": internalSuccess("DoctorEligibility"), ...internalErrorResponses },
-    } },
-    "/internal/v1/patients/by-user/{userId}": { get: {
-      summary: "Current PATIENT profile ID by application User ID", security: internalTokenSecurity,
-      parameters: [uuidParameter("userId")],
-      responses: { "200": internalSuccess("PatientReference"), ...internalErrorResponses },
-    } },
-    "/internal/v1/patients/{id}": { get: {
-      summary: "Patient profile ID and User ID by Patient ID, including historical profiles",
-      security: internalTokenSecurity, parameters: [uuidParameter("id")],
-      responses: { "200": internalSuccess("PatientReference"), ...internalErrorResponses },
-    } }
-  }
-};
 
 app.use(cors());
 app.use(express.json());
