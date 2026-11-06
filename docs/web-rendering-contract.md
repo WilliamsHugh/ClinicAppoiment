@@ -30,17 +30,13 @@ text, or a different header layout that is replaced after session/API loading.
 - Use the same shared header component and the same static page-header configuration
   in the fallback and the populated page. Do not maintain two copies of header markup or
   separate fallback-only title strings.
-- Keep the same heading level, eyebrow, title text, subtitle text, action slots, order,
+- Keep the same heading level, title text, subtitle text, action slots, order,
   alignment, spacing, and responsive behavior across both states.
-- If a header value depends on authenticated identity or role and is not yet known, keep
-  the same slot and geometry; use a value placeholder in that slot. Do not replace the
-  whole header or substitute a different page title.
-- Role-specific static copy must not change after session restoration. Use shared
-  role-neutral copy in the header, or place role-specific information in a separate
-  content region that appears consistently after authorization.
-- For dashboard greetings, keep the greeting structure stable and skeleton only the
-  identity value until the session resolves. The landing page and authenticated dashboard
-  are separate page modes; do not show one as the loading header for the other.
+- Keep identity and role indicators in the persistent application shell. Page headers
+  identify the current task and do not repeat user identity or role.
+- `/` always renders the public landing page, so session restoration must not replace it
+  with a dashboard fallback. On `/dashboard`, keep the page title and task summary stable
+  while the data regions load.
 - A route-loading fallback must reuse the page header; matching the title string alone
   is insufficient if the hierarchy, subtitle, actions, or layout visibly change.
 
@@ -133,16 +129,16 @@ expiration/unauthorized responses follow the shared session handling and route g
 
 ## 3. Route specifications
 
-### 3.1 `/` — role-based work dashboard
+### 3.1 `/dashboard` — role-based work dashboard
 
-The route composition is selected by authenticated role: DOCTOR, STAFF, or ADMIN. The
-landing page is public content; it must not be shown as a temporary stand-in while an
-existing session is still being restored if that causes a jump to the dashboard.
+This is a protected route for DOCTOR, STAFF, and ADMIN. Its composition is selected by
+the authenticated role. The public clinic home is a separate route at `/` and is never
+used as a temporary dashboard state.
 
 #### Shared dashboard frame
 
-- **Immediate:** greeting region, local date/time area, role label once known, quick
-  action navigation, each dashboard section heading and its descriptive labels.
+- **Immediate:** the shared page title and task summary, quick action navigation, and
+  each dashboard section heading with its explanatory labels.
 - **Skeleton/data:** only API-backed values and items. Keep section titles and action
   links visible. If a section’s API fails, show that section’s error while allowing
   other dashboard sections to remain usable.
@@ -176,8 +172,8 @@ existing session is still being restored if that causes a jump to the dashboard.
 - **System health:** fixed list of gateway/services and table headers can render
   immediately. Skeleton each live status and last-checked value. Missing status is
   “unknown/loading”, never “down”. A health error is scoped to this section.
-- **User totals by role:** keep role labels and skeleton counts. A failed role query must
-  be identifiable; do not silently count a failed request as zero.
+- **Account total:** show the overall account count without repeating role categories
+  below the shared header.
 - No fabricated metrics, cached values presented as current, or empty chart decoration.
   Cached values may remain during refresh only when clearly identified as the last
   successful result and their timestamp is available.
@@ -346,9 +342,12 @@ context; record form; prescription editor; recent records; save/finalize feedbac
 
 ### 3.10 Other public and fallback routes
 
-- `/` for unauthenticated visitors may render the clinic landing page after the session
-  is confirmed unauthenticated. While session is unresolved, do not flicker between the
-  landing page and role dashboard.
+- `/` always renders the public clinic home, whether the visitor is signed in or not.
+  Signed-in DOCTOR, STAFF, and ADMIN users retain the home information and receive a
+  direct `/dashboard` action. The authenticated shell exposes the Health&Human brand
+  link to return to `/`.
+- `/dashboard` is protected by the normal role guard. After successful login, route to
+  `/dashboard`; after sign-out, route to `/`.
 - `not-found` is a route-not-found state; API empty states belong to their page.
 - Route-level `loading`/`error` boundaries are fallback states only. They must not hide
   a page’s own partial data or replace a local retry with a full navigation reset.
@@ -357,7 +356,7 @@ context; record form; prescription editor; recent records; save/finalize feedbac
 
 | Component / region | Stable content | Dynamic content and state rule |
 |---|---|---|
-| Page header | Eyebrow, heading, descriptive text, known actions | Identity/personalized greeting waits for session; only skeleton a dynamic identity value if its placement is fixed. |
+| Page header | Heading, task summary, known actions | Keep title and summary stable while page data loads. |
 | Filter bar | Labels, controls, available static options, selected values | Result count is loaded data. Keep user-entered filters through fetch/error. |
 | Table | Caption, column names, role-specific column structure | Skeleton body on initial/new-query load; retain rows during background refresh; responsive horizontal scroll/card reflow per contract. |
 | List/card collection | Section title, list frame, stable control placement | Skeleton items match actual list item structure; empty/error replace only the collection. |

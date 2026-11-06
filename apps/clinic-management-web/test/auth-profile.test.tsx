@@ -130,7 +130,7 @@ describe("Auth & Profile Pages (M3-WEB-030)", () => {
       });
 
       expect(mockSignIn).toHaveBeenCalledWith("admin@clinic.vn", "password123");
-      expect(mockPush).toHaveBeenCalledWith("/");
+      expect(mockPush).toHaveBeenCalledWith("/dashboard");
     });
 
     it("renders authenticated screen with ConfirmModal on sign out", async () => {
@@ -150,7 +150,7 @@ describe("Auth & Profile Pages (M3-WEB-030)", () => {
       await act(async () => {
         dashboardBtn.click();
       });
-      expect(mockPush).toHaveBeenCalledWith("/appointments");
+      expect(mockPush).toHaveBeenCalledWith("/dashboard");
 
       // Find the logout button
       const logoutBtn = Array.from(host.querySelectorAll("button")).find(

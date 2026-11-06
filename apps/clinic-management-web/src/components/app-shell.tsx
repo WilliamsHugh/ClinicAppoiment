@@ -7,6 +7,7 @@ import React, { useState, type ReactNode } from "react";
 import { Menu, Bell } from "lucide-react";
 import { visibleRoutes } from "../lib/navigation/routes";
 import { useSession } from "../lib/session/session-context";
+import { clinicRoleLabel, sessionDisplayName } from "../lib/session/session";
 import { RouteGuard } from "./route-guard";
 import { Badge } from "./ui";
 import styles from "./app-shell.module.css";
@@ -33,27 +34,19 @@ function getInitials(name?: string, role?: string): string {
   return "HH";
 }
 
-function getRoleLabel(role?: string): string {
-  if (role === "DOCTOR") return "Bác sĩ";
-  if (role === "STAFF") return "Trợ lý phòng khám";
-  if (role === "ADMIN") return "Quản trị viên";
-  return "Người dùng";
-}
-
 export function AppShell({ children, NotificationSlot }: AppShellProps) {
   const pathname = usePathname();
   const session = useSession();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  // Bypass AppShell chrome for /auth and for public unauthenticated visitors on /
-  if (pathname === "/auth" || (pathname === "/" && session.status !== "authenticated")) {
+  // The public clinic home and authentication pages use their own layouts.
+  if (pathname === "/auth" || pathname === "/") {
     return <RouteGuard>{children}</RouteGuard>;
   }
 
   const role = session.identity?.role;
-  const displayName = session.identity?.displayName || session.identity?.role || "Tài khoản";
-  const initials = getInitials(session.identity?.displayName, role);
-  const roleLabel = getRoleLabel(role);
+  const displayName = sessionDisplayName(session.identity) || "Tài khoản";
+  const initials = getInitials(displayName, role);
 
   return (
     <div className={`${styles.shell} app-shell`}>
@@ -119,7 +112,6 @@ export function AppShell({ children, NotificationSlot }: AppShellProps) {
             </div>
             <div className={styles.userInfo}>
               <div className={styles.userName}>{displayName}</div>
-              <div className={styles.userRole}>{roleLabel}</div>
             </div>
             <button
               type="button"
@@ -153,7 +145,7 @@ export function AppShell({ children, NotificationSlot }: AppShellProps) {
             </span>
           </div>
 
-          {/* Right actions: NotificationSlot + Role badge + Session */}
+          {/* Right actions: NotificationSlot + Role + Session */}
           <div className={`${styles.topbarRight} session-summary`}>
             {session.status === "authenticated" && (
               <>
@@ -171,9 +163,8 @@ export function AppShell({ children, NotificationSlot }: AppShellProps) {
                     <span>Thông báo</span>
                   </Link>
                 )}
-
                 <Badge variant="info" size="sm">
-                  {role}
+                  {clinicRoleLabel(role)}
                 </Badge>
               </>
             )}

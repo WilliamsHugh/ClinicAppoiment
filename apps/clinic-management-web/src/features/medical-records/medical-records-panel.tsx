@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { EmptyState, ErrorState, PermissionDeniedState, SkeletonPage } from "../../components/states";
+import { EmptyState, ErrorState, PermissionDeniedState } from "../../components/states";
 import { Alert } from "../../components/ui/alert";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
@@ -43,8 +43,9 @@ export function MedicalRecordsPanel() {
   const [records, setRecords] = useState<MedicalRecordItem[]>([]);
   const [patientNames, setPatientNames] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
-  const [recordsLoading, setRecordsLoading] = useState(false);
+  const [recordsLoading, setRecordsLoading] = useState(true);
   const [fetchError, setFetchError] = useState<ApiClientError | null>(null);
+  const [recordsError, setRecordsError] = useState<ApiClientError | null>(null);
 
   // Form State
   const [selectedAppointmentId, setSelectedAppointmentId] = useState("");
@@ -120,6 +121,7 @@ export function MedicalRecordsPanel() {
 
   const loadRecords = useCallback(async () => {
     setRecordsLoading(true);
+    setRecordsError(null);
     try {
       const result = await client.get<{ items: MedicalRecordItem[] }>("/api/v1/medical-records", {
         query: { page: 1, limit: 20 },
@@ -133,8 +135,12 @@ export function MedicalRecordsPanel() {
           void resolvePatientName(rec.patientId, rec.appointmentId);
         }
       }
-    } catch {
-      setRecords([]);
+    } catch (caught) {
+      setRecordsError(
+        caught instanceof ApiClientError
+          ? caught
+          : new ApiClientError("Không thể tải danh sách hồ sơ khám.", 0, "UNKNOWN_ERROR")
+      );
     } finally {
       setRecordsLoading(false);
     }
@@ -279,16 +285,38 @@ export function MedicalRecordsPanel() {
       <section className="page-stack" aria-busy="true">
         <PageHeader pathname="/medical-records" />
         <div className={styles.panel}>
-          <Skeleton height={24} width="40%" className={styles.fieldGroup} />
-          <div style={{ marginTop: 16 }}>
-            <Skeleton height={42} width="100%" />
+          <div className={styles.panelHeader}>
+            <div>
+              <h2 className={styles.panelTitle}>Lập hồ sơ khám bệnh mới</h2>
+              <p className={styles.panelSubtitle}>Chọn lịch hẹn đã check-in để bắt đầu khám và lưu kết quả</p>
+            </div>
           </div>
-          <div style={{ marginTop: 16 }}>
-            <Skeleton height={80} width="100%" />
+          <div className={styles.formGrid}>
+            <div className={styles.fieldGroup}><span className={styles.fieldLabel}>Lịch hẹn khám đã check-in</span><Skeleton height={42} width="100%" /></div>
+            {[
+              "Triệu chứng lâm sàng",
+              "Chẩn đoán",
+              "Ghi chú khám",
+              "Kế hoạch điều trị",
+              "Đơn thuốc",
+            ].map((label) => (
+              <div className={styles.fieldGroup} key={label}>
+                <span className={styles.fieldLabel}>{label}</span>
+                <Skeleton height={label === "Đơn thuốc" ? 120 : 80} width="100%" />
+              </div>
+            ))}
+            <div className={styles.formActions}><Skeleton height={40} width={140} borderRadius="var(--radius-md)" /></div>
           </div>
-          <div style={{ marginTop: 16 }}>
-            <Skeleton height={120} width="100%" />
+        </div>
+        <div className={styles.panel}>
+          <div className={styles.panelHeader}>
+            <div>
+              <h2 className={styles.panelTitle}>Hồ sơ bệnh án gần đây</h2>
+              <p className={styles.panelSubtitle}>Danh sách các ca khám đã ghi nhận trong hệ thống</p>
+            </div>
           </div>
+          <Skeleton height={100} width="100%" />
+          <Skeleton height={100} width="100%" />
         </div>
       </section>
     );
@@ -301,36 +329,6 @@ export function MedicalRecordsPanel() {
         title="Không có quyền truy cập hồ sơ khám"
         message="Chỉ bác sĩ được phân công hoặc quản trị viên mới có quyền lập và quản lý bệnh án khám bệnh."
         action={{ label: "Về trang chủ", href: "/" }}
-      />
-    );
-  }
-
-  if (loading) {
-    return (
-      <section className="page-stack">
-        <PageHeader pathname="/medical-records" />
-        <div className={styles.panel}>
-          <Skeleton height={24} width="40%" className={styles.fieldGroup} />
-          <div style={{ marginTop: 16 }}>
-            <Skeleton height={42} width="100%" />
-          </div>
-          <div style={{ marginTop: 16 }}>
-            <Skeleton height={80} width="100%" />
-          </div>
-          <div style={{ marginTop: 16 }}>
-            <Skeleton height={120} width="100%" />
-          </div>
-        </div>
-      </section>
-    );
-  }
-
-  if (fetchError) {
-    return (
-      <ErrorState
-        message={fetchError.message}
-        requestId={fetchError.requestId}
-        onRetry={() => void loadAppointments()}
       />
     );
   }
@@ -382,17 +380,43 @@ export function MedicalRecordsPanel() {
 
         <form onSubmit={handleSubmit} className={styles.formGrid}>
           {/* Appointment Selector */}
-          <AppointmentSelector
-            appointments={appointments}
-            selectedAppointmentId={selectedAppointmentId}
-            disabled={editingRecordId !== null || submitting}
-            patientNames={patientNames}
-            error={appointmentError}
-            onSelect={(id) => {
-              setSelectedAppointmentId(id);
-              if (appointmentError) setAppointmentError(null);
-            }}
-          />
+          {loading && appointments.length === 0 ? (
+            <div className={styles.fieldGroup} aria-busy="true">
+              <span className={styles.fieldLabel}>Lịch hẹn khám đã check-in</span>
+              <Skeleton height={42} width="100%" />
+            </div>
+          ) : fetchError && appointments.length === 0 ? (
+            <div className={styles.fieldGroup}>
+              <span className={styles.fieldLabel}>Lịch hẹn khám đã check-in</span>
+              <ErrorState
+                message={fetchError.message}
+                requestId={fetchError.requestId}
+                onRetry={() => void loadAppointments()}
+              />
+            </div>
+          ) : (
+            <>
+              {fetchError && (
+                <Alert variant="warning" title="Không cập nhật được lịch hẹn">
+                  Đang giữ danh sách đã tải trước đó. {fetchError.message}{" "}
+                  <Button type="button" variant="secondary" size="sm" onClick={() => void loadAppointments()}>
+                    Thử lại
+                  </Button>
+                </Alert>
+              )}
+              <AppointmentSelector
+                appointments={appointments}
+                selectedAppointmentId={selectedAppointmentId}
+                disabled={editingRecordId !== null || submitting || loading}
+                patientNames={patientNames}
+                error={appointmentError}
+                onSelect={(id) => {
+                  setSelectedAppointmentId(id);
+                  if (appointmentError) setAppointmentError(null);
+                }}
+              />
+            </>
+          )}
 
           {/* Clinical Symptoms */}
           <div className={styles.fieldGroup}>
@@ -527,13 +551,33 @@ export function MedicalRecordsPanel() {
           </Button>
         </div>
 
-        {records.length === 0 && !recordsLoading ? (
+        {recordsError && records.length === 0 ? (
+          <ErrorState
+            message={recordsError.message}
+            requestId={recordsError.requestId}
+            onRetry={() => void loadRecords()}
+          />
+        ) : recordsLoading && records.length === 0 ? (
+          <div className={styles.historyList} aria-busy="true">
+            <Skeleton height={100} width="100%" />
+            <Skeleton height={100} width="100%" />
+          </div>
+        ) : records.length === 0 ? (
           <EmptyState
             title="Chưa có hồ sơ khám bệnh nào"
             message="Các kết quả khám sau khi bác sĩ chốt sẽ xuất hiện tại đây."
             action={{ label: "Tải lại danh sách", onClick: () => void loadRecords() }}
           />
         ) : (
+          <>
+          {recordsError && (
+            <Alert variant="warning" title="Không thể cập nhật hồ sơ gần đây">
+              Đang giữ dữ liệu đã tải trước đó. {recordsError.message}{" "}
+              <Button type="button" variant="secondary" size="sm" onClick={() => void loadRecords()}>
+                Thử lại
+              </Button>
+            </Alert>
+          )}
           <div className={styles.historyList}>
             {records.map((rec) => {
               const patientDisplay = formatPatientDisplayName(rec.patientId, patientNames[rec.patientId]);
@@ -623,6 +667,7 @@ export function MedicalRecordsPanel() {
               );
             })}
           </div>
+          </>
         )}
       </section>
     </section>

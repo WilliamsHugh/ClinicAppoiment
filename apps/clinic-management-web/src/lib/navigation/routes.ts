@@ -7,7 +7,7 @@ export interface AppRoute {
 }
 
 export const appRoutes: readonly AppRoute[] = [
-  { href: "/", label: "Tổng quan" },
+  { href: "/dashboard", label: "Tổng quan", roles: ["DOCTOR", "STAFF", "ADMIN"] },
   { href: "/appointments", label: "Lịch hẹn", roles: ["DOCTOR", "STAFF", "ADMIN"] },
   { href: "/doctors", label: "Bác sĩ & lịch làm việc", roles: ["DOCTOR", "STAFF", "ADMIN"] },
   { href: "/medical-records", label: "Hồ sơ khám", roles: ["DOCTOR", "ADMIN"] },
@@ -29,7 +29,5 @@ export function visibleRoutes(session: Session): readonly AppRoute[] {
 export function routeForPath(pathname: string): AppRoute | undefined {
   return [...appRoutes]
     .sort((left, right) => right.href.length - left.href.length)
-    .find((route) => route.href === "/"
-      ? pathname === "/"
-      : pathname === route.href || pathname.startsWith(`${route.href}/`));
+    .find((route) => pathname === route.href || pathname.startsWith(`${route.href}/`));
 }

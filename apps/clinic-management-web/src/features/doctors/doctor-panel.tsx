@@ -239,7 +239,12 @@ export function DoctorPanel() {
   }
 
   if (session.status === "loading") {
-    return <SkeletonPage title={true} tableRows={5} tableCols={4} />;
+    return (
+      <div className={styles.stack} aria-busy="true">
+        <PageHeader pathname="/doctors" />
+        <SkeletonPage title={false} tableRows={5} tableCols={4} />
+      </div>
+    );
   }
   if (session.status !== "authenticated" || !role || role === "PATIENT") {
     return (

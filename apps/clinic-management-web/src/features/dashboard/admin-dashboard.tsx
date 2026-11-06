@@ -7,7 +7,7 @@ import { useSession } from "../../lib/session/session-context";
 import { createBrowserApiClient, type PaginatedData } from "../../lib/api/client";
 import { Badge, Button, Skeleton, Alert } from "../../components/ui";
 import { ErrorState } from "../../components/states";
-import { TodayScheduleSummary, formatVietnamDate, formatVietnamTime } from "./today-schedule-summary";
+import { TodayScheduleSummary, formatVietnamTime } from "./today-schedule-summary";
 import styles from "./dashboard.module.css";
 
 interface SystemHealthData {
@@ -17,10 +17,6 @@ interface SystemHealthData {
 }
 
 interface UserSummary {
-  doctors: number;
-  staff: number;
-  admins: number;
-  patients: number;
   total: number;
 }
 
@@ -48,17 +44,12 @@ export function AdminDashboard() {
   const [health, setHealth] = useState<SystemHealthData | null>(cachedAdminHealth);
   const [userSummary, setUserSummary] = useState<UserSummary>(
     cachedAdminUserSummary ?? {
-      doctors: 0,
-      staff: 0,
-      admins: 0,
-      patients: 0,
       total: 0,
     }
   );
   const [loading, setLoading] = useState(!cachedAdminHealth);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [now] = useState<Date>(() => new Date());
   const [lastHealthChecked, setLastHealthChecked] = useState<Date | null>(cachedAdminLastChecked);
 
   const loadData = useCallback(async (isBackground = false) => {
@@ -72,18 +63,11 @@ export function AdminDashboard() {
     try {
       const api = createBrowserApiClient(session);
 
-      // 1. Tải sức khỏe hệ thống thực tế
-      const healthPromise = api.get<SystemHealthData>("/api/v1/system/health").catch(() => null);
-
-      // 2. Tải số lượng tài khoản thực tế theo từng vai trò
-      const [doctorRes, staffRes, adminRes, patientRes] = await Promise.all([
-        api.get<PaginatedData<unknown>>("/api/v1/users", { query: { role: "DOCTOR", limit: 1 } }).catch(() => null),
-        api.get<PaginatedData<unknown>>("/api/v1/users", { query: { role: "STAFF", limit: 1 } }).catch(() => null),
-        api.get<PaginatedData<unknown>>("/api/v1/users", { query: { role: "ADMIN", limit: 1 } }).catch(() => null),
-        api.get<PaginatedData<unknown>>("/api/v1/users", { query: { role: "PATIENT", limit: 1 } }).catch(() => null),
+      const [healthRes, usersRes] = await Promise.all([
+        api.get<SystemHealthData>("/api/v1/system/health").catch(() => null),
+        api.get<PaginatedData<unknown>>("/api/v1/users", { query: { limit: 1 } }).catch(() => null),
       ]);
 
-      const healthRes = await healthPromise;
       if (healthRes?.data) {
         setHealth(healthRes.data);
         cachedAdminHealth = healthRes.data;
@@ -92,20 +76,11 @@ export function AdminDashboard() {
         cachedAdminLastChecked = checkedAt;
       }
 
-      const doctors = doctorRes?.data?.total ?? 0;
-      const staff = staffRes?.data?.total ?? 0;
-      const admins = adminRes?.data?.total ?? 0;
-      const patients = patientRes?.data?.total ?? 0;
-
-      const summary: UserSummary = {
-        doctors,
-        staff,
-        admins,
-        patients,
-        total: doctors + staff + admins + patients,
-      };
-      setUserSummary(summary);
-      cachedAdminUserSummary = summary;
+      if (usersRes?.data) {
+        const summary = { total: usersRes.data.total };
+        setUserSummary(summary);
+        cachedAdminUserSummary = summary;
+      }
     } catch (caught: unknown) {
       setError(
         caught instanceof Error
@@ -133,7 +108,6 @@ export function AdminDashboard() {
     <div className={styles.container}>
       <TodayScheduleSummary
         session={session}
-        now={now}
         loading={isRefreshing || loading}
         onRefresh={() => void loadData(false)}
       />
@@ -147,7 +121,7 @@ export function AdminDashboard() {
         </div>
       )}
 
-      {/* 2-column Layout: Cột chính là Trạng thái hệ thống thực, Cột phụ là Thống kê User theo role */}
+      {/* 2-column Layout: system health and account management */}
       <div className={styles.dashboardGrid}>
         {/* CỘT CHÍNH: Trạng thái hệ thống thực */}
         <section className={styles.sectionCard} aria-labelledby="system-health-heading">
@@ -235,7 +209,7 @@ export function AdminDashboard() {
           </div>
         </section>
 
-        {/* CỘT PHỤ: Thống kê người dùng theo vai trò thực tế */}
+        {/* CỘT PHỤ: Tổng số tài khoản */}
         <aside className={styles.sectionCard} aria-labelledby="user-stats-heading">
           <div className={styles.sectionHeader}>
             <div>
@@ -249,48 +223,13 @@ export function AdminDashboard() {
             </Link>
           </div>
 
-          <p style={{ fontSize: "0.875rem", color: "var(--muted)", margin: 0 }}>
-            Phân bố tài khoản người dùng theo vai trò trong hệ thống:
-          </p>
-
           <div className={styles.summaryList}>
             <div className={styles.summaryItem}>
               <div className={styles.summaryItemLabel}>
-                <span className={styles.summaryDot} style={{ background: "var(--primary)" }} aria-hidden="true" />
-                <span>Bác sĩ (DOCTOR)</span>
+                <span>Tài khoản trong hệ thống</span>
               </div>
               <span className={styles.summaryItemCount}>
-                {loading && !cachedAdminUserSummary ? <Skeleton height={20} width={30} /> : userSummary.doctors}
-              </span>
-            </div>
-
-            <div className={styles.summaryItem}>
-              <div className={styles.summaryItemLabel}>
-                <span className={styles.summaryDot} style={{ background: "var(--info)" }} aria-hidden="true" />
-                <span>Nhân viên phòng khám (STAFF)</span>
-              </div>
-              <span className={styles.summaryItemCount}>
-                {loading && !cachedAdminUserSummary ? <Skeleton height={20} width={30} /> : userSummary.staff}
-              </span>
-            </div>
-
-            <div className={styles.summaryItem}>
-              <div className={styles.summaryItemLabel}>
-                <span className={styles.summaryDot} style={{ background: "var(--warning)" }} aria-hidden="true" />
-                <span>Quản trị viên (ADMIN)</span>
-              </div>
-              <span className={styles.summaryItemCount}>
-                {loading && !cachedAdminUserSummary ? <Skeleton height={20} width={30} /> : userSummary.admins}
-              </span>
-            </div>
-
-            <div className={styles.summaryItem}>
-              <div className={styles.summaryItemLabel}>
-                <span className={styles.summaryDot} style={{ background: "var(--muted)" }} aria-hidden="true" />
-                <span>Bệnh nhân (PATIENT)</span>
-              </div>
-              <span className={styles.summaryItemCount}>
-                {loading && !cachedAdminUserSummary ? <Skeleton height={20} width={30} /> : userSummary.patients}
+                {loading && !cachedAdminUserSummary ? <Skeleton height={20} width={30} /> : userSummary.total}
               </span>
             </div>
           </div>

@@ -1,7 +1,7 @@
 import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import ClinicDashboardPage from "../app/page";
+import { DashboardPage } from "../src/features/dashboard/dashboard-page";
 import type { ClinicRole, Session } from "../src/lib/session/session";
 
 // Setup global React
@@ -22,22 +22,20 @@ function renderDashboard(role?: ClinicRole) {
     signIn: async () => {},
     signOut: async () => {},
   };
-  return renderToStaticMarkup(React.createElement(ClinicDashboardPage));
+  return renderToStaticMarkup(React.createElement(DashboardPage));
 }
 
 describe("Clinic Dashboard Page (M3-UI-DASH-001)", () => {
-  it("renders public clinic introduction landing page when session is unauthenticated", () => {
+  it("does not render the protected dashboard when session is unauthenticated", () => {
     const html = renderDashboard();
-    expect(html).toContain("Providing Quality");
-    expect(html).toContain("Find A Doctor");
-    expect(html).toContain("Log In");
-    expect(html).toContain("Health&amp;Human");
+    expect(html).toContain("Cần đăng nhập");
+    expect(html).not.toContain("Lịch khám hôm nay");
   });
 
-  it("renders role-specific welcome and actions for DOCTOR", () => {
+  it("renders the shared page header and doctor actions", () => {
     const html = renderDashboard("DOCTOR");
-    expect(html).toContain("BS. Trần Văn A");
-    expect(html).toContain("Bác sĩ");
+    expect(html).toContain(">Tổng quan</h1>");
+    expect(html).toContain("Theo dõi lịch khám trong ngày");
     expect(html).toContain("Hồ sơ bệnh án");
     expect(html).toContain("Hàng đợi khám");
     expect(html).toContain("Lịch khám hôm nay");
@@ -46,9 +44,9 @@ describe("Clinic Dashboard Page (M3-UI-DASH-001)", () => {
     expect(html).toContain("Xem tất cả lịch hẹn");
   });
 
-  it("renders role-specific welcome and actions for STAFF", () => {
+  it("renders the shared page header and staff actions", () => {
     const html = renderDashboard("STAFF");
-    expect(html).toContain("Nhân viên phòng khám");
+    expect(html).toContain(">Tổng quan</h1>");
     expect(html).toContain("Lịch bác sĩ");
     expect(html).toContain("Hàng đợi khám");
     expect(html).toContain("Hàng đợi cần xử lý");
@@ -58,7 +56,7 @@ describe("Clinic Dashboard Page (M3-UI-DASH-001)", () => {
 
   it("renders role-specific actions for ADMIN including System Health and User Management", () => {
     const html = renderDashboard("ADMIN");
-    expect(html).toContain("Quản trị viên");
+    expect(html).toContain(">Tổng quan</h1>");
     expect(html).toContain("Quản trị người dùng");
     expect(html).toContain("Sức khỏe hệ thống");
     expect(html).toContain("Cổng API Gateway");

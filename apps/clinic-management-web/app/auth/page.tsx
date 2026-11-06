@@ -17,8 +17,7 @@ export default function AuthPage() {
 
   // Authenticated Screen
   if (session.status === "authenticated" && session.identity) {
-    const isRoleAdmin = session.identity.role === "ADMIN";
-    const dashboardRoute = isRoleAdmin ? "/users" : "/appointments";
+    const dashboardRoute = "/dashboard";
 
     return (
       <div className={styles.container}>
@@ -83,7 +82,7 @@ export default function AuthPage() {
     setLoading(true);
     try {
       await session.signIn(email, password);
-      router.push("/");
+      router.push("/dashboard");
     } catch (err: unknown) {
       const message =
         err instanceof Error ? err.message : "Đăng nhập thất bại. Vui lòng thử lại.";

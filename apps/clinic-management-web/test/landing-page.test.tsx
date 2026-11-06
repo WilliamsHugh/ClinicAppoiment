@@ -157,26 +157,19 @@ describe("ClinicLandingPage (Public Clinic Presentation & Introduction)", () => 
 
   it("renders authenticated status with Vào Dashboard button when user is logged in", async () => {
     currentSession = makeSession("DOCTOR");
-    const onSwitchMock = vi.fn();
-
     await act(async () => {
-      root.render(<ClinicLandingPage onSwitchToDashboard={onSwitchMock} />);
+      root.render(<ClinicLandingPage />);
     });
 
     expect(container.textContent).toContain("BS. Trần Văn A");
-    expect(container.textContent).toContain("DOCTOR");
+    expect(container.textContent).toContain("Bác sĩ");
     expect(container.textContent).toContain("Vào Dashboard");
     expect(container.textContent).toContain("Đăng xuất");
 
-    const dashboardBtn = Array.from(container.querySelectorAll("button")).find(
+    const dashboardBtn = Array.from(container.querySelectorAll("a")).find(
       (b) => b.textContent?.includes("Vào Dashboard")
     )!;
-
-    await act(async () => {
-      dashboardBtn.click();
-    });
-
-    expect(onSwitchMock).toHaveBeenCalled();
+    expect(dashboardBtn.getAttribute("href")).toBe("/dashboard");
   });
 
   it("handles navigation buttons click and toggles active state smoothly", async () => {

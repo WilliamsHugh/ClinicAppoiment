@@ -389,7 +389,7 @@ export function AppointmentsPanel() {
       <PermissionDeniedState
         title="Quyền truy cập hạn chế"
         message="Trang quản lý lịch hẹn chỉ dành cho Bác sĩ, Nhân viên phòng khám và Quản trị viên."
-        action={{ label: "Về bảng điều khiển", href: "/" }}
+        action={{ label: "Về bảng điều khiển", href: "/dashboard" }}
       />
     );
   }

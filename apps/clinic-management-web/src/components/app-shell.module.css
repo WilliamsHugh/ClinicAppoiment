@@ -2,7 +2,9 @@
 
 .shell {
   display: flex;
-  min-height: 100vh;
+  height: 100vh;
+  height: 100dvh;
+  overflow: hidden;
   background-color: var(--canvas);
 }
 
@@ -14,8 +16,11 @@
   display: flex;
   flex-direction: column;
   flex-shrink: 0;
-  min-height: 100vh;
-  position: sticky;
+  height: 100vh;
+  height: 100dvh;
+  position: fixed;
+  inset: 0 auto 0 0;
+  overflow: hidden;
   top: 0;
   z-index: 40;
   transition: transform 0.2s ease, visibility 0.2s ease;
@@ -72,8 +77,10 @@
   gap: 4px;
   padding: 14px 10px;
   flex: 1;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   border-right: none;
-  min-height: auto;
+  min-height: 0;
 }
 
 .navItem {
@@ -152,11 +159,6 @@
   text-overflow: ellipsis;
 }
 
-.userRole {
-  font-size: 0.75rem;
-  color: var(--muted);
-}
-
 .logoutButton {
   background: transparent;
   border: none;
@@ -184,11 +186,15 @@
   flex-direction: column;
   flex: 1;
   min-width: 0;
+  height: 100%;
+  margin-left: 232px;
+  overflow: hidden;
 }
 
 /* Topbar - 56px height */
 .topbar {
   height: 56px;
+  flex: 0 0 56px;
   background-color: var(--surface);
   border-bottom: 1px solid var(--line);
   display: flex;
@@ -289,6 +295,9 @@
 /* Main Content Area */
 .content {
   flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
   padding: clamp(20px, 3vw, 36px);
   min-width: 0;
   background-color: var(--canvas);
@@ -300,6 +309,11 @@
 }
 
 @media (max-width: 768px) {
+  .shell {
+    height: 100vh;
+    height: 100dvh;
+  }
+
   .mobileMenuToggle {
     display: inline-flex;
     align-items: center;
@@ -314,6 +328,10 @@
     z-index: 100;
     transform: translateX(-100%);
     box-shadow: var(--shadow-lg);
+  }
+
+  .mainArea {
+    margin-left: 0;
   }
 
   .sidebarMobileOpen {

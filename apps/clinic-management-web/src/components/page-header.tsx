@@ -2,23 +2,24 @@ import React, { type ReactNode } from "react";
 import styles from "./page-header.module.css";
 
 export interface PageHeaderConfig {
-  eyebrow?: string;
   title: string;
   subtitle?: string;
 }
 
 export const PAGE_HEADER_CONFIGS: Record<string, PageHeaderConfig> = {
+  "/dashboard": {
+    title: "Tổng quan",
+    subtitle: "Theo dõi lịch khám trong ngày và các công việc cần xử lý của phòng khám.",
+  },
   "/appointments": {
     title: "Quản lý lịch hẹn",
     subtitle: "Theo dõi, tiếp đón, xác nhận và xử lý lịch khám của toàn phòng khám.",
   },
   "/doctors": {
-    eyebrow: "Doctor Service",
     title: "Bác sĩ và lịch làm việc",
-    subtitle: "Giờ phòng khám: Việt Nam (UTC+7). Khung giờ có thể thay đổi trước khi đặt lịch thành công.",
+    subtitle: "Quản lý thông tin bác sĩ, chuyên khoa, lịch làm việc và khung giờ khám.",
   },
   "/health": {
-    eyebrow: "Administration",
     title: "Sức khỏe hệ thống",
     subtitle: "Trạng thái tổng hợp do API Gateway cung cấp cho quản trị viên.",
   },
@@ -27,12 +28,10 @@ export const PAGE_HEADER_CONFIGS: Record<string, PageHeaderConfig> = {
     subtitle: "Quản trị danh sách người dùng, phân quyền vai trò và kiểm soát trạng thái hoạt động tài khoản.",
   },
   "/medical-records": {
-    eyebrow: "Medical Record Service",
     title: "Hồ sơ khám bệnh",
     subtitle: "Ghi nhận triệu chứng, chẩn đoán, kế hoạch điều trị và kê đơn thuốc cho bệnh nhân.",
   },
   "/notifications": {
-    eyebrow: "Trung tâm thông báo",
     title: "Thông báo",
     subtitle: "Theo dõi các sự kiện lịch hẹn, hồ sơ bệnh án và cập nhật điều hành phòng khám.",
   },
@@ -61,7 +60,6 @@ export interface PageHeaderProps extends Partial<PageHeaderConfig> {
 
 export function PageHeader({
   pathname,
-  eyebrow: propEyebrow,
   title: propTitle,
   subtitle: propSubtitle,
   actions,
@@ -69,14 +67,12 @@ export function PageHeader({
   children,
 }: PageHeaderProps) {
   const config = pathname ? getPageHeaderConfig(pathname) : undefined;
-  const eyebrow = propEyebrow ?? config?.eyebrow;
   const title = propTitle ?? config?.title ?? "";
   const subtitle = propSubtitle ?? config?.subtitle;
 
   return (
     <header className={`page-heading ${styles.header} ${className || ""}`.trim()}>
       <div className={styles.textContainer}>
-        {eyebrow && <p className={`eyebrow ${styles.eyebrow}`}>{eyebrow}</p>}
         <h1 className={styles.title}>{title}</h1>
         {subtitle && <p className={styles.subtitle}>{subtitle}</p>}
         {children}

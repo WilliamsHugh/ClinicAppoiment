@@ -415,7 +415,8 @@ Authentication and onboarding sit outside the authenticated shell. Booking start
 
 | Route | DOCTOR | STAFF | ADMIN | Purpose |
 |---|:---:|:---:|:---:|---|
-| Work overview / Dashboard | ✓ | ✓ | Limited | Today's actionable workload and exceptions |
+| Public clinic home | ✓ | ✓ | ✓ | Clinic information; available to visitors and signed-in staff |
+| Work overview / Dashboard (`/dashboard`) | ✓ | ✓ | ✓ | Today's actionable workload and role-specific operations |
 | Appointments | Assigned schedule | Clinic queue | Oversight | Confirm, cancel, check-in, no-show, complete per authorization |
 | Patients | Appointment-scoped | Search | Search | Minimum patient info for the current task |
 | Doctors & Schedules | Own schedule | Operational | Manage | Doctors, specialties, shifts, breaks, available slots |
@@ -550,6 +551,13 @@ Clinical views must always show human-readable patient identification. Raw UUIDs
 ### 14.3 Web: Dashboard / Work Overview
 
 **Purpose:** First screen after login. Shows only the work relevant to the logged-in role.
+**Route:** `/dashboard`. The public clinic home remains at `/`; signed-in staff can
+return to it through the Health&Human brand link.
+
+**Shared page frame:** Use the same compact page heading as `/appointments`: a named
+page title, one sentence describing the task, then role-specific actions and work data.
+Keep the signed-in role in the persistent shell header; do not repeat it in the dashboard
+heading or data cards.
 
 **Rules:**
 - Do not design a generic 4-stat-card dashboard. Design from the role's primary task.

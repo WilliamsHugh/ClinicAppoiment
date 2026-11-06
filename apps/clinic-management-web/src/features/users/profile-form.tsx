@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useEffect, useMemo, useState, type FormEvent } from "react";
+import React, { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
 import { User, Lock, Bell, Monitor } from "lucide-react";
 import { createBrowserApiClient } from "../../lib/api/client";
 import { useSession } from "../../lib/session/session-context";
+import { clinicRoleLabel } from "../../lib/session/session";
 import { LoadingState, ErrorState } from "../../components/states";
 import { Button, Badge, Alert, ConfirmModal, Skeleton } from "../../components/ui";
 import { PageHeader } from "../../components/page-header";
@@ -60,14 +61,41 @@ function getInitials(name?: string, role?: string): string {
   return "HH";
 }
 
-function getRoleLabel(role?: string): string {
-  if (role === "DOCTOR") return "Bác sĩ";
-  if (role === "STAFF") return "Trợ lý phòng khám";
-  if (role === "ADMIN") return "Quản trị viên";
-  return "Người dùng";
-}
-
 type TabKey = "personal" | "security" | "notifications" | "sessions";
+
+const PROFILE_TABS: { key: TabKey; label: string; icon: typeof User }[] = [
+  { key: "personal", label: "Thông tin cá nhân", icon: User },
+  { key: "security", label: "Bảo mật", icon: Lock },
+  { key: "notifications", label: "Thông báo", icon: Bell },
+  { key: "sessions", label: "Phiên đăng nhập", icon: Monitor },
+];
+
+function ProfileNavigation({
+  activeTab,
+  disabled = false,
+  onChange,
+}: {
+  activeTab: TabKey;
+  disabled?: boolean;
+  onChange?: (tab: TabKey) => void;
+}) {
+  return (
+    <nav className={styles.subnav} aria-label="Cài đặt hồ sơ">
+      {PROFILE_TABS.map(({ key, label, icon: Icon }) => (
+        <button
+          key={key}
+          type="button"
+          className={`${styles.subnavItem} ${activeTab === key ? styles.subnavItemActive : ""}`}
+          disabled={disabled}
+          onClick={() => onChange?.(key)}
+        >
+          <Icon size={16} aria-hidden="true" />
+          <span>{label}</span>
+        </button>
+      ))}
+    </nav>
+  );
+}
 
 export function ProfileForm() {
   const session = useSession();
@@ -100,34 +128,28 @@ export function ProfileForm() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
 
-  useEffect(() => {
-    if (session.status !== "authenticated") {
-      setLoading(false);
-      return;
-    }
-    let cancelled = false;
+  const loadProfile = useCallback(async () => {
     setLoading(true);
-    client
-      .get<OwnProfile>("/api/v1/users/me")
-      .then((result) => {
-        if (cancelled) return;
-        setProfile(result.data);
-        setFullName(result.data.fullName || "");
-        setPhone(result.data.phone ?? "");
-      })
-      .catch((cause: unknown) => {
-        if (!cancelled) {
-          setError(cause instanceof Error ? cause.message : "Không thể tải hồ sơ cá nhân.");
-        }
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
+    setError(null);
+    try {
+      const result = await client.get<OwnProfile>("/api/v1/users/me");
+      setProfile(result.data);
+      setFullName(result.data.fullName || "");
+      setPhone(result.data.phone ?? "");
+    } catch (cause: unknown) {
+      setError(cause instanceof Error ? cause.message : "Không thể tải hồ sơ cá nhân.");
+    } finally {
+      setLoading(false);
+    }
+  }, [client]);
 
-    return () => {
-      cancelled = true;
-    };
-  }, [client, session.status]);
+  useEffect(() => {
+    if (session.status === "authenticated") {
+      void loadProfile();
+    } else {
+      setLoading(false);
+    }
+  }, [loadProfile, session.status]);
 
   function handleSave(event: FormEvent) {
     event.preventDefault();
@@ -182,43 +204,36 @@ export function ProfileForm() {
       <div className={styles.container} aria-busy="true">
         <PageHeader pathname="/profile" />
         <div className={styles.layout}>
-          <div className={styles.subnav}>
-            <div className={`${styles.subnavItem} ${styles.subnavItemActive}`}>
-              <User size={16} />
-              <span>Thông tin chung</span>
-            </div>
-            <div className={styles.subnavItem}>
-              <Lock size={16} />
-              <span>Bảo mật</span>
-            </div>
-            <div className={styles.subnavItem}>
-              <Bell size={16} />
-              <span>Thông báo</span>
-            </div>
-          </div>
-          <div className={styles.stack}>
-            <div className={styles.card}>
-              <div className={styles.profileHeader}>
-                <Skeleton width={64} height={64} borderRadius="50%" />
-                <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 8 }}>
-                  <Skeleton height={20} width={180} />
-                  <Skeleton height={14} width={100} />
+          <ProfileNavigation activeTab={activeTab} disabled />
+          <div className={styles.mainColumn}>
+            <div className={styles.userHeaderCard}>
+              <Skeleton width={64} height={64} borderRadius="50%" />
+              <div className={styles.userHeaderInfo}>
+                <Skeleton height={20} width={180} />
+                <Skeleton height={14} width={180} />
+                <div className={styles.badgeGroup}>
+                  <Skeleton height={22} width={100} borderRadius="var(--radius-full)" />
                 </div>
               </div>
-              <div style={{ marginTop: 24, display: "flex", flexDirection: "column", gap: 16 }}>
+              <Skeleton height={36} width={150} borderRadius="var(--radius-md)" />
+            </div>
+            <div className={styles.card}>
+              <div className={styles.cardHeader}>
                 <div>
-                  <Skeleton height={14} width={100} style={{ marginBottom: 6 }} />
-                  <Skeleton height={38} width="100%" />
+                  <h2 className={styles.cardTitle}>Thông tin cá nhân</h2>
+                  <p className={styles.cardSubtitle}>Thông tin này hiển thị với đồng nghiệp trong phòng khám.</p>
                 </div>
-                <div>
-                  <Skeleton height={14} width={100} style={{ marginBottom: 6 }} />
-                  <Skeleton height={38} width="100%" />
-                </div>
-                <div>
-                  <Skeleton height={14} width={100} style={{ marginBottom: 6 }} />
-                  <Skeleton height={38} width="100%" />
-                </div>
-                <div style={{ marginTop: 12 }}>
+              </div>
+              <div className={styles.divider} />
+              <div className={styles.formGrid}>
+                {["Họ và tên", "Email", "Số điện thoại", "Ngày sinh", "Giới tính", "Ngôn ngữ giao diện"].map((label) => (
+                  <div className={styles.field} key={label}>
+                    <span className={styles.fieldLabel}>{label}</span>
+                    <Skeleton height={38} width="100%" />
+                  </div>
+                ))}
+                <div className={styles.formActions}>
+                  <Skeleton height={36} width={80} borderRadius="var(--radius-md)" />
                   <Skeleton height={36} width={140} borderRadius="var(--radius-md)" />
                 </div>
               </div>
@@ -237,12 +252,24 @@ export function ProfileForm() {
         </div>
       );
     }
-    return <ErrorState message={error ?? "Không tìm thấy hồ sơ cá nhân."} />;
+    return (
+      <div className={styles.container}>
+        <PageHeader pathname="/profile" />
+        <div className={styles.layout}>
+          <ProfileNavigation activeTab={activeTab} disabled />
+          <div className={styles.mainColumn}>
+            <ErrorState
+              message={error ?? "Không tìm thấy hồ sơ cá nhân."}
+              onRetry={() => void loadProfile()}
+            />
+          </div>
+        </div>
+      </div>
+    );
   }
 
   const role = profile.role;
   const initials = getInitials(profile.fullName, role);
-  const roleLabel = getRoleLabel(role);
 
   return (
     <div className={styles.container}>
@@ -264,40 +291,7 @@ export function ProfileForm() {
       {/* Main Layout: Subnav + Stack */}
       <div className={styles.layout}>
         {/* Left Sub-Navigation */}
-        <nav className={styles.subnav} aria-label="Cài đặt hồ sơ">
-          <button
-            type="button"
-            className={`${styles.subnavItem} ${activeTab === "personal" ? styles.subnavItemActive : ""}`}
-            onClick={() => setActiveTab("personal")}
-          >
-            <User size={16} aria-hidden="true" />
-            <span>Thông tin cá nhân</span>
-          </button>
-          <button
-            type="button"
-            className={`${styles.subnavItem} ${activeTab === "security" ? styles.subnavItemActive : ""}`}
-            onClick={() => setActiveTab("security")}
-          >
-            <Lock size={16} aria-hidden="true" />
-            <span>Bảo mật</span>
-          </button>
-          <button
-            type="button"
-            className={`${styles.subnavItem} ${activeTab === "notifications" ? styles.subnavItemActive : ""}`}
-            onClick={() => setActiveTab("notifications")}
-          >
-            <Bell size={16} aria-hidden="true" />
-            <span>Thông báo</span>
-          </button>
-          <button
-            type="button"
-            className={`${styles.subnavItem} ${activeTab === "sessions" ? styles.subnavItemActive : ""}`}
-            onClick={() => setActiveTab("sessions")}
-          >
-            <Monitor size={16} aria-hidden="true" />
-            <span>Phiên đăng nhập</span>
-          </button>
-        </nav>
+        <ProfileNavigation activeTab={activeTab} onChange={setActiveTab} />
 
         {/* Right Stack */}
         <div className={styles.mainColumn}>
@@ -309,12 +303,9 @@ export function ProfileForm() {
             <div className={styles.userHeaderInfo}>
               <h2 className={styles.userName}>{profile.fullName || "Chưa đặt tên"}</h2>
               <p className={styles.userMeta}>
-                {roleLabel} · Mã: {profile.id.slice(0, 8).toUpperCase()} · {profile.email}
+                {profile.email}
               </p>
               <div className={styles.badgeGroup}>
-                <Badge variant="info" size="sm">
-                  {roleLabel}
-                </Badge>
                 <Badge variant="success" size="sm">
                   {profile.status === "ACTIVE" ? "Đang hoạt động" : profile.status}
                 </Badge>
@@ -503,7 +494,7 @@ export function ProfileForm() {
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
               <div className={styles.kvRow}>
                 <span className={styles.kvLabel}>Vai trò:</span>
-                <span className={styles.kvValue}>{roleLabel}</span>
+                <span className={styles.kvValue}>{clinicRoleLabel(role)}</span>
               </div>
               <div className={styles.kvRow}>
                 <span className={styles.kvLabel}>Mã định danh:</span>

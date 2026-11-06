@@ -146,6 +146,9 @@ export function NotificationsPanel() {
           pathname="/notifications"
           actions={
             <div className={styles.headerActions}>
+              <Button variant="secondary" size="sm" disabled>
+                Đánh dấu tất cả đã đọc
+              </Button>
               <Button variant="ghost" size="sm" disabled>
                 Làm mới
               </Button>
@@ -191,24 +194,23 @@ export function NotificationsPanel() {
         pathname="/notifications"
         actions={
           <div className={styles.headerActions}>
-            {unreadOnPage.length > 0 && (
-              <Button
-                variant="secondary"
-                size="sm"
-                onClick={handleMarkAllRead}
-                loading={markingAll}
-                disabled={loading || markingAll}
-              >
-                Đánh dấu tất cả đã đọc ({unreadOnPage.length})
-              </Button>
-            )}
+            <Button
+              variant="secondary"
+              size="sm"
+              onClick={handleMarkAllRead}
+              loading={markingAll}
+              disabled={loading || markingAll || unreadOnPage.length === 0}
+            >
+              Đánh dấu tất cả đã đọc
+            </Button>
             <Button
               variant="ghost"
               size="sm"
               onClick={() => void loadNotifications(true)}
               disabled={loading || isRefreshing}
+              loading={isRefreshing}
             >
-              {isRefreshing || loading ? "Đang tải…" : "Làm mới"}
+              Làm mới
             </Button>
           </div>
         }

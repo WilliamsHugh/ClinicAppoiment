@@ -51,9 +51,37 @@ function RealSessionProvider({ children }: { children: ReactNode }) {
       }
 
       const expiresAt = new Date(data.expiresAt);
-      setIdentity(data.identity);
+      const restoredIdentity = data.identity.displayName === data.identity.role
+        ? { ...data.identity, displayName: undefined }
+        : data.identity;
+      setIdentity(restoredIdentity);
       setTokens({ accessToken: data.accessToken, refreshToken: data.refreshToken, expiresAt });
       setStatus("authenticated");
+
+      if (!restoredIdentity.displayName) {
+        void fetch(`${baseUrl}/api/v1/users/me`, {
+          headers: { Authorization: `Bearer ${data.accessToken}` },
+        })
+          .then(async (response) => {
+            if (!response.ok) return;
+            const profile = await response.json();
+            const fullName = profile.success && profile.data?.fullName;
+            if (typeof fullName !== "string" || !fullName.trim()) return;
+
+            const storedSession = localStorage.getItem(SESSION_STORAGE_KEY);
+            if (storedSession) {
+              const currentData: StoredSessionData = JSON.parse(storedSession);
+              if (currentData.identity.id === data.identity.id) {
+                const updatedIdentity = { ...currentData.identity, displayName: fullName.trim() };
+                localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({ ...currentData, identity: updatedIdentity }));
+                setIdentity((currentIdentity) =>
+                  currentIdentity?.id === updatedIdentity.id ? updatedIdentity : currentIdentity,
+                );
+              }
+            }
+          })
+          .catch(() => undefined);
+      }
 
       if (Date.now() >= expiresAt.getTime() - 60000) {
         refreshSession(data.refreshToken);
@@ -95,7 +123,7 @@ function RealSessionProvider({ children }: { children: ReactNode }) {
         const updatedIdentity: SessionIdentity = {
           id: user.id,
           role: user.role as ClinicRole,
-          displayName: identity?.displayName ?? user.role,
+          displayName: identity?.displayName,
           email: identity?.email,
           phone: identity?.phone,
         };
@@ -156,7 +184,7 @@ function RealSessionProvider({ children }: { children: ReactNode }) {
       }
       const expiresAt = new Date(Date.now() + expiresIn * 1000);
 
-      let displayName = user.role;
+      let displayName: string | undefined;
       let userEmail = email;
       let userPhone: string | undefined;
 
@@ -167,7 +195,7 @@ function RealSessionProvider({ children }: { children: ReactNode }) {
         if (profileRes.ok) {
           const profileData = await profileRes.json();
           if (profileData.success && profileData.data) {
-            displayName = profileData.data.fullName || user.role;
+            displayName = profileData.data.fullName || undefined;
             userEmail = profileData.data.email || email;
             userPhone = profileData.data.phone;
           }

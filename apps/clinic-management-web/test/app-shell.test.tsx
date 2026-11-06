@@ -35,7 +35,7 @@ describe("AppShell & RouteGuard (M3-UI-LEAD-004, M3-UI-LEAD-005)", () => {
   describe("AppShell", () => {
     it("renders Health&Human brand name and mark", () => {
       currentSession = makeSession("STAFF");
-      mockPathname = "/";
+      mockPathname = "/dashboard";
       const html = renderToStaticMarkup(<AppShell>Content</AppShell>);
       expect(html).toContain("Health&amp;Human");
       expect(html).toContain("Content");
@@ -43,7 +43,7 @@ describe("AppShell & RouteGuard (M3-UI-LEAD-004, M3-UI-LEAD-005)", () => {
 
     it("renders NotificationSlot when provided", () => {
       currentSession = makeSession("DOCTOR");
-      mockPathname = "/";
+      mockPathname = "/dashboard";
       const slot = <span id="custom-popover">TV4 Popover Here</span>;
       const html = renderToStaticMarkup(<AppShell NotificationSlot={slot}>Content</AppShell>);
       expect(html).toContain("notification-slot");
@@ -52,7 +52,7 @@ describe("AppShell & RouteGuard (M3-UI-LEAD-004, M3-UI-LEAD-005)", () => {
 
     it("renders fallback notification link when NotificationSlot is not provided", () => {
       currentSession = makeSession("DOCTOR");
-      mockPathname = "/";
+      mockPathname = "/dashboard";
       const html = renderToStaticMarkup(<AppShell>Content</AppShell>);
       expect(html).toContain("href=\"/notifications\"");
       expect(html).toContain("Thông báo");
@@ -71,6 +71,28 @@ describe("AppShell & RouteGuard (M3-UI-LEAD-004, M3-UI-LEAD-005)", () => {
       expect(html).not.toContain("shell-sidebar");
       expect(html).not.toContain("topbar");
       expect(html).not.toContain("Health&amp;Human");
+    });
+
+    it("shows the public home directly to an authenticated user", () => {
+      currentSession = makeSession("STAFF");
+      mockPathname = "/";
+      const html = renderToStaticMarkup(<AppShell>Clinic Home</AppShell>);
+
+      expect(html).toContain("Clinic Home");
+      expect(html).not.toContain("shell-sidebar");
+      expect(html).not.toContain("topbar");
+    });
+
+    it("keeps the authenticated application shell focused on work routes", () => {
+      currentSession = makeSession("STAFF");
+      mockPathname = "/dashboard";
+      const html = renderToStaticMarkup(<AppShell>Dashboard</AppShell>);
+
+      expect(html).not.toContain("Trang chủ");
+      expect(html).toContain("Tổng quan");
+      expect(html).not.toContain("Trợ lý phòng khám");
+      expect(html).toContain("Nhân viên phòng khám");
+      expect(html.match(/Nhân viên phòng khám/g)).toHaveLength(1);
     });
   });
 

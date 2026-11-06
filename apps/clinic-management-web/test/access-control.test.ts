@@ -15,12 +15,13 @@ function session(role?: ClinicRole): Session {
 
 describe("route visibility", () => {
   it("does not expose protected navigation before a real session is injected", () => {
-    expect(visibleRoutes(session()).map((route) => route.href)).toEqual(["/"]);
+    expect(visibleRoutes(session()).map((route) => route.href)).toEqual([]);
   });
 
   it("shows doctor routes according to the trusted session role", () => {
     const doctorRoutes = visibleRoutes(session("DOCTOR")).map((route) => route.href);
     expect(doctorRoutes).toContain("/appointments");
+    expect(doctorRoutes).toContain("/dashboard");
     expect(doctorRoutes).toContain("/doctors");
     expect(doctorRoutes).toContain("/medical-records");
     expect(doctorRoutes).not.toContain("/users");
@@ -30,23 +31,27 @@ describe("route visibility", () => {
   it("keeps staff and admin navigation within their responsibilities", () => {
     const staffRoutes = visibleRoutes(session("STAFF")).map((route) => route.href);
     expect(staffRoutes).toContain("/appointments");
+    expect(staffRoutes).toContain("/dashboard");
     expect(staffRoutes).toContain("/doctors");
     expect(staffRoutes).not.toContain("/medical-records");
     expect(staffRoutes).not.toContain("/users");
     expect(staffRoutes).not.toContain("/health");
 
     const adminRoutes = visibleRoutes(session("ADMIN")).map((route) => route.href);
+    expect(adminRoutes).toContain("/dashboard");
     expect(adminRoutes).toContain("/users");
     expect(adminRoutes).toContain("/health");
   });
 
   it("does not expose clinic-management domain routes to patients", () => {
-    expect(visibleRoutes(session("PATIENT")).map((route) => route.href)).toEqual(["/"]);
+    expect(visibleRoutes(session("PATIENT")).map((route) => route.href)).toEqual([]);
   });
 
   it("resolves nested protected paths for the centralized route guard", () => {
     expect(routeForPath("/users/user-1")?.roles).toEqual(["ADMIN"]);
     expect(routeForPath("/profile")?.roles).toEqual(["DOCTOR", "STAFF", "ADMIN"]);
+    expect(routeForPath("/dashboard")?.roles).toEqual(["DOCTOR", "STAFF", "ADMIN"]);
+    expect(routeForPath("/")).toBeUndefined();
     expect(routeForPath("/auth")).toBeUndefined();
   });
 });

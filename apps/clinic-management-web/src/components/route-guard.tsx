@@ -9,7 +9,6 @@ import { useSession } from "../lib/session/session-context";
 import { LoadingState } from "./states";
 import { Badge, Button, Skeleton, SkeletonTable, SkeletonCard } from "./ui";
 import { PageHeader } from "./page-header";
-import { formatVietnamDate } from "../features/dashboard/today-schedule-summary";
 
 export const STATIC_HEALTH_SERVICES = [
   { key: "api-gateway", title: "API Gateway" },
@@ -22,56 +21,16 @@ export const STATIC_HEALTH_SERVICES = [
 
 export function RouteLoadingFallback({ pathname, route }: { pathname: string; route?: AppRoute }) {
   if (pathname === "/" || pathname === "") {
+    return <LoadingState message="Đang mở trang chủ..." />;
+  }
+
+  if (pathname === "/dashboard" || pathname.startsWith("/dashboard/")) {
     return (
-      <div className="page-stack" aria-busy="true" aria-label="Đang nạp bảng điều khiển">
-        <header
-          style={{
-            background: "var(--surface)",
-            border: "1px solid var(--line)",
-            borderRadius: "var(--radius-lg)",
-            padding: "20px 24px",
-            display: "flex",
-            justifyContent: "space-between",
-            alignItems: "center",
-            flexWrap: "wrap",
-            gap: 16,
-            boxShadow: "var(--shadow-sm)",
-          }}
-        >
-          <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-            <h1 style={{ fontSize: "1.375rem", fontWeight: 700, margin: 0, color: "var(--ink)", letterSpacing: "-0.01em" }}>
-              Xin chào
-            </h1>
-            <p style={{ margin: 0, color: "var(--muted)", fontSize: "0.875rem" }}>
-              {formatVietnamDate(new Date())} (Giờ Việt Nam UTC+7)
-            </p>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <Skeleton height={28} width={120} borderRadius="var(--radius-full)" />
-          </div>
-        </header>
-
-        {/* Quick Actions Bar Skeleton */}
-        <div style={{ display: "flex", gap: 10, flexWrap: "wrap", margin: "16px 0" }}>
-          <Skeleton height={38} width={130} borderRadius="var(--radius-md)" />
-          <Skeleton height={38} width={130} borderRadius="var(--radius-md)" />
-          <Skeleton height={38} width={130} borderRadius="var(--radius-md)" />
-        </div>
-
-        {/* Metric Cards Skeleton */}
-        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr))", gap: 16 }}>
-          <Skeleton height={96} borderRadius="var(--radius-lg)" />
-          <Skeleton height={96} borderRadius="var(--radius-lg)" />
-          <Skeleton height={96} borderRadius="var(--radius-lg)" />
-          <Skeleton height={96} borderRadius="var(--radius-lg)" />
-        </div>
-
-        {/* Schedule Table Skeleton */}
-        <div style={{ background: "var(--surface)", border: "1px solid var(--line)", borderRadius: "var(--radius-lg)", overflow: "hidden", marginTop: 20 }}>
-          <SkeletonTable
-            rows={5}
-            headers={["Giờ khám", "Bệnh nhân", "Bác sĩ", "Trạng thái", "Thao tác"]}
-          />
+      <div className="page-stack" aria-busy="true" aria-label="Đang tải bảng điều khiển">
+        <PageHeader pathname="/dashboard" />
+        <div style={{ display: "grid", gap: 16, marginTop: 16 }}>
+          <Skeleton height={112} borderRadius="var(--radius-lg)" />
+          <Skeleton height={240} borderRadius="var(--radius-lg)" />
         </div>
       </div>
     );
@@ -236,6 +195,9 @@ export function RouteLoadingFallback({ pathname, route }: { pathname: string; ro
           pathname="/notifications"
           actions={
             <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+              <Button variant="secondary" size="sm" disabled>
+                Đánh dấu tất cả đã đọc
+              </Button>
               <Button variant="ghost" size="sm" disabled>
                 Làm mới
               </Button>

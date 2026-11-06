@@ -4,6 +4,21 @@ export function isClinicManagementRole(role: string): role is Exclude<ClinicRole
   return role === "DOCTOR" || role === "STAFF" || role === "ADMIN";
 }
 
+export function clinicRoleLabel(role?: ClinicRole): string {
+  switch (role) {
+    case "DOCTOR": return "Bác sĩ";
+    case "ADMIN": return "Quản trị viên";
+    case "STAFF": return "Nhân viên phòng khám";
+    case "PATIENT": return "Bệnh nhân";
+    default: return "Nhân viên phòng khám";
+  }
+}
+
+export function sessionDisplayName(identity: SessionIdentity | null | undefined): string | undefined {
+  const name = identity?.displayName?.trim();
+  return name && name !== identity?.role ? name : undefined;
+}
+
 export type SessionStatus = "loading" | "authenticated" | "unauthenticated";
 
 export interface SessionIdentity {

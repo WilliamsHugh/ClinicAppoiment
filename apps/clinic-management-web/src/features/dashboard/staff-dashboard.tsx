@@ -192,7 +192,6 @@ export function StaffDashboard() {
     <div className={styles.container}>
       <TodayScheduleSummary
         session={session}
-        now={now}
         loading={isRefreshing || loading}
         onRefresh={() => void loadData(false)}
       />

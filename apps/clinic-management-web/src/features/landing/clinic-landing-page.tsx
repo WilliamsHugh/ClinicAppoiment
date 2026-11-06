@@ -25,6 +25,7 @@ import {
   Menu,
 } from "lucide-react";
 import { useSession } from "../../lib/session/session-context";
+import { clinicRoleLabel, sessionDisplayName } from "../../lib/session/session";
 import { Skeleton } from "../../components/ui";
 import styles from "./clinic-landing.module.css";
 
@@ -183,11 +184,7 @@ const FAQ_LIST: FaqItem[] = [
   },
 ];
 
-export interface ClinicLandingPageProps {
-  onSwitchToDashboard?: () => void;
-}
-
-export function ClinicLandingPage({ onSwitchToDashboard }: ClinicLandingPageProps) {
+export function ClinicLandingPage() {
   const session = useSession();
 
   // Search states
@@ -214,6 +211,7 @@ export function ClinicLandingPage({ onSwitchToDashboard }: ClinicLandingPageProp
   const isAuthenticated = session.status === "authenticated" && !!session.identity;
   const userRole = session.identity?.role;
   const isWorkforceRole = userRole === "DOCTOR" || userRole === "STAFF" || userRole === "ADMIN";
+  const userName = sessionDisplayName(session.identity) || session.identity?.email || "Tài khoản";
 
   // Dynamic scroll listener to track the active section
   useEffect(() => {
@@ -391,20 +389,12 @@ export function ClinicLandingPage({ onSwitchToDashboard }: ClinicLandingPageProp
             {isAuthenticated ? (
               <>
                 <div className={styles.userBadge}>
-                  <span>{session.identity?.displayName || "Tài khoản"}</span>
-                  <span className={styles.userRolePill}>{userRole}</span>
+                  <span>
+                    {userName} · {clinicRoleLabel(userRole)}
+                  </span>
                 </div>
-                {isWorkforceRole && onSwitchToDashboard && (
-                  <button
-                    type="button"
-                    className={styles.dashboardBtn}
-                    onClick={onSwitchToDashboard}
-                  >
-                    Vào Dashboard
-                  </button>
-                )}
-                {isWorkforceRole && !onSwitchToDashboard && (
-                  <Link href="/appointments" className={styles.dashboardBtn}>
+                {isWorkforceRole && (
+                  <Link href="/dashboard" className={styles.dashboardBtn}>
                     Vào Dashboard
                   </Link>
                 )}

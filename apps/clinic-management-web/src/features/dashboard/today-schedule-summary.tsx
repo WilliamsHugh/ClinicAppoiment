@@ -3,12 +3,15 @@
 import React from "react";
 import Link from "next/link";
 import { Button } from "../../components/ui";
+import { PageHeader } from "../../components/page-header";
 import type { Session } from "../../lib/session/session";
+import { formatVietnamDate } from "../../lib/formatting/date-time";
 import styles from "./dashboard.module.css";
+
+export { formatVietnamDate } from "../../lib/formatting/date-time";
 
 export interface TodayScheduleSummaryProps {
   session: Session;
-  now: Date;
   loading: boolean;
   onRefresh: () => void;
   children?: React.ReactNode;
@@ -28,16 +31,6 @@ export function formatVietnamTime(iso: string): string {
   }
 }
 
-export function formatVietnamDate(d: Date): string {
-  return new Intl.DateTimeFormat("vi-VN", {
-    timeZone: "Asia/Ho_Chi_Minh",
-    weekday: "long",
-    day: "numeric",
-    month: "numeric",
-    year: "numeric",
-  }).format(d);
-}
-
 export function formatPatientDisplay(patientName?: string | null, patientId?: string): string {
   if (patientName && patientName.trim()) {
     return patientName.trim();
@@ -52,36 +45,15 @@ export function formatPatientDisplay(patientName?: string | null, patientId?: st
 
 export function TodayScheduleSummary({
   session,
-  now,
   loading,
   onRefresh,
   children,
 }: TodayScheduleSummaryProps) {
   const role = session.identity?.role || "STAFF";
-  const roleLabel =
-    role === "DOCTOR"
-      ? "Bác sĩ"
-      : role === "ADMIN"
-      ? "Quản trị viên"
-      : "Nhân viên phòng khám";
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-      {/* Welcome Banner */}
-      <header className={styles.welcomeBanner}>
-        <div className={styles.welcomeText}>
-          <h1>Xin chào, {session.identity?.displayName || "Đồng nghiệp"}</h1>
-          <p>
-            {formatVietnamDate(now)} (Giờ Việt Nam UTC+7)
-          </p>
-        </div>
-        <div className={styles.welcomeMeta}>
-          <div className={styles.roleBadge}>
-            <span className={styles.roleDot} aria-hidden="true" />
-            <span>{roleLabel}</span>
-          </div>
-        </div>
-      </header>
+      <PageHeader pathname="/dashboard" />
 
       {/* Quick Actions Bar */}
       <nav aria-label="Thao tác nhanh" className={styles.quickActions}>
