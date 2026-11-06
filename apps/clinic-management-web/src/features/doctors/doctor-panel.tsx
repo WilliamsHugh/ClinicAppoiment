@@ -2,6 +2,7 @@
 
 import React, { useEffect, useMemo, useRef, useState, type FormEvent } from "react";
 import { ErrorState, Skeleton, SkeletonPage } from "../../components/states";
+import { Button, ConfirmModal } from "../../components/ui";
 import { createBrowserApiClient } from "../../lib/api/client";
 import { useSession } from "../../lib/session/session-context";
 import {
@@ -84,6 +85,14 @@ export function DoctorPanel() {
   const [offStart, setOffStart] = useState("");
   const [offEnd, setOffEnd] = useState("");
   const [offReason, setOffReason] = useState("");
+
+  // Confirmation modal state for deactivating specialty/doctor/schedule
+  const [pendingDeactivate, setPendingDeactivate] = useState<{
+    title: string;
+    description: string;
+    confirmLabel: string;
+    onConfirm: () => void;
+  } | null>(null);
 
   const role = session.identity?.role;
   const admin = role === "ADMIN";
@@ -259,13 +268,15 @@ export function DoctorPanel() {
       {error && (
         <div role="alert" className={styles.error}>
           <span>{error}</span>
-          <button
+          <Button
             type="button"
+            variant="secondary"
+            size="sm"
             disabled={loading || detailLoading || busy}
             onClick={() => setRevision((value) => value + 1)}
           >
             Tải lại dữ liệu
-          </button>
+          </Button>
         </div>
       )}
 
@@ -376,21 +387,44 @@ export function DoctorPanel() {
                   <span>
                     {item.name} {!item.isActive && "(ngừng hoạt động)"}
                   </span>
-                  <button type="button" disabled={busy} onClick={() => editSpecialty(item)}>
-                    Sửa
-                  </button>
-                  <button
+                  <Button
                     type="button"
+                    variant="secondary"
+                    size="sm"
                     disabled={busy}
-                    onClick={() =>
-                      void mutate(
-                        () => api.updateSpecialty(item.id, { isActive: !item.isActive }),
-                        "Đã cập nhật chuyên khoa."
-                      )
-                    }
+                    onClick={() => editSpecialty(item)}
+                  >
+                    Sửa
+                  </Button>
+                  <Button
+                    type="button"
+                    variant={item.isActive ? "danger" : "primary"}
+                    size="sm"
+                    disabled={busy}
+                    onClick={() => {
+                      if (item.isActive) {
+                        setPendingDeactivate({
+                          title: "Xác nhận ngừng chuyên khoa",
+                          description: `Bạn có chắc chắn muốn ngừng hoạt động chuyên khoa "${item.name}"?`,
+                          confirmLabel: "Ngừng chuyên khoa",
+                          onConfirm: () => {
+                            setPendingDeactivate(null);
+                            void mutate(
+                              () => api.updateSpecialty(item.id, { isActive: false }),
+                              "Đã cập nhật chuyên khoa."
+                            );
+                          },
+                        });
+                      } else {
+                        void mutate(
+                          () => api.updateSpecialty(item.id, { isActive: true }),
+                          "Đã cập nhật chuyên khoa."
+                        );
+                      }
+                    }}
                   >
                     {item.isActive ? "Ngừng" : "Kích hoạt"}
-                  </button>
+                  </Button>
                 </div>
               ))
             )}
@@ -436,12 +470,13 @@ export function DoctorPanel() {
               />
             </label>
             <div className={styles.row}>
-              <button disabled={busy} type="submit">
+              <Button disabled={busy} type="submit" variant="primary">
                 {editingSpecialtyId ? "Lưu chuyên khoa" : "Thêm chuyên khoa"}
-              </button>
+              </Button>
               {editingSpecialtyId && (
-                <button
+                <Button
                   type="button"
+                  variant="secondary"
                   disabled={busy}
                   onClick={() => {
                     setEditingSpecialtyId(null);
@@ -450,7 +485,7 @@ export function DoctorPanel() {
                   }}
                 >
                   Hủy sửa
-                </button>
+                </Button>
               )}
             </div>
           </form>
@@ -462,8 +497,9 @@ export function DoctorPanel() {
         <section className={styles.card} aria-label="Quản lý hồ sơ bác sĩ">
           <h2>Quản lý hồ sơ bác sĩ</h2>
           {selected && (
-            <button
+            <Button
               type="button"
+              variant="secondary"
               disabled={busy}
               onClick={() => {
                 setEditingDoctor(true);
@@ -474,7 +510,7 @@ export function DoctorPanel() {
               }}
             >
               Sửa bác sĩ đang chọn
-            </button>
+            </Button>
           )}
           <form
             className={styles.form}
@@ -561,12 +597,13 @@ export function DoctorPanel() {
               />
             </label>
             <div className={styles.row}>
-              <button disabled={busy} type="submit">
+              <Button disabled={busy} type="submit" variant="primary">
                 {editingDoctor ? "Lưu bác sĩ" : "Thêm bác sĩ"}
-              </button>
+              </Button>
               {editingDoctor && (
-                <button
+                <Button
                   type="button"
+                  variant="secondary"
                   disabled={busy}
                   onClick={() => {
                     setEditingDoctor(false);
@@ -577,22 +614,37 @@ export function DoctorPanel() {
                   }}
                 >
                   Hủy sửa
-                </button>
+                </Button>
               )}
               {editingDoctor && selected && (
-                <button
+                <Button
                   type="button"
+                  variant={selected.isActive ? "danger" : "primary"}
                   disabled={busy}
-                  onClick={() =>
-                    void mutate(
-                      () =>
-                        api.updateDoctor(selected.id, { isActive: !selected.isActive }),
-                      "Đã cập nhật trạng thái bác sĩ."
-                    )
-                  }
+                  onClick={() => {
+                    if (selected.isActive) {
+                      setPendingDeactivate({
+                        title: "Xác nhận ngừng hoạt động bác sĩ",
+                        description: `Bạn có chắc chắn muốn ngừng hoạt động hồ sơ của ${selected.displayName}?`,
+                        confirmLabel: "Ngừng hoạt động",
+                        onConfirm: () => {
+                          setPendingDeactivate(null);
+                          void mutate(
+                            () => api.updateDoctor(selected.id, { isActive: false }),
+                            "Đã cập nhật trạng thái bác sĩ."
+                          );
+                        },
+                      });
+                    } else {
+                      void mutate(
+                        () => api.updateDoctor(selected.id, { isActive: true }),
+                        "Đã cập nhật trạng thái bác sĩ."
+                      );
+                    }
+                  }}
                 >
                   {selected.isActive ? "Ngừng hoạt động" : "Kích hoạt"}
-                </button>
+                </Button>
               )}
             </div>
           </form>
@@ -617,12 +669,27 @@ export function DoctorPanel() {
           onEndTimeChange={setEndTime}
           onDurationChange={setDuration}
           onEditSchedule={editSchedule}
-          onToggleSchedule={(item) =>
-            void mutate(
-              () => api.updateSchedule(item.id, { isActive: !item.isActive }),
-              "Đã cập nhật lịch làm việc."
-            )
-          }
+          onToggleSchedule={(item) => {
+            if (item.isActive) {
+              setPendingDeactivate({
+                title: "Xác nhận ngừng lịch làm việc",
+                description: `Bạn có chắc chắn muốn ngừng lịch làm việc ${weekdays[item.weekday]} (${item.startTime}–${item.endTime})?`,
+                confirmLabel: "Ngừng lịch",
+                onConfirm: () => {
+                  setPendingDeactivate(null);
+                  void mutate(
+                    () => api.updateSchedule(item.id, { isActive: false }),
+                    "Đã cập nhật lịch làm việc."
+                  );
+                },
+              });
+            } else {
+              void mutate(
+                () => api.updateSchedule(item.id, { isActive: true }),
+                "Đã cập nhật lịch làm việc."
+              );
+            }
+          }}
           onSubmitSchedule={(event) => {
             event.preventDefault();
             void mutate(
@@ -686,6 +753,18 @@ export function DoctorPanel() {
           onRetryTimeOff={() => setRevision((value) => value + 1)}
         />
       )}
+
+      <ConfirmModal
+        isOpen={Boolean(pendingDeactivate)}
+        onCancel={() => setPendingDeactivate(null)}
+        onConfirm={() => pendingDeactivate?.onConfirm()}
+        title={pendingDeactivate?.title ?? "Xác nhận"}
+        description={pendingDeactivate?.description ?? ""}
+        confirmLabel={pendingDeactivate?.confirmLabel ?? "Xác nhận"}
+        cancelLabel="Quay lại"
+        variant="danger"
+        loading={busy}
+      />
     </div>
   );
 }

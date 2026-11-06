@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { X } from "lucide-react";
 import type { AppointmentStatus } from "@clinic/shared-types";
+import { getVietnamTodayISO } from "../../lib/formatting/date-time";
 import { useSession } from "../../lib/session/session-context";
 import { createBrowserApiClient, ApiClientError, toUserFriendlyError } from "../../lib/api/client";
 import {
@@ -24,10 +25,11 @@ import styles from "./appointments-panel.module.css";
 interface ConfirmDialogState {
   isOpen: boolean;
   appointment: Appointment | null;
-  action: "cancel" | "no-show" | null;
+  action: "confirm" | "check-in" | "cancel" | "no-show" | null;
   title: string;
   description: string;
   confirmLabel: string;
+  variant: "primary" | "danger";
 }
 
 export function AppointmentsPanel() {
@@ -37,7 +39,7 @@ export function AppointmentsPanel() {
   const isAuthorized = role === "DOCTOR" || role === "STAFF" || role === "ADMIN";
 
   // Filter states
-  const todayStr = useMemo(() => new Date().toISOString().split("T")[0], []);
+  const todayStr = useMemo(() => getVietnamTodayISO(), []);
   const [selectedDate, setSelectedDate] = useState<string>(todayStr);
   const [selectedStatus, setSelectedStatus] = useState<AppointmentStatus | "ALL">("ALL");
   const [searchQuery, setSearchQuery] = useState<string>("");
@@ -70,6 +72,7 @@ export function AppointmentsPanel() {
     title: "",
     description: "",
     confirmLabel: "",
+    variant: "danger",
   });
 
   const api = useMemo(() => appointmentApi(createBrowserApiClient(session)), [session]);
@@ -224,8 +227,12 @@ export function AppointmentsPanel() {
   }, [appointments, searchQuery, patientsMap, doctorsMap]);
 
   // Handlers for status transitions
-  const handleConfirm = async (appointment: Appointment) => {
+  const handleExecuteConfirm = async () => {
+    const appointment = confirmDialog.appointment;
+    if (!appointment) return;
+
     setActionLoadingId(appointment.id);
+    setConfirmDialog((prev) => ({ ...prev, isOpen: false }));
     setRowConflicts((prev) => {
       const copy = { ...prev };
       delete copy[appointment.id];
@@ -253,8 +260,12 @@ export function AppointmentsPanel() {
     }
   };
 
-  const handleCheckIn = async (appointment: Appointment) => {
+  const handleExecuteCheckIn = async () => {
+    const appointment = confirmDialog.appointment;
+    if (!appointment) return;
+
     setActionLoadingId(appointment.id);
+    setConfirmDialog((prev) => ({ ...prev, isOpen: false }));
     setRowConflicts((prev) => {
       const copy = { ...prev };
       delete copy[appointment.id];
@@ -280,6 +291,32 @@ export function AppointmentsPanel() {
     } finally {
       setActionLoadingId(null);
     }
+  };
+
+  const handleConfirm = (appointment: Appointment) => {
+    const pName = patientsMap[appointment.patientId] || `Bệnh nhân #${appointment.patientId.slice(-4).toUpperCase()}`;
+    setConfirmDialog({
+      isOpen: true,
+      appointment,
+      action: "confirm",
+      title: "Xác nhận lịch hẹn",
+      description: `Bạn có chắc chắn muốn xác nhận lịch hẹn khám cho ${pName}?`,
+      confirmLabel: "Xác nhận lịch hẹn",
+      variant: "primary",
+    });
+  };
+
+  const handleCheckIn = (appointment: Appointment) => {
+    const pName = patientsMap[appointment.patientId] || `Bệnh nhân #${appointment.patientId.slice(-4).toUpperCase()}`;
+    setConfirmDialog({
+      isOpen: true,
+      appointment,
+      action: "check-in",
+      title: "Xác nhận tiếp đón (Check-in)",
+      description: `Ghi nhận ${pName} đã có mặt tại phòng khám và chuyển vào hàng đợi chờ bác sĩ khám?`,
+      confirmLabel: "Xác nhận Check-in",
+      variant: "primary",
+    });
   };
 
   const handleExecuteCancel = async () => {
@@ -357,6 +394,7 @@ export function AppointmentsPanel() {
       title: "Xác nhận hủy lịch hẹn",
       description: `Bạn có chắc chắn muốn hủy lịch hẹn của ${pName}? Thao tác này sẽ cập nhật trạng thái sang "Đã hủy" và không thể hoàn tác.`,
       confirmLabel: "Hủy lịch hẹn",
+      variant: "danger",
     });
   };
 
@@ -369,6 +407,7 @@ export function AppointmentsPanel() {
       title: "Xác nhận bệnh nhân không đến",
       description: `Đánh dấu ${pName} không đến phòng khám theo giờ hẹn đã đăng ký?`,
       confirmLabel: "Xác nhận vắng mặt",
+      variant: "danger",
     });
   };
 
@@ -518,18 +557,24 @@ export function AppointmentsPanel() {
         </div>
       )}
 
-      {/* Destructive Action Confirmation Modal */}
+      {/* Action Confirmation Modal */}
       <ConfirmModal
         isOpen={confirmDialog.isOpen}
         onCancel={() => setConfirmDialog((prev) => ({ ...prev, isOpen: false }))}
         onConfirm={
-          confirmDialog.action === "cancel" ? handleExecuteCancel : handleExecuteNoShow
+          confirmDialog.action === "confirm"
+            ? handleExecuteConfirm
+            : confirmDialog.action === "check-in"
+            ? handleExecuteCheckIn
+            : confirmDialog.action === "cancel"
+            ? handleExecuteCancel
+            : handleExecuteNoShow
         }
         title={confirmDialog.title}
         description={confirmDialog.description}
         confirmLabel={confirmDialog.confirmLabel}
         cancelLabel="Quay lại"
-        variant="danger"
+        variant={confirmDialog.variant}
         isLoading={actionLoadingId !== null}
       />
 

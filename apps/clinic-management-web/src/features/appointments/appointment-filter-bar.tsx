@@ -1,6 +1,7 @@
 import React from "react";
 import { Calendar } from "lucide-react";
 import type { AppointmentStatus } from "@clinic/shared-types";
+import { getVietnamTodayISO } from "../../lib/formatting/date-time";
 import styles from "./appointments-panel.module.css";
 import { Button } from "../../components/ui";
 
@@ -37,7 +38,7 @@ export function AppointmentFilterBar({
   onReset,
   loading = false,
 }: AppointmentFilterBarProps) {
-  const today = new Date().toISOString().split("T")[0];
+  const today = getVietnamTodayISO();
   const isFiltered = status !== "ALL" || search.trim().length > 0 || date !== today;
 
   return (
@@ -76,7 +77,7 @@ export function AppointmentFilterBar({
             type="search"
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
-            placeholder="Tìm theo tên bệnh nhân, bác sĩ, lý do..."
+            placeholder="Tìm theo tên bệnh nhân, bác sĩ, lý do (trong trang hiện tại)..."
             className={styles.searchInput}
             aria-label="Tìm kiếm lịch hẹn"
           />

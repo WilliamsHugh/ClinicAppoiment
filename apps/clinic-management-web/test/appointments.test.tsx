@@ -314,6 +314,17 @@ describe("AppointmentsPanel (M3-WEB-010)", () => {
       confirmBtn?.click();
     });
 
+    // ConfirmModal opens first
+    expect(host.textContent).toContain("Xác nhận lịch hẹn");
+    const modalConfirmBtn = Array.from(host.querySelectorAll("button")).find(
+      (b) => b.textContent?.trim() === "Xác nhận lịch hẹn"
+    );
+    expect(modalConfirmBtn).toBeTruthy();
+
+    await act(async () => {
+      modalConfirmBtn?.click();
+    });
+
     // Conflict alert should appear inline
     expect(host.textContent).toContain("Xung đột trạng thái lịch hẹn (409)");
     expect(host.textContent).toContain("Xung đột trạng thái:");

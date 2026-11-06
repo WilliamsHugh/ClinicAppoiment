@@ -1,5 +1,6 @@
 import React, { type FormEvent } from "react";
 import { EmptyState, SkeletonCard } from "../../components/states";
+import { Button } from "../../components/ui";
 import { Pagination } from "../../components/pagination";
 import type { Doctor, Page, Specialty } from "./doctor-api";
 import { SpecialtyFilter } from "./specialty-filter";
@@ -53,7 +54,9 @@ export function DoctorList({
           value={specialtyFilter}
           onChange={onSpecialtyFilterChange}
         />
-        <button type="submit">Tìm kiếm</button>
+        <Button type="submit" variant="primary">
+          Tìm kiếm
+        </Button>
       </form>
 
       {loading ? (

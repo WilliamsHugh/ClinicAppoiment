@@ -1,4 +1,5 @@
 import React, { type FormEvent } from "react";
+import { Button } from "../../components/ui";
 import type { Schedule, TimeOff } from "./doctor-api";
 import styles from "./doctors-panel.module.css";
 
@@ -89,20 +90,24 @@ export function SchedulePanel({
                 {weekdays[item.weekday]} · {item.startTime}–{item.endTime} · {item.slotDurationMinutes} phút{" "}
                 {item.isActive ? "" : "(ngừng)"}
               </span>
-              <button
+              <Button
                 type="button"
+                variant="secondary"
+                size="sm"
                 disabled={busy}
                 onClick={() => onEditSchedule(item)}
               >
                 Sửa
-              </button>
-              <button
+              </Button>
+              <Button
                 type="button"
+                variant={item.isActive ? "danger" : "primary"}
+                size="sm"
                 disabled={busy}
                 onClick={() => onToggleSchedule(item)}
               >
                 {item.isActive ? "Ngừng" : "Kích hoạt"}
-              </button>
+              </Button>
             </div>
           ))}
         </div>
@@ -149,17 +154,18 @@ export function SchedulePanel({
               onChange={(event) => onDurationChange(Number(event.target.value))}
             />
           </label>
-          <button type="submit" disabled={busy}>
+          <Button type="submit" variant="primary" disabled={busy}>
             Lưu lịch
-          </button>
+          </Button>
           {scheduleId && (
-            <button
+            <Button
               type="button"
+              variant="secondary"
               disabled={busy}
               onClick={onResetScheduleForm}
             >
               Thêm mới
-            </button>
+            </Button>
           )}
         </form>
       </section>
@@ -170,13 +176,15 @@ export function SchedulePanel({
         {timeOffError && (
           <p role="alert" className={styles.error}>
             {timeOffError}{" "}
-            <button
+            <Button
               type="button"
+              variant="secondary"
+              size="sm"
               disabled={busy || detailLoading}
               onClick={onRetryTimeOff}
             >
               Tải lại thời gian nghỉ
-            </button>
+            </Button>
           </p>
         )}
         <div className={styles.list}>
@@ -186,13 +194,15 @@ export function SchedulePanel({
                 {displayTime(item.startAt)} – {displayTime(item.endAt)}{" "}
                 {item.reason && `· ${item.reason}`}
               </span>
-              <button
+              <Button
                 type="button"
+                variant="secondary"
+                size="sm"
                 disabled={busy}
                 onClick={() => onEditTimeOff(item)}
               >
                 Sửa
-              </button>
+              </Button>
             </div>
           ))}
         </div>
@@ -222,17 +232,18 @@ export function SchedulePanel({
               onChange={(event) => onOffReasonChange(event.target.value)}
             />
           </label>
-          <button type="submit" disabled={busy}>
+          <Button type="submit" variant="primary" disabled={busy}>
             Lưu thời gian nghỉ
-          </button>
+          </Button>
           {timeOffId && (
-            <button
+            <Button
               type="button"
+              variant="secondary"
               disabled={busy}
               onClick={onResetTimeOffForm}
             >
               Thêm mới
-            </button>
+            </Button>
           )}
         </form>
       </section>
