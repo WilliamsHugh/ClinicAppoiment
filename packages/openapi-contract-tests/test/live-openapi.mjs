@@ -23,9 +23,11 @@ for (const [name, envName, port] of services) {
     assert.match(validated.openapi, /^3\.0\./);
   });
 
-  test(`${name} serves the Swagger UI at /docs`, async () => {
-    const response = await fetch(`${baseUrl}/docs/`, { signal: AbortSignal.timeout(5_000) });
-    assert.equal(response.status, 200, `${name} returned HTTP ${response.status}`);
-    assert.match(response.headers.get("content-type") ?? "", /text\/html/i);
-  });
+  for (const path of ["/docs/", "/api-docs/"]) {
+    test(`${name} serves the Swagger UI at ${path}`, async () => {
+      const response = await fetch(`${baseUrl}${path}`, { signal: AbortSignal.timeout(5_000) });
+      assert.equal(response.status, 200, `${name} returned HTTP ${response.status}`);
+      assert.match(response.headers.get("content-type") ?? "", /text\/html/i);
+    });
+  }
 }

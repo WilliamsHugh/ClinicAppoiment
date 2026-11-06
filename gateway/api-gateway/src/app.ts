@@ -164,6 +164,7 @@ export function createGatewayApp(options: CreateGatewayAppOptions) {
   app.get("/health", (_req, res) => res.json({ success: true, data: { service: "api-gateway", status: "ok" } }));
   app.get("/openapi.json", (_req, res) => res.json(gatewayOpenApiDocument));
   app.use("/docs", swaggerUi.serve, swaggerUi.setup(gatewayOpenApiDocument));
+  app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(gatewayOpenApiDocument));
   app.get("/api/v1/system/health", authenticate, requireRoles("ADMIN"), async (req: GatewayRequest, res) => {
     const entries = await Promise.all(serviceNames.map(async (service) => [service, await checkHealth(service, config.serviceTargets[service])] as const));
     const services = Object.fromEntries(entries) as Record<ServiceName, HealthState>;

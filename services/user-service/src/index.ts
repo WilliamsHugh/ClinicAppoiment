@@ -85,6 +85,7 @@ app.use((req, _res, next) => {
 });
 app.get("/openapi.json", (_req, res) => res.json(swaggerDocument));
 app.use("/docs", swaggerUi.serve, swaggerUi.setup(swaggerDocument));
+app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 app.use("/api/v1/auth", createAuthRouter(authProvider, repository));
 app.get("/internal/v1/auth/verify", requireInternalCaller(["gateway"], internalCredentials),
   createInternalVerifyHandler(authProvider, repository));

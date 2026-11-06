@@ -108,6 +108,7 @@ export function createDoctorApp(repository: DoctorRepository, users: UserDirecto
   app.use(express.json());
   app.get("/openapi.json", (_req, res) => res.json(doctorOpenApi));
   app.use("/docs", swaggerUi.serve, swaggerUi.setup(doctorOpenApi));
+  app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(doctorOpenApi));
 
   async function canManage(req: Request, doctorId: string) {
     const user = actor(req);

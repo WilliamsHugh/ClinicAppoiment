@@ -69,6 +69,7 @@ app.use((req, _res, next) => {
 });
 app.get("/openapi.json", (_req, res) => res.json(appointmentOpenApi));
 app.use("/docs", swaggerUi.serve, swaggerUi.setup(appointmentOpenApi));
+app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(appointmentOpenApi));
 
 function success<T>(data: T) {
   return { success: true, data };

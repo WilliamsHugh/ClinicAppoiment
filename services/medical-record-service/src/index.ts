@@ -132,6 +132,7 @@ app.get("/health", async (_req, res) => {
 });
 app.get("/openapi.json", (_req, res) => res.json(openapi));
 app.use("/docs", swaggerUi.serve, swaggerUi.setup(openapi));
+app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(openapi));
 
 app.get("/api/v1/medical-records", async (req, res) => {
   const who = actor(req);

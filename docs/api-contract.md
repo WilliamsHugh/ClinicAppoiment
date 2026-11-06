@@ -511,7 +511,7 @@ The first command validates all six checked-in OpenAPI documents, route coverage
 path parameters and authentication declarations. The live check makes read-only
 requests to each service's `/openapi.json` and `/docs/`; all six services must be
 running from the worktree being verified, so a stale process is reported as a contract
-failure. Override the local base URLs with `OPENAPI_GATEWAY_URL`,
+failure. Swagger UI is available at both `/docs/` and `/api-docs/`. Override the local base URLs with `OPENAPI_GATEWAY_URL`,
 `OPENAPI_USER_SERVICE_URL`, `OPENAPI_DOCTOR_SERVICE_URL`,
 `OPENAPI_APPOINTMENT_SERVICE_URL`, `OPENAPI_MEDICAL_RECORD_SERVICE_URL` and
 `OPENAPI_NOTIFICATION_SERVICE_URL` when needed.
