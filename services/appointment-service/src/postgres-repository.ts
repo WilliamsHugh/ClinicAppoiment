@@ -96,7 +96,7 @@ export function createAppointmentPool(connectionString = process.env.DATABASE_UR
       ? { rejectUnauthorized, ...(databaseCaPath ? { ca: readFileSync(databaseCaPath, "utf8") } : {}) }
       : undefined,
     max: 10,
-    connectionTimeoutMillis: 3000
+    connectionTimeoutMillis: 10000
   });
 }
 

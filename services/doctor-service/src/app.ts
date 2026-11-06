@@ -102,6 +102,7 @@ export function createDoctorApp(repository: DoctorRepository, users: UserDirecto
     const supplied = req.header("X-Request-Id");
     const requestId = supplied && /^[a-zA-Z0-9-]{1,80}$/.test(supplied) ? supplied : randomUUID();
     res.setHeader("X-Request-Id", requestId);
+    console.log(`${req.method} ${req.originalUrl}`);
     next();
   });
   app.use(express.json());
@@ -164,7 +165,8 @@ export function createDoctorApp(repository: DoctorRepository, users: UserDirecto
     try {
       await repository.health();
       ok(res, { service: "doctor-service", status: "ok" });
-    } catch {
+    } catch (e) {
+      console.error("Doctor Service health check failed:", e);
       fail(res, 503, "DATABASE_UNAVAILABLE", "Database is unavailable");
     }
   }));
