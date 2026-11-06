@@ -13,8 +13,9 @@ function getServiceStatusBadge(rawStatus?: string) {
   if (s === "ok" || s === "up" || s === "healthy") {
     return (
       <Badge variant="success">
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-          <CheckCircle2 size={13} aria-hidden="true" /> Hoạt động bình thường
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <CheckCircle2 size={13} style={{ flexShrink: 0 }} aria-hidden="true" />
+          <span>Hoạt động bình thường</span>
         </span>
       </Badge>
     );
@@ -22,8 +23,9 @@ function getServiceStatusBadge(rawStatus?: string) {
   if (s === "degraded" || s === "warning") {
     return (
       <Badge variant="warning">
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-          <AlertTriangle size={13} aria-hidden="true" /> Cảnh báo suy giảm
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <AlertTriangle size={13} style={{ flexShrink: 0 }} aria-hidden="true" />
+          <span>Cảnh báo suy giảm</span>
         </span>
       </Badge>
     );
@@ -31,8 +33,9 @@ function getServiceStatusBadge(rawStatus?: string) {
   if (s === "down" || s === "unhealthy" || s === "error") {
     return (
       <Badge variant="danger">
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
-          <XCircle size={13} aria-hidden="true" /> Mất kết nối
+        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+          <XCircle size={13} style={{ flexShrink: 0 }} aria-hidden="true" />
+          <span>Mất kết nối</span>
         </span>
       </Badge>
     );
@@ -98,7 +101,7 @@ export function HealthPanel() {
         <div className="panel-heading">
           <div>
             <p className="eyebrow">API Gateway &amp; Microservices</p>
-            <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 4 }}>
+            <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 10, marginTop: 4 }}>
               <h2 style={{ margin: 0 }}>Hạ tầng hệ thống</h2>
               <Skeleton height={24} width={140} borderRadius="var(--radius-full)" />
             </div>
@@ -113,11 +116,11 @@ export function HealthPanel() {
 
         <div className="health-grid">
           {STATIC_PANEL_SERVICES.map((svc) => (
-            <article key={svc.key} className="health-service" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <article key={svc.key} className="health-service">
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                <h3 style={{ margin: 0, textTransform: "capitalize" }}>{svc.title}</h3>
+                <h3 style={{ margin: 0 }}>{svc.title}</h3>
               </div>
-              <div>
+              <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap" }}>
                 <Skeleton height={24} width={140} borderRadius="var(--radius-full)" />
               </div>
             </article>
@@ -161,7 +164,7 @@ export function HealthPanel() {
       <div className="panel-heading">
         <div>
           <p className="eyebrow">API Gateway &amp; Microservices</p>
-          <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 4 }}>
+          <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 10, marginTop: 4 }}>
             <h2 style={{ margin: 0 }}>Hạ tầng hệ thống</h2>
             {error ? (
               <Badge variant="warning" size="md">
@@ -206,11 +209,11 @@ export function HealthPanel() {
             : undefined;
 
           return (
-            <article key={svc.key} className="health-service" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            <article key={svc.key} className="health-service">
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                <h3 style={{ margin: 0, textTransform: "capitalize" }}>{svc.title}</h3>
+                <h3 style={{ margin: 0 }}>{svc.title}</h3>
               </div>
-              <div>
+              <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap" }}>
                 {statusStr ? (
                   getServiceStatusBadge(statusStr)
                 ) : (

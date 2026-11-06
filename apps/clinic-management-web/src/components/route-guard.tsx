@@ -254,11 +254,11 @@ export function RouteLoadingFallback({ pathname, route }: { pathname: string; ro
       <div className="page-stack" aria-busy="true" aria-label="Đang nạp thông tin hạ tầng hệ thống">
         <PageHeader pathname="/health" />
 
-        <section className="health-panel" style={{ display: "flex", flexDirection: "column", gap: 20, marginTop: 16 }}>
+        <section className="health-panel" style={{ display: "flex", flexDirection: "column", gap: 20 }}>
           <div className="panel-heading">
             <div>
               <p className="eyebrow">API Gateway &amp; Microservices</p>
-              <div style={{ display: "flex", alignItems: "center", gap: 10, marginTop: 4 }}>
+              <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 10, marginTop: 4 }}>
                 <h2 style={{ margin: 0 }}>Hạ tầng hệ thống</h2>
                 <Skeleton height={24} width={140} borderRadius="var(--radius-full)" />
               </div>
@@ -271,11 +271,11 @@ export function RouteLoadingFallback({ pathname, route }: { pathname: string; ro
 
           <div className="health-grid">
             {STATIC_HEALTH_SERVICES.map((svc) => (
-              <article key={svc.key} className="health-service" style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              <article key={svc.key} className="health-service">
                 <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                  <h3 style={{ margin: 0, textTransform: "capitalize" }}>{svc.title}</h3>
+                  <h3 style={{ margin: 0 }}>{svc.title}</h3>
                 </div>
-                <div>
+                <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap" }}>
                   <Skeleton height={24} width={140} borderRadius="var(--radius-full)" />
                 </div>
               </article>
