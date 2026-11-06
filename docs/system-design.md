@@ -581,7 +581,7 @@ Khi cần dữ liệu chi tiết, service phải gọi API của service sở h�
 - Frontend gọi các endpoint `/api/v1/auth/*` qua API Gateway; Gateway proxy tới User Service và chỉ User Service giao tiếp với Supabase Auth.
 - Frontend nhận access token từ API Gateway và không nhận URL/key Supabase.
 - Frontend gửi request đến API Gateway với `Authorization: Bearer <token>`.
-- API Gateway gọi endpoint nội bộ của User Service để xác minh token và lấy profile/role đáng tin cậy.
+- API Gateway gọi endpoint nội bộ của User Service để xác minh token và lấy profile/role đáng tin cậy. Gateway có cache RAM giới hạn cho identity `ACTIVE` đã xác minh: mặc định 5 phút, không vượt JWT `exp`, tối đa 5.000 identity và xóa token sau logout thành công. Cache miss/hết hạn vẫn xác minh qua User Service; cache theo tiến trình nên bị xóa khi Gateway khởi động lại. Thay đổi role/trạng thái ngoài Gateway có thể trễ tối đa TTL.
 - User Service xác minh token bằng Supabase Auth; có thể tối ưu bằng JWKS nội bộ ở giai đoạn sau mà không đưa Supabase credential sang Gateway.
 
 ### Phân quyền

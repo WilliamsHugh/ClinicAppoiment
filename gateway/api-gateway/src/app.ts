@@ -31,7 +31,13 @@ function defaultHealthChecker(timeoutMs: number): HealthChecker {
   };
 }
 
-function proxyTo(target: string, upstreamPrefix: string, timeoutMs: number, corsOrigins: string[]) {
+function proxyTo(
+  target: string,
+  upstreamPrefix: string,
+  timeoutMs: number,
+  corsOrigins: string[],
+  onSuccess?: (request: GatewayRequest) => void,
+) {
   return createProxyMiddleware({
     target,
     changeOrigin: true,
@@ -66,7 +72,10 @@ function proxyTo(target: string, upstreamPrefix: string, timeoutMs: number, cors
         }
         rawResponse.setHeader("Access-Control-Expose-Headers", "X-Request-Id");
         rawResponse.setHeader("X-Request-Id", req.requestId ?? "unknown");
-        if ((proxyResponse.statusCode ?? 200) < 400) return responseBuffer;
+        if ((proxyResponse.statusCode ?? 200) < 400) {
+          onSuccess?.(req);
+          return responseBuffer;
+        }
 
         try {
           const body = JSON.parse(responseBuffer.toString("utf8")) as {
@@ -178,7 +187,17 @@ export function createGatewayApp(options: CreateGatewayAppOptions) {
     (req, res, next) => req.method === "POST" && publicAuthPaths.has(req.path)
       ? next()
       : authenticate(req as GatewayRequest, res, next),
-    proxyTo(config.serviceTargets.users, "/api/v1/auth", config.proxyTimeoutMs, config.corsOrigins)
+      proxyTo(
+        config.serviceTargets.users,
+        "/api/v1/auth",
+        config.proxyTimeoutMs,
+        config.corsOrigins,
+        (req) => {
+          if (req.method !== "POST" || req.originalUrl.split("?", 1)[0] !== "/api/v1/auth/logout") return;
+          const token = req.header("authorization")?.match(/^Bearer\s+(.+)$/i)?.[1];
+          if (token) authenticate.invalidateToken(token);
+        },
+      )
   );
   for (const route of routeGroups) {
     app.use(

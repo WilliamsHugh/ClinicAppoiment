@@ -11,6 +11,8 @@ export type GatewayConfig = {
   rateLimitWindowMs: number;
   rateLimitMax: number;
   authTimeoutMs: number;
+  identityCacheTtlMs: number;
+  identityCacheMaxEntries: number;
   userGatewayInternalApiToken?: string;
   healthTimeoutMs: number;
   proxyTimeoutMs: number;
@@ -25,7 +27,9 @@ const envSchema = z.object({
   CORS_ORIGINS: z.string().optional(),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(120),
-  AUTH_TIMEOUT_MS: z.coerce.number().int().positive().default(3_000),
+  AUTH_TIMEOUT_MS: z.coerce.number().int().positive().default(8_000),
+  AUTH_IDENTITY_CACHE_TTL_MS: z.coerce.number().int().positive().default(300_000),
+  AUTH_IDENTITY_CACHE_MAX_ENTRIES: z.coerce.number().int().positive().default(5_000),
   USER_GATEWAY_INTERNAL_API_TOKEN: z.string().refine(
     (value) => Buffer.byteLength(value, "utf8") >= 32,
     "USER_GATEWAY_INTERNAL_API_TOKEN must contain at least 32 bytes"
@@ -55,6 +59,8 @@ export function loadGatewayConfig(environment: NodeJS.ProcessEnv = process.env):
     rateLimitWindowMs: env.RATE_LIMIT_WINDOW_MS,
     rateLimitMax: env.RATE_LIMIT_MAX,
     authTimeoutMs: env.AUTH_TIMEOUT_MS,
+    identityCacheTtlMs: env.AUTH_IDENTITY_CACHE_TTL_MS,
+    identityCacheMaxEntries: env.AUTH_IDENTITY_CACHE_MAX_ENTRIES,
     userGatewayInternalApiToken: env.USER_GATEWAY_INTERNAL_API_TOKEN,
     healthTimeoutMs: env.HEALTH_CHECK_TIMEOUT_MS,
     proxyTimeoutMs: env.PROXY_TIMEOUT_MS,

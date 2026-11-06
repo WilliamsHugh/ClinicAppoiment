@@ -39,6 +39,8 @@ function configFor(target: string, overrides: Partial<GatewayConfig> = {}): Gate
     rateLimitWindowMs: 60_000,
     rateLimitMax: 1_000,
     authTimeoutMs: 50,
+    identityCacheTtlMs: 300_000,
+    identityCacheMaxEntries: 5_000,
     userGatewayInternalApiToken: "gateway-test-credential-at-least-32-bytes",
     healthTimeoutMs: 50,
     proxyTimeoutMs: 50,
@@ -128,6 +130,39 @@ describe("Gateway authentication dependency handling", () => {
 
     expect(response.status).toBe(503);
     expect(response.body.error.code).toBe("AUTH_SERVICE_UNAVAILABLE");
+  });
+
+  it("evicts a token identity after the User Service confirms logout", async () => {
+    const upstream = await startUpstream((req, res) => {
+      if (req.url === "/api/v1/auth/logout" && req.method === "POST") {
+        return sendJson(res, 200, { success: true, data: {} });
+      }
+      return sendJson(res, 404, { success: false, error: { code: "ROUTE_NOT_FOUND", message: "Not found", details: [] } });
+    });
+    const identity: VerifiedIdentity = {
+      id: "verified-admin",
+      authUserId: "verified-auth-user",
+      role: "ADMIN",
+      status: "ACTIVE",
+    };
+    const authVerifier = vi.fn(async () => identity);
+    const app = createGatewayApp({
+      config: configFor(upstream.url),
+      authVerifier,
+      healthChecker: async () => "ok",
+      logger: { info: vi.fn(), error: vi.fn() },
+    });
+    const token = `header.${Buffer.from(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 60 })).toString("base64url")}.signature`;
+
+    await request(app).get("/api/v1/system/health").set("Authorization", `Bearer ${token}`).expect(200);
+    await request(app)
+      .post("/api/v1/auth/logout")
+      .set("Authorization", `Bearer ${token}`)
+      .send({ refreshToken: "refresh-token" })
+      .expect(200);
+    await request(app).get("/api/v1/system/health").set("Authorization", `Bearer ${token}`).expect(200);
+
+    expect(authVerifier).toHaveBeenCalledTimes(2);
   });
 
   it("normalizes User Service verification failures", async () => {

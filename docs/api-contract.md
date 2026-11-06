@@ -50,6 +50,13 @@ Gateway yêu cầu User Service xác minh token, đồng thời áp dụng CORS,
 kiểm tra trạng thái upstream. Service kiểm tra role,
 quyền sở hữu tài nguyên, validation, state transition và chỉ truy cập database mình sở hữu.
 
+Để tránh gọi User Service lặp lại cho cùng access token, Gateway có thể giữ identity đã xác minh
+trong cache RAM có giới hạn. Chỉ identity `ACTIVE` được cache; TTL mặc định 5 phút, không vượt
+thời điểm `exp` trong JWT, và cache bị xóa sau logout thành công. Cache miss hoặc hết hạn vẫn phải
+được User Service xác minh; khi User Service không sẵn sàng, Gateway fail closed. Role/trạng thái
+tài khoản đổi ngoài luồng Gateway có thể mất tối đa TTL để có hiệu lực trên Gateway. Cache không
+chứa access token thô, không thay thế User Service và không cấp cho Gateway quyền truy cập database.
+
 Thành viên được tự thêm endpoint dưới prefix service đã sở hữu mà **không sửa Gateway**. Trong cùng
 pull request, thành viên phải thêm route/validation/authorization trong service, cập nhật OpenAPI của
 service, cập nhật endpoint tương ứng trong tài liệu này và thêm test. Chỉ sửa Gateway khi thêm/đổi

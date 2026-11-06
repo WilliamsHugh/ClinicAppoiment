@@ -2,6 +2,7 @@ import express from "express";
 import request from "supertest";
 import { describe, expect, it, vi } from "vitest";
 import { createGatewayApp } from "../src/app.js";
+import { createAuthenticate } from "../src/auth.js";
 import type { GatewayConfig } from "../src/config.js";
 import { loadGatewayConfig } from "../src/config.js";
 import { createErrorHandler, requestContext } from "../src/http.js";
@@ -15,6 +16,8 @@ const baseConfig: GatewayConfig = {
   rateLimitWindowMs: 60_000,
   rateLimitMax: 100,
   authTimeoutMs: 100,
+  identityCacheTtlMs: 300_000,
+  identityCacheMaxEntries: 5_000,
   healthTimeoutMs: 100,
   proxyTimeoutMs: 100,
   serviceTargets: {
@@ -27,6 +30,11 @@ const baseConfig: GatewayConfig = {
 };
 
 const silentLogger = { info: vi.fn(), error: vi.fn() };
+
+function tokenWithExpiry(exp: number): string {
+  const payload = Buffer.from(JSON.stringify({ exp })).toString("base64url");
+  return `header.${payload}.signature`;
+}
 
 function createTestApp(identity: VerifiedIdentity = { id: "user-1", authUserId: "auth-user-1", role: "PATIENT", status: "ACTIVE" }) {
   return createGatewayApp({
@@ -87,6 +95,87 @@ describe("API Gateway authentication", () => {
       .set("X-User-Id", "user-admin")
       .set("X-Role", "ADMIN");
     expect(response.status).toBe(200);
+  });
+});
+
+describe("Gateway verified identity cache", () => {
+  const activeIdentity: VerifiedIdentity = {
+    id: "user-1",
+    authUserId: "auth-user-1",
+    role: "ADMIN",
+    status: "ACTIVE",
+  };
+
+  function protectedTestApp(authenticate: ReturnType<typeof createAuthenticate>) {
+    const app = express();
+    app.get("/protected", authenticate, (_req, res) => res.sendStatus(200));
+    return app;
+  }
+
+  it("reuses an active identity across protected requests with the same JWT", async () => {
+    const verifier = vi.fn(async () => activeIdentity);
+    const authenticate = createAuthenticate(baseConfig, verifier);
+    const app = protectedTestApp(authenticate);
+    const token = tokenWithExpiry(Math.floor(Date.now() / 1000) + 60);
+
+    expect((await request(app).get("/protected").set("Authorization", `Bearer ${token}`)).status).toBe(200);
+    expect((await request(app).get("/protected").set("Authorization", `Bearer ${token}`)).status).toBe(200);
+    expect(verifier).toHaveBeenCalledTimes(1);
+  });
+
+  it("coalesces concurrent verification misses for one token", async () => {
+    let release!: (identity: VerifiedIdentity) => void;
+    const verification = new Promise<VerifiedIdentity>((resolve) => { release = resolve; });
+    const verifier = vi.fn(() => verification);
+    const authenticate = createAuthenticate(baseConfig, verifier);
+    const app = protectedTestApp(authenticate);
+    const token = tokenWithExpiry(Math.floor(Date.now() / 1000) + 60);
+
+    const first = request(app).get("/protected").set("Authorization", `Bearer ${token}`);
+    const second = request(app).get("/protected").set("Authorization", `Bearer ${token}`);
+    const responses = Promise.all([first, second]);
+    await vi.waitFor(() => expect(verifier).toHaveBeenCalledTimes(1));
+    release(activeIdentity);
+
+    expect((await responses).map((response) => response.status)).toEqual([200, 200]);
+    expect(verifier).toHaveBeenCalledTimes(1);
+  });
+
+  it("revalidates after the configured cache TTL", async () => {
+    const verifier = vi.fn(async () => activeIdentity);
+    const authenticate = createAuthenticate({ ...baseConfig, identityCacheTtlMs: 20 }, verifier);
+    const app = protectedTestApp(authenticate);
+    const token = tokenWithExpiry(Math.floor(Date.now() / 1000) + 60);
+
+    await request(app).get("/protected").set("Authorization", `Bearer ${token}`).expect(200);
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    await request(app).get("/protected").set("Authorization", `Bearer ${token}`).expect(200);
+    expect(verifier).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not use a cached identity after the JWT expires", async () => {
+    const exp = Math.floor(Date.now() / 1000) + 1;
+    const verifier = vi.fn(async () => Date.now() < exp * 1000 ? activeIdentity : null);
+    const authenticate = createAuthenticate(baseConfig, verifier);
+    const app = protectedTestApp(authenticate);
+    const token = tokenWithExpiry(exp);
+
+    await request(app).get("/protected").set("Authorization", `Bearer ${token}`).expect(200);
+    await new Promise((resolve) => setTimeout(resolve, Math.max(0, exp * 1000 - Date.now() + 10)));
+    await request(app).get("/protected").set("Authorization", `Bearer ${token}`).expect(401);
+    expect(verifier).toHaveBeenCalledTimes(2);
+  });
+
+  it("supports immediate invalidation after a successful logout", async () => {
+    const verifier = vi.fn(async () => activeIdentity);
+    const authenticate = createAuthenticate(baseConfig, verifier);
+    const app = protectedTestApp(authenticate);
+    const token = tokenWithExpiry(Math.floor(Date.now() / 1000) + 60);
+
+    await request(app).get("/protected").set("Authorization", `Bearer ${token}`).expect(200);
+    authenticate.invalidateToken(token);
+    await request(app).get("/protected").set("Authorization", `Bearer ${token}`).expect(200);
+    expect(verifier).toHaveBeenCalledTimes(2);
   });
 });
 
@@ -198,8 +287,15 @@ describe("API Gateway configuration", () => {
   });
 
   it("loads dedicated authentication and proxy timeouts", () => {
-    const config = loadGatewayConfig({ AUTH_TIMEOUT_MS: "25", PROXY_TIMEOUT_MS: "50" });
+    const config = loadGatewayConfig({
+      AUTH_TIMEOUT_MS: "25",
+      AUTH_IDENTITY_CACHE_TTL_MS: "100",
+      AUTH_IDENTITY_CACHE_MAX_ENTRIES: "20",
+      PROXY_TIMEOUT_MS: "50",
+    });
     expect(config.authTimeoutMs).toBe(25);
+    expect(config.identityCacheTtlMs).toBe(100);
+    expect(config.identityCacheMaxEntries).toBe(20);
     expect(config.proxyTimeoutMs).toBe(50);
   });
 
