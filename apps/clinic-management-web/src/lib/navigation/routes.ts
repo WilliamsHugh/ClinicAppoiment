@@ -10,7 +10,7 @@ export const appRoutes: readonly AppRoute[] = [
   { href: "/dashboard", label: "Tổng quan", roles: ["DOCTOR", "STAFF", "ADMIN"] },
   { href: "/appointments", label: "Lịch hẹn", roles: ["DOCTOR", "STAFF", "ADMIN"] },
   { href: "/doctors", label: "Bác sĩ & lịch làm việc", roles: ["DOCTOR", "STAFF", "ADMIN"] },
-  { href: "/medical-records", label: "Hồ sơ khám", roles: ["DOCTOR", "ADMIN"] },
+  { href: "/medical-records", label: "Hồ sơ khám", roles: ["DOCTOR"] },
   { href: "/notifications", label: "Thông báo", roles: ["DOCTOR", "STAFF", "ADMIN"] },
   { href: "/profile", label: "Hồ sơ cá nhân", roles: ["DOCTOR", "STAFF", "ADMIN"] },
   { href: "/users", label: "Tài khoản", roles: ["ADMIN"] },

@@ -41,6 +41,7 @@ describe("route visibility", () => {
     expect(adminRoutes).toContain("/dashboard");
     expect(adminRoutes).toContain("/users");
     expect(adminRoutes).toContain("/health");
+    expect(adminRoutes).not.toContain("/medical-records");
   });
 
   it("does not expose clinic-management domain routes to patients", () => {

@@ -5,6 +5,7 @@ import { EmptyState, ErrorState, PermissionDeniedState } from "../../components/
 import { Alert } from "../../components/ui/alert";
 import { Badge } from "../../components/ui/badge";
 import { Button } from "../../components/ui/button";
+import { ConfirmModal } from "../../components/ui/confirm-modal";
 import { Skeleton } from "../../components/ui/skeleton";
 import { ApiClientError, createBrowserApiClient } from "../../lib/api/client";
 import { useSession } from "../../lib/session/session-context";
@@ -59,6 +60,7 @@ export function MedicalRecordsPanel() {
   ]);
   const [recordStatus, setRecordStatus] = useState<"DRAFT" | "FINAL">("FINAL");
   const [submitting, setSubmitting] = useState(false);
+  const [isConfirmFinalOpen, setIsConfirmFinalOpen] = useState(false);
 
   // Status & Validation Alerts
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
@@ -236,6 +238,23 @@ export function MedicalRecordsPanel() {
       return;
     }
 
+    if (recordStatus === "FINAL") {
+      setIsConfirmFinalOpen(true);
+      return;
+    }
+
+    await executeSubmit(appt, filteredPrescriptions);
+  };
+
+  const executeSubmit = async (
+    resolvedAppt?: AppointmentOption,
+    resolvedPrescriptions?: PrescriptionItem[]
+  ) => {
+    const appt = resolvedAppt ?? appointments.find((a) => a.id === selectedAppointmentId);
+    const filteredPrescriptions =
+      resolvedPrescriptions ?? prescription.filter((p) => p.medicineName.trim() !== "");
+
+    setIsConfirmFinalOpen(false);
     setSubmitting(true);
     try {
       const clinicalBody = {
@@ -323,11 +342,11 @@ export function MedicalRecordsPanel() {
   }
 
   const userRole = session.identity?.role;
-  if (session.status !== "authenticated" || (userRole !== "DOCTOR" && userRole !== "ADMIN")) {
+  if (session.status !== "authenticated" || userRole !== "DOCTOR") {
     return (
       <PermissionDeniedState
         title="Không có quyền truy cập hồ sơ khám"
-        message="Chỉ bác sĩ được phân công hoặc quản trị viên mới có quyền lập và quản lý bệnh án khám bệnh."
+        message="Chỉ bác sĩ được phân công mới có quyền lập và quản lý bệnh án khám bệnh."
         action={{ label: "Về trang chủ", href: "/" }}
       />
     );
@@ -670,6 +689,18 @@ export function MedicalRecordsPanel() {
           </>
         )}
       </section>
+
+      <ConfirmModal
+        isOpen={isConfirmFinalOpen}
+        onClose={() => setIsConfirmFinalOpen(false)}
+        onConfirm={() => void executeSubmit()}
+        title="Xác nhận chốt bệnh án (FINAL)"
+        message="Sau khi chốt bệnh án ở trạng thái FINAL, ca khám sẽ được đánh dấu hoàn thành (COMPLETED) và kích hoạt thông báo kết quả cho bệnh nhân. Bạn có chắc chắn muốn chốt hồ sơ khám này?"
+        confirmLabel="Xác nhận chốt bệnh án"
+        cancelLabel="Quay lại kiểm tra"
+        variant="primary"
+        loading={submitting}
+      />
     </section>
   );
 }
