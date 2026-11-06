@@ -286,9 +286,17 @@ describe("Auth & Profile Pages (M3-WEB-030)", () => {
       expect(host.textContent).toContain("Đã cập nhật hồ sơ cá nhân thành công.");
     });
 
-    it("opens ConfirmModal on logout from sessions card", async () => {
+    it("switches to sessions tab and opens ConfirmModal on logout from sessions card", async () => {
       await act(async () => {
         root.render(<ProfileForm />);
+      });
+
+      const sessionsTabBtn = Array.from(host.querySelectorAll("button")).find(
+        (b) => b.textContent?.includes("Phiên đăng nhập")
+      )!;
+
+      await act(async () => {
+        sessionsTabBtn.click();
       });
 
       const logoutBtn = Array.from(host.querySelectorAll("button")).find(

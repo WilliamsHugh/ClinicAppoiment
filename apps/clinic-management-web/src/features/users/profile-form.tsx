@@ -104,9 +104,6 @@ export function ProfileForm() {
   const [profile, setProfile] = useState<OwnProfile | null>(null);
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
-  const [dob, setDob] = useState("14/03/1984");
-  const [gender, setGender] = useState("Nam");
-  const [language, setLanguage] = useState("Tiếng Việt");
 
   const [fullNameError, setFullNameError] = useState<string | null>(null);
   const [phoneError, setPhoneError] = useState<string | null>(null);
@@ -226,7 +223,7 @@ export function ProfileForm() {
               </div>
               <div className={styles.divider} />
               <div className={styles.formGrid}>
-                {["Họ và tên", "Email", "Số điện thoại", "Ngày sinh", "Giới tính", "Ngôn ngữ giao diện"].map((label) => (
+                {["Họ và tên", "Email", "Số điện thoại", "Vai trò hệ thống"].map((label) => (
                   <div className={styles.field} key={label}>
                     <span className={styles.fieldLabel}>{label}</span>
                     <Skeleton height={38} width="100%" />
@@ -311,345 +308,322 @@ export function ProfileForm() {
                 </Badge>
               </div>
             </div>
-            <Button variant="secondary" size="sm" type="button">
-              Đổi ảnh đại diện
+            <Button variant="secondary" size="sm" type="button" disabled title="Tính năng sắp ra mắt">
+              Đổi ảnh đại diện (Sắp ra mắt)
             </Button>
           </div>
 
           {/* 2. Personal Information Card */}
-          {(activeTab === "personal" || activeTab === "security" || activeTab === "notifications" || activeTab === "sessions") && (
-            <div className={styles.card} id="section-personal">
-              <div className={styles.cardHeader}>
-                <div>
-                  <h2 className={styles.cardTitle}>Thông tin cá nhân</h2>
-                  <p className={styles.cardSubtitle}>
-                    Thông tin này hiển thị với đồng nghiệp trong phòng khám.
-                  </p>
-                </div>
-              </div>
-
-              <div className={styles.divider} />
-
-              <form onSubmit={handleSave} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                <div className={styles.formGrid}>
-                  <div className={styles.field}>
-                    <label className={styles.fieldLabel} htmlFor="profile-fullname">
-                      Họ và tên
-                    </label>
-                    <input
-                      id="profile-fullname"
-                      className={`${styles.fieldInput} ${fullNameError ? styles.inputError : ""}`}
-                      value={fullName}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setFullName(val);
-                        if (touched.fullName) {
-                          setFullNameError(validateFullName(val));
-                        }
-                      }}
-                      onBlur={(e) => {
-                        setTouched((prev) => ({ ...prev, fullName: true }));
-                        setFullNameError(validateFullName(e.target.value));
-                      }}
-                      aria-invalid={Boolean(fullNameError)}
-                      aria-describedby={fullNameError ? "profile-fullname-error" : undefined}
-                      minLength={2}
-                      maxLength={120}
-                      required
-                      disabled={saving}
-                    />
-                    {fullNameError && (
-                      <span id="profile-fullname-error" className={styles.fieldError} role="alert">
-                        {fullNameError}
-                      </span>
-                    )}
-                  </div>
-
-                  <div className={styles.field}>
-                    <label className={styles.fieldLabel} htmlFor="profile-email">
-                      Email
-                    </label>
-                    <div className={`${styles.fieldInput} ${styles.fieldInputReadOnly}`}>
-                      <input
-                        id="profile-email"
-                        value={profile.email}
-                        disabled
-                        style={{ border: "none", background: "transparent", width: "100%", outline: "none", color: "inherit" }}
-                      />
-                      <Lock size={15} aria-hidden="true" style={{ opacity: 0.6 }} />
-                    </div>
-                    <p className={styles.fieldDescription}>Do quản trị viên quản lý, không thể tự đổi.</p>
-                  </div>
-
-                  <div className={styles.field}>
-                    <label className={styles.fieldLabel} htmlFor="profile-phone">
-                      Số điện thoại
-                    </label>
-                    <input
-                      id="profile-phone"
-                      className={`${styles.fieldInput} ${phoneError ? styles.inputError : ""}`}
-                      value={phone}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setPhone(val);
-                        if (touched.phone) {
-                          setPhoneError(validatePhone(val));
-                        }
-                      }}
-                      onBlur={(e) => {
-                        setTouched((prev) => ({ ...prev, phone: true }));
-                        setPhoneError(validatePhone(e.target.value));
-                      }}
-                      aria-invalid={Boolean(phoneError)}
-                      aria-describedby={phoneError ? "profile-phone-error" : undefined}
-                      inputMode="tel"
-                      maxLength={20}
-                      disabled={saving}
-                      placeholder="0901 234 567"
-                    />
-                    {phoneError && (
-                      <span id="profile-phone-error" className={styles.fieldError} role="alert">
-                        {phoneError}
-                      </span>
-                    )}
-                  </div>
-
-                  <div className={styles.field}>
-                    <label className={styles.fieldLabel} htmlFor="profile-dob">
-                      Ngày sinh
-                    </label>
-                    <select
-                      id="profile-dob"
-                      className={styles.fieldInput}
-                      value={dob}
-                      onChange={(e) => setDob(e.target.value)}
-                    >
-                      <option value="14/03/1984">14/03/1984</option>
-                      <option value="20/05/1990">20/05/1990</option>
-                      <option value="10/11/1995">10/11/1995</option>
-                    </select>
-                  </div>
-
-                  <div className={styles.field}>
-                    <label className={styles.fieldLabel} htmlFor="profile-gender">
-                      Giới tính
-                    </label>
-                    <select
-                      id="profile-gender"
-                      className={styles.fieldInput}
-                      value={gender}
-                      onChange={(e) => setGender(e.target.value)}
-                    >
-                      <option value="Nam">Nam</option>
-                      <option value="Nữ">Nữ</option>
-                      <option value="Khác">Khác</option>
-                    </select>
-                  </div>
-
-                  <div className={styles.field}>
-                    <label className={styles.fieldLabel} htmlFor="profile-lang">
-                      Ngôn ngữ giao diện
-                    </label>
-                    <select
-                      id="profile-lang"
-                      className={styles.fieldInput}
-                      value={language}
-                      onChange={(e) => setLanguage(e.target.value)}
-                    >
-                      <option value="Tiếng Việt">Tiếng Việt</option>
-                      <option value="English">English</option>
-                    </select>
+          {activeTab === "personal" && (
+            <>
+              <div className={styles.card} id="section-personal">
+                <div className={styles.cardHeader}>
+                  <div>
+                    <h2 className={styles.cardTitle}>Thông tin cá nhân</h2>
+                    <p className={styles.cardSubtitle}>
+                      Thông tin này hiển thị với đồng nghiệp trong phòng khám.
+                    </p>
                   </div>
                 </div>
 
                 <div className={styles.divider} />
 
-                <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
-                  <Button variant="secondary" type="button" onClick={handleReset} disabled={saving}>
-                    Hủy
-                  </Button>
-                  <Button
-                    variant="primary"
-                    type="submit"
-                    loading={saving}
-                    disabled={saving || Boolean(fullNameError || phoneError || fullName.trim().length < 2)}
-                  >
-                    Lưu thay đổi
-                  </Button>
+                <form onSubmit={handleSave} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+                  <div className={styles.formGrid}>
+                    <div className={styles.field}>
+                      <label className={styles.fieldLabel} htmlFor="profile-fullname">
+                        Họ và tên
+                      </label>
+                      <input
+                        id="profile-fullname"
+                        className={`${styles.fieldInput} ${fullNameError ? styles.inputError : ""}`}
+                        value={fullName}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setFullName(val);
+                          if (touched.fullName) {
+                            setFullNameError(validateFullName(val));
+                          }
+                        }}
+                        onBlur={(e) => {
+                          setTouched((prev) => ({ ...prev, fullName: true }));
+                          setFullNameError(validateFullName(e.target.value));
+                        }}
+                        aria-invalid={Boolean(fullNameError)}
+                        aria-describedby={fullNameError ? "profile-fullname-error" : undefined}
+                        minLength={2}
+                        maxLength={120}
+                        required
+                        disabled={saving}
+                      />
+                      {fullNameError && (
+                        <span id="profile-fullname-error" className={styles.fieldError} role="alert">
+                          {fullNameError}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className={styles.field}>
+                      <label className={styles.fieldLabel} htmlFor="profile-email">
+                        Email
+                      </label>
+                      <div className={`${styles.fieldInput} ${styles.fieldInputReadOnly}`}>
+                        <input
+                          id="profile-email"
+                          value={profile.email}
+                          disabled
+                          style={{ border: "none", background: "transparent", width: "100%", outline: "none", color: "inherit" }}
+                        />
+                        <Lock size={15} aria-hidden="true" style={{ opacity: 0.6 }} />
+                      </div>
+                      <p className={styles.fieldDescription}>Do quản trị viên quản lý, không thể tự đổi.</p>
+                    </div>
+
+                    <div className={styles.field}>
+                      <label className={styles.fieldLabel} htmlFor="profile-phone">
+                        Số điện thoại
+                      </label>
+                      <input
+                        id="profile-phone"
+                        className={`${styles.fieldInput} ${phoneError ? styles.inputError : ""}`}
+                        value={phone}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setPhone(val);
+                          if (touched.phone) {
+                            setPhoneError(validatePhone(val));
+                          }
+                        }}
+                        onBlur={(e) => {
+                          setTouched((prev) => ({ ...prev, phone: true }));
+                          setPhoneError(validatePhone(e.target.value));
+                        }}
+                        aria-invalid={Boolean(phoneError)}
+                        aria-describedby={phoneError ? "profile-phone-error" : undefined}
+                        inputMode="tel"
+                        maxLength={20}
+                        disabled={saving}
+                        placeholder="0901 234 567"
+                      />
+                      {phoneError && (
+                        <span id="profile-phone-error" className={styles.fieldError} role="alert">
+                          {phoneError}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className={styles.field}>
+                      <label className={styles.fieldLabel} htmlFor="profile-role">
+                        Vai trò hệ thống
+                      </label>
+                      <div className={`${styles.fieldInput} ${styles.fieldInputReadOnly}`}>
+                        <input
+                          id="profile-role"
+                          value={clinicRoleLabel(role)}
+                          disabled
+                          style={{ border: "none", background: "transparent", width: "100%", outline: "none", color: "inherit" }}
+                        />
+                        <Lock size={15} aria-hidden="true" style={{ opacity: 0.6 }} />
+                      </div>
+                      <p className={styles.fieldDescription}>Quyền truy cập được cấp theo chức danh công tác.</p>
+                    </div>
+                  </div>
+
+                  <div className={styles.divider} />
+
+                  <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
+                    <Button variant="secondary" type="button" onClick={handleReset} disabled={saving}>
+                      Hủy
+                    </Button>
+                    <Button
+                      variant="primary"
+                      type="submit"
+                      loading={saving}
+                      disabled={saving || Boolean(fullNameError || phoneError || fullName.trim().length < 2)}
+                    >
+                      Lưu thay đổi
+                    </Button>
+                  </div>
+                </form>
+              </div>
+
+              {/* 3. Professional Information Card */}
+              <div className={styles.card}>
+                <div className={styles.cardHeader}>
+                  <h2 className={styles.cardTitle}>Thông tin nghề nghiệp</h2>
+                  <Badge variant="neutral" size="sm">
+                    Chỉ xem
+                  </Badge>
                 </div>
-              </form>
+                <div className={styles.divider} />
+
+                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                  <div className={styles.kvRow}>
+                    <span className={styles.kvLabel}>Vai trò:</span>
+                    <span className={styles.kvValue}>{clinicRoleLabel(role)}</span>
+                  </div>
+                  <div className={styles.kvRow}>
+                    <span className={styles.kvLabel}>Mã nhân sự:</span>
+                    <span className={styles.kvValue}>#{profile.id.slice(-8).toUpperCase()}</span>
+                  </div>
+                  <div className={styles.kvRow}>
+                    <span className={styles.kvLabel}>Cơ sở làm việc:</span>
+                    <span className={styles.kvValue}>Phòng khám Health&amp;Human</span>
+                  </div>
+                  <div className={styles.kvRow}>
+                    <span className={styles.kvLabel}>Trạng thái tài khoản:</span>
+                    <span className={styles.kvValue}>{profile.status === "ACTIVE" ? "Đang hoạt động" : profile.status}</span>
+                  </div>
+                </div>
+
+                <div className={styles.divider} />
+                <p className={styles.cardSubtitle}>
+                  Liên hệ quản trị viên để thay đổi vai trò hoặc thông tin phân công cơ sở.
+                </p>
+              </div>
+            </>
+          )}
+
+          {/* 4. Security Card */}
+          {activeTab === "security" && (
+            <div className={styles.card} id="section-security">
+              <div className={styles.cardHeader}>
+                <h2 className={styles.cardTitle}>Bảo mật</h2>
+              </div>
+              <div className={styles.divider} />
+
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
+                <div>
+                  <p style={{ fontWeight: 600, fontSize: "0.875rem", margin: 0, color: "var(--ink)" }}>Mật khẩu</p>
+                  <p className={styles.cardSubtitle}>
+                    Nên dùng mật khẩu an toàn, tối thiểu 12 ký tự gồm chữ hoa, số và ký tự đặc biệt.
+                  </p>
+                </div>
+                <Button variant="secondary" size="sm" type="button" disabled title="Tính năng sắp ra mắt">
+                  Đổi mật khẩu (Sắp ra mắt)
+                </Button>
+              </div>
             </div>
           )}
 
-          {/* 3. Professional Information Card */}
-          <div className={styles.card}>
-            <div className={styles.cardHeader}>
-              <h2 className={styles.cardTitle}>Thông tin nghề nghiệp</h2>
-              <Badge variant="neutral" size="sm">
-                Chỉ xem
-              </Badge>
-            </div>
-            <div className={styles.divider} />
-
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              <div className={styles.kvRow}>
-                <span className={styles.kvLabel}>Vai trò:</span>
-                <span className={styles.kvValue}>{clinicRoleLabel(role)}</span>
-              </div>
-              <div className={styles.kvRow}>
-                <span className={styles.kvLabel}>Mã định danh:</span>
-                <span className={styles.kvValue}>{profile.id}</span>
-              </div>
-              <div className={styles.kvRow}>
-                <span className={styles.kvLabel}>Cơ sở làm việc:</span>
-                <span className={styles.kvValue}>Phòng khám Health&amp;Human</span>
-              </div>
-              <div className={styles.kvRow}>
-                <span className={styles.kvLabel}>Trạng thái tài khoản:</span>
-                <span className={styles.kvValue}>{profile.status === "ACTIVE" ? "Đang hoạt động" : profile.status}</span>
-              </div>
-            </div>
-
-            <div className={styles.divider} />
-            <p className={styles.cardSubtitle}>
-              Liên hệ quản trị viên để thay đổi vai trò hoặc thông tin phân công cơ sở.
-            </p>
-          </div>
-
-          {/* 4. Security Card */}
-          <div className={styles.card} id="section-security">
-            <div className={styles.cardHeader}>
-              <h2 className={styles.cardTitle}>Bảo mật</h2>
-            </div>
-            <div className={styles.divider} />
-
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-              <div>
-                <p style={{ fontWeight: 600, fontSize: "0.875rem", margin: 0, color: "var(--ink)" }}>Mật khẩu</p>
-                <p className={styles.cardSubtitle}>
-                  Nên dùng mật khẩu an toàn, tối thiểu 12 ký tự gồm chữ hoa, số và ký tự đặc biệt.
-                </p>
-              </div>
-              <Button variant="secondary" size="sm" type="button">
-                Đổi mật khẩu
-              </Button>
-            </div>
-          </div>
-
           {/* 5. Notification Card */}
-          <div className={styles.card} id="section-notifications">
-            <div className={styles.cardHeader}>
-              <h2 className={styles.cardTitle}>Cài đặt thông báo</h2>
+          {activeTab === "notifications" && (
+            <div className={styles.card} id="section-notifications">
+              <div className={styles.cardHeader}>
+                <h2 className={styles.cardTitle}>Cài đặt thông báo</h2>
+              </div>
+              <div className={styles.divider} />
+
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                <div className={styles.switchRow}>
+                  <div className={styles.switchInfo}>
+                    <p className={styles.switchTitle}>Lịch hẹn mới được giao cho tôi</p>
+                    <p className={styles.switchDesc}>Nhận thông báo khi trợ lý xác nhận lịch hẹn mới</p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={notifications.assigned}
+                    className={`${styles.switchButton} ${notifications.assigned ? styles.switchButtonOn : ""}`}
+                    onClick={() => setNotifications((n) => ({ ...n, assigned: !n.assigned }))}
+                  >
+                    <span className={styles.switchThumb} />
+                  </button>
+                </div>
+
+                <div className={styles.divider} />
+
+                <div className={styles.switchRow}>
+                  <div className={styles.switchInfo}>
+                    <p className={styles.switchTitle}>Lịch hẹn bị hủy hoặc đổi giờ</p>
+                    <p className={styles.switchDesc}>Luôn bật để kịp thời cập nhật thay đổi trong ngày</p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={notifications.cancelled}
+                    className={`${styles.switchButton} ${notifications.cancelled ? styles.switchButtonOn : ""}`}
+                    onClick={() => setNotifications((n) => ({ ...n, cancelled: !n.cancelled }))}
+                  >
+                    <span className={styles.switchThumb} />
+                  </button>
+                </div>
+
+                <div className={styles.divider} />
+
+                <div className={styles.switchRow}>
+                  <div className={styles.switchInfo}>
+                    <p className={styles.switchTitle}>Bệnh nhân đã check-in</p>
+                    <p className={styles.switchDesc}>Báo khi bệnh nhân đã có mặt tại phòng chờ</p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={notifications.checkedIn}
+                    className={`${styles.switchButton} ${notifications.checkedIn ? styles.switchButtonOn : ""}`}
+                    onClick={() => setNotifications((n) => ({ ...n, checkedIn: !n.checkedIn }))}
+                  >
+                    <span className={styles.switchThumb} />
+                  </button>
+                </div>
+
+                <div className={styles.divider} />
+
+                <div className={styles.switchRow}>
+                  <div className={styles.switchInfo}>
+                    <p className={styles.switchTitle}>Email tóm tắt hằng ngày</p>
+                    <p className={styles.switchDesc}>Gửi lúc 07:00 sáng mỗi ngày làm việc (GMT+7)</p>
+                  </div>
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={notifications.dailySummary}
+                    className={`${styles.switchButton} ${notifications.dailySummary ? styles.switchButtonOn : ""}`}
+                    onClick={() => setNotifications((n) => ({ ...n, dailySummary: !n.dailySummary }))}
+                  >
+                    <span className={styles.switchThumb} />
+                  </button>
+                </div>
+              </div>
             </div>
-            <div className={styles.divider} />
-
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              <div className={styles.switchRow}>
-                <div className={styles.switchInfo}>
-                  <p className={styles.switchTitle}>Lịch hẹn mới được giao cho tôi</p>
-                  <p className={styles.switchDesc}>Nhận thông báo khi trợ lý xác nhận lịch hẹn mới</p>
-                </div>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={notifications.assigned}
-                  className={`${styles.switchButton} ${notifications.assigned ? styles.switchButtonOn : ""}`}
-                  onClick={() => setNotifications((n) => ({ ...n, assigned: !n.assigned }))}
-                >
-                  <span className={styles.switchThumb} />
-                </button>
-              </div>
-
-              <div className={styles.divider} />
-
-              <div className={styles.switchRow}>
-                <div className={styles.switchInfo}>
-                  <p className={styles.switchTitle}>Lịch hẹn bị hủy hoặc đổi giờ</p>
-                  <p className={styles.switchDesc}>Luôn bật để kịp thời cập nhật thay đổi trong ngày</p>
-                </div>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={notifications.cancelled}
-                  className={`${styles.switchButton} ${notifications.cancelled ? styles.switchButtonOn : ""}`}
-                  onClick={() => setNotifications((n) => ({ ...n, cancelled: !n.cancelled }))}
-                >
-                  <span className={styles.switchThumb} />
-                </button>
-              </div>
-
-              <div className={styles.divider} />
-
-              <div className={styles.switchRow}>
-                <div className={styles.switchInfo}>
-                  <p className={styles.switchTitle}>Bệnh nhân đã check-in</p>
-                  <p className={styles.switchDesc}>Báo khi bệnh nhân đã có mặt tại phòng chờ</p>
-                </div>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={notifications.checkedIn}
-                  className={`${styles.switchButton} ${notifications.checkedIn ? styles.switchButtonOn : ""}`}
-                  onClick={() => setNotifications((n) => ({ ...n, checkedIn: !n.checkedIn }))}
-                >
-                  <span className={styles.switchThumb} />
-                </button>
-              </div>
-
-              <div className={styles.divider} />
-
-              <div className={styles.switchRow}>
-                <div className={styles.switchInfo}>
-                  <p className={styles.switchTitle}>Email tóm tắt hằng ngày</p>
-                  <p className={styles.switchDesc}>Gửi lúc 07:00 sáng mỗi ngày làm việc (GMT+7)</p>
-                </div>
-                <button
-                  type="button"
-                  role="switch"
-                  aria-checked={notifications.dailySummary}
-                  className={`${styles.switchButton} ${notifications.dailySummary ? styles.switchButtonOn : ""}`}
-                  onClick={() => setNotifications((n) => ({ ...n, dailySummary: !n.dailySummary }))}
-                >
-                  <span className={styles.switchThumb} />
-                </button>
-              </div>
-            </div>
-          </div>
+          )}
 
           {/* 6. Login Sessions Card */}
-          <div className={styles.card} id="section-sessions">
-            <div className={styles.cardHeader}>
-              <h2 className={styles.cardTitle}>Phiên đăng nhập</h2>
-            </div>
-            <div className={styles.divider} />
+          {activeTab === "sessions" && (
+            <div className={styles.card} id="section-sessions">
+              <div className={styles.cardHeader}>
+                <h2 className={styles.cardTitle}>Phiên đăng nhập</h2>
+              </div>
+              <div className={styles.divider} />
 
-            <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <div>
-                  <p style={{ fontWeight: 600, fontSize: "0.875rem", margin: 0, color: "var(--ink)" }}>
-                    Chrome · Windows 11
-                  </p>
-                  <p className={styles.cardSubtitle}>TP. Hồ Chí Minh · Đang hoạt động</p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                  <div>
+                    <p style={{ fontWeight: 600, fontSize: "0.875rem", margin: 0, color: "var(--ink)" }}>
+                      {profile.email} · {clinicRoleLabel(role)}
+                    </p>
+                    <p className={styles.cardSubtitle}>Trình duyệt web · Đang hoạt động (Múi giờ GMT+7)</p>
+                  </div>
+                  <Badge variant="success" size="sm">
+                    Phiên hiện tại
+                  </Badge>
                 </div>
-                <Badge variant="success" size="sm">
-                  Phiên hiện tại
-                </Badge>
+              </div>
+
+              <div className={styles.divider} />
+
+              <div style={{ display: "flex", justifyContent: "flex-end" }}>
+                <Button
+                  variant="danger"
+                  size="sm"
+                  type="button"
+                  onClick={() => setIsConfirmLogoutOpen(true)}
+                >
+                  Đăng xuất khỏi thiết bị này
+                </Button>
               </div>
             </div>
-
-            <div className={styles.divider} />
-
-            <div style={{ display: "flex", justifyContent: "flex-end" }}>
-              <Button
-                variant="danger"
-                size="sm"
-                type="button"
-                onClick={() => setIsConfirmLogoutOpen(true)}
-              >
-                Đăng xuất khỏi thiết bị này
-              </Button>
-            </div>
-          </div>
+          )}
         </div>
       </div>
 

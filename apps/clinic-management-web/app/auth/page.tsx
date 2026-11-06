@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { useSession } from "../../src/lib/session/session-context";
 import { Alert, Button, ConfirmModal, Input } from "../../src/components/ui";
@@ -23,7 +24,15 @@ export default function AuthPage() {
       <div className={styles.container}>
         <div className={styles.authenticatedCard}>
           <div className={styles.brandHeader}>
-            <span className={styles.brandLogo} aria-hidden="true">+</span>
+            <span className={styles.brandLogo}>
+              <Image
+                src="/images/logo.png"
+                alt="Health&Human Logo"
+                width={34}
+                height={34}
+                style={{ objectFit: "contain" }}
+              />
+            </span>
             <span className={styles.brandName}>Health&amp;Human</span>
           </div>
 
@@ -97,7 +106,15 @@ export default function AuthPage() {
       <div className={styles.card}>
         {/* Brand Header */}
         <div className={styles.brandHeader}>
-          <span className={styles.brandLogo} aria-hidden="true">+</span>
+          <span className={styles.brandLogo}>
+            <Image
+              src="/images/logo.png"
+              alt="Health&Human Logo"
+              width={34}
+              height={34}
+              style={{ objectFit: "contain" }}
+            />
+          </span>
           <span className={styles.brandName}>Health&amp;Human</span>
         </div>
 
