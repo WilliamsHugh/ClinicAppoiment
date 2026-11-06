@@ -59,10 +59,12 @@
   width: 32px;
   height: 32px;
   border-radius: var(--radius-md, 6px);
-  background-color: var(--primary-light);
-  color: var(--primary);
+  background-color: var(--brand);
+  box-shadow: var(--shadow-sm);
+  color: #ffffff;
   font-weight: 800;
   font-size: 1.1rem;
+  flex-shrink: 0;
 }
 
 .brandText {

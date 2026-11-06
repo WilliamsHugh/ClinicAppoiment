@@ -46,19 +46,18 @@ describe("ClinicLandingPage (Public Clinic Presentation & Introduction)", () => 
     container.remove();
   });
 
-  it("renders the top navigation bar with brand, links, Sign Up and Log In", async () => {
+  it("renders the top navigation bar with Vietnamese links and internal login action", async () => {
     await act(async () => {
       root.render(<ClinicLandingPage />);
     });
 
     expect(container.textContent).toContain("Health&Human");
-    expect(container.textContent).toContain("Home");
-    expect(container.textContent).toContain("Service");
-    expect(container.textContent).toContain("Contact Us");
-    expect(container.textContent).toContain("Help");
-    expect(container.textContent).toContain("Blogs");
-    expect(container.textContent).toContain("Sign Up");
-    expect(container.textContent).toContain("Log In");
+    expect(container.textContent).toContain("Trang chủ");
+    expect(container.textContent).toContain("Dịch vụ");
+    expect(container.textContent).toContain("Liên hệ");
+    expect(container.textContent).toContain("Hỗ trợ");
+    expect(container.textContent).toContain("Cẩm nang");
+    expect(container.textContent).toContain("Đăng nhập nội bộ");
 
     const logoImg = container.querySelector('img[alt="Health&Human Clinic Logo"]');
     expect(logoImg).not.toBeNull();
@@ -68,30 +67,30 @@ describe("ClinicLandingPage (Public Clinic Presentation & Introduction)", () => 
     expect(header?.className).toContain("headerSticky");
   });
 
-  it("renders the hero section with headline, CTAs, doctor visual and floating badges", async () => {
+  it("renders the hero section with Vietnamese headline, CTAs, doctor visual and floating badges", async () => {
     await act(async () => {
       root.render(<ClinicLandingPage />);
     });
 
     // Hero title
-    expect(container.textContent).toContain("Providing Quality Care At Health&Human For A Brighter And Healthy Future");
+    expect(container.textContent).toContain("Chăm Sóc Y Tế Chất Lượng Cao Tại Health&Human Vì Một Tương Lai Khỏe Mạnh Hơn");
     expect(container.textContent).toContain("Tại Hệ thống Phòng khám Health&Human");
 
     // Action buttons
     const appointmentsBtn = Array.from(container.querySelectorAll("button")).find(
-      (b) => b.textContent?.includes("Appointments")
+      (b) => b.textContent?.includes("Đặt lịch khám")
     );
     expect(appointmentsBtn).toBeDefined();
 
-    const watchVideoBtn = Array.from(container.querySelectorAll("button")).find(
-      (b) => b.textContent?.includes("Watch Video")
+    const servicesBtn = Array.from(container.querySelectorAll("button")).find(
+      (b) => b.textContent?.includes("Xem dịch vụ khám")
     );
-    expect(watchVideoBtn).toBeDefined();
+    expect(servicesBtn).toBeDefined();
 
     // Floating badges
     expect(container.textContent).toContain("24/7");
-    expect(container.textContent).toContain("Service");
-    expect(container.textContent).toContain("Our Professionals");
+    expect(container.textContent).toContain("Trực cấp cứu");
+    expect(container.textContent).toContain("Đội ngũ chuyên gia");
     expect(container.textContent).toContain("30+");
 
     // Doctor image
@@ -104,12 +103,12 @@ describe("ClinicLandingPage (Public Clinic Presentation & Introduction)", () => 
       root.render(<ClinicLandingPage />);
     });
 
-    expect(container.textContent).toContain("Find A Doctor");
+    expect(container.textContent).toContain("Tìm kiếm bác sĩ");
 
     const nameInput = container.querySelector("#doctor-name-search") as HTMLInputElement;
     const specialtySelect = container.querySelector("#specialty-select") as HTMLSelectElement;
     const searchBtn = Array.from(container.querySelectorAll("button")).find(
-      (b) => b.textContent?.includes("Search")
+      (b) => b.textContent?.includes("Tìm kiếm")
     )!;
 
     expect(nameInput).not.toBeNull();
@@ -127,32 +126,24 @@ describe("ClinicLandingPage (Public Clinic Presentation & Introduction)", () => 
     expect(container.textContent).toContain("Nhi khoa (Pediatrics)");
   });
 
-  it("opens and closes the Video Tour modal when Watch Video is clicked", async () => {
+  it("scrolls to services section when Xem dịch vụ khám CTA is clicked", async () => {
     await act(async () => {
       root.render(<ClinicLandingPage />);
     });
 
-    const watchVideoBtn = Array.from(container.querySelectorAll("button")).find(
-      (b) => b.textContent?.includes("Watch Video")
+    const servicesBtn = Array.from(container.querySelectorAll("button")).find(
+      (b) => b.textContent?.includes("Xem dịch vụ khám")
     )!;
 
     await act(async () => {
-      watchVideoBtn.click();
+      servicesBtn.click();
     });
 
-    expect(container.textContent).toContain("Giới Thiệu Phòng Khám Health&Human");
-    expect(container.textContent).toContain("Video Tour Giới Thiệu Phòng Khám (HD)");
-
-    // Click Close
-    const closeBtn = Array.from(container.querySelectorAll("button")).find(
-      (b) => b.textContent?.includes("Đóng") || b.getAttribute("aria-label") === "Đóng video"
+    const nav = container.querySelector("nav")!;
+    const serviceNavBtn = Array.from(nav.querySelectorAll("button")).find(
+      (b) => b.textContent?.trim() === "Dịch vụ"
     )!;
-
-    await act(async () => {
-      closeBtn.click();
-    });
-
-    expect(container.textContent).not.toContain("Video Tour Giới Thiệu Phòng Khám (HD)");
+    expect(serviceNavBtn.className).toContain("navLinkActive");
   });
 
   it("renders authenticated status with Vào Dashboard button when user is logged in", async () => {
@@ -183,11 +174,11 @@ describe("ClinicLandingPage (Public Clinic Presentation & Introduction)", () => 
 
     const nav = container.querySelector("nav")!;
     const navButtons = Array.from(nav.querySelectorAll("button"));
-    const homeBtn = navButtons.find((b) => b.textContent?.trim() === "Home")!;
-    const serviceBtn = navButtons.find((b) => b.textContent?.trim() === "Service")!;
-    const helpBtn = navButtons.find((b) => b.textContent?.trim() === "Help")!;
-    const blogsBtn = navButtons.find((b) => b.textContent?.trim() === "Blogs")!;
-    const contactBtn = navButtons.find((b) => b.textContent?.trim() === "Contact Us")!;
+    const homeBtn = navButtons.find((b) => b.textContent?.trim() === "Trang chủ")!;
+    const serviceBtn = navButtons.find((b) => b.textContent?.trim() === "Dịch vụ")!;
+    const helpBtn = navButtons.find((b) => b.textContent?.trim() === "Hỗ trợ")!;
+    const blogsBtn = navButtons.find((b) => b.textContent?.trim() === "Cẩm nang")!;
+    const contactBtn = navButtons.find((b) => b.textContent?.trim() === "Liên hệ")!;
 
     expect(homeBtn).toBeDefined();
     expect(serviceBtn).toBeDefined();

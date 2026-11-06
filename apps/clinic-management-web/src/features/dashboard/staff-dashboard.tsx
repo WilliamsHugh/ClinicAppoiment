@@ -207,41 +207,6 @@ export function StaffDashboard() {
         </div>
       )}
 
-      {/* Thống kê tổng quan ngày (Primary Numbers for Reception) */}
-      <section aria-label="Số liệu tổng quan trong ngày" className={styles.statGrid}>
-        <article className={styles.statCard}>
-          <span className={styles.statLabel}>Lịch khám hôm nay</span>
-          <span className={styles.statValue}>
-            {loading && !cachedStaffAppointments ? <Skeleton height={32} width={50} /> : stats.total}
-          </span>
-          <span className={styles.statDesc}>Tổng lượt khám tiếp nhận trong ngày</span>
-        </article>
-
-        <article className={styles.statCard}>
-          <span className={styles.statLabel}>Đang chờ tiếp đón</span>
-          <span className={styles.statValue} style={{ color: "var(--primary)" }}>
-            {loading && !cachedStaffAppointments ? <Skeleton height={32} width={50} /> : stats.waiting}
-          </span>
-          <span className={styles.statDesc}>Bệnh nhân chờ đón tiếp hoặc đang chờ khám</span>
-        </article>
-
-        <article className={styles.statCard}>
-          <span className={styles.statLabel}>Đã hoàn thành</span>
-          <span className={styles.statValue} style={{ color: "var(--success)" }}>
-            {loading && !cachedStaffAppointments ? <Skeleton height={32} width={50} /> : stats.completed}
-          </span>
-          <span className={styles.statDesc}>Ca khám đã hoàn tất bệnh án</span>
-        </article>
-
-        <article className={styles.statCard}>
-          <span className={styles.statLabel}>Đã hủy / Vắng mặt</span>
-          <span className={styles.statValue} style={{ color: "var(--danger)" }}>
-            {loading && !cachedStaffAppointments ? <Skeleton height={32} width={50} /> : stats.cancelled}
-          </span>
-          <span className={styles.statDesc}>Bệnh nhân hủy hoặc không đến hẹn</span>
-        </article>
-      </section>
-
       {/* 2-column Layout: Cột chính là Hàng đợi cần xử lý (Queue PENDING + CONFIRMED) */}
       <div className={styles.dashboardGrid}>
         {/* CỘT CHÍNH: Hàng đợi cần xử lý (Queue) */}
@@ -340,8 +305,60 @@ export function StaffDashboard() {
           )}
         </section>
 
-        {/* CỘT PHỤ: Xu hướng 7 ngày & Lối tắt ca trực bác sĩ */}
+        {/* CỘT PHỤ: Tiến độ tiếp đón, Xu hướng 7 ngày & Lối tắt ca trực bác sĩ */}
         <aside style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+          {/* Thống kê tổng quan ngày dạng danh sách chuẩn */}
+          <section className={styles.sectionCard} aria-labelledby="staff-summary-heading">
+            <div className={styles.sectionHeader}>
+              <h2 id="staff-summary-heading">Tiến độ tiếp đón</h2>
+              <span style={{ fontSize: "0.8125rem", color: "var(--muted)" }}>
+                Hôm nay
+              </span>
+            </div>
+
+            <div className={styles.summaryList}>
+              <div className={styles.summaryItem}>
+                <div className={styles.summaryItemLabel}>
+                  <span className={styles.summaryDot} style={{ background: "var(--ink)" }} aria-hidden="true" />
+                  <span>Lịch khám hôm nay</span>
+                </div>
+                <span className={styles.summaryItemCount}>
+                  {loading && !cachedStaffAppointments ? <Skeleton height={20} width={24} /> : stats.total}
+                </span>
+              </div>
+
+              <div className={styles.summaryItem}>
+                <div className={styles.summaryItemLabel}>
+                  <span className={styles.summaryDot} style={{ background: "var(--primary)" }} aria-hidden="true" />
+                  <span>Đang chờ tiếp đón</span>
+                </div>
+                <span className={styles.summaryItemCount} style={{ color: "var(--primary)" }}>
+                  {loading && !cachedStaffAppointments ? <Skeleton height={20} width={24} /> : stats.waiting}
+                </span>
+              </div>
+
+              <div className={styles.summaryItem}>
+                <div className={styles.summaryItemLabel}>
+                  <span className={styles.summaryDot} style={{ background: "var(--success)" }} aria-hidden="true" />
+                  <span>Đã hoàn thành</span>
+                </div>
+                <span className={styles.summaryItemCount} style={{ color: "var(--success)" }}>
+                  {loading && !cachedStaffAppointments ? <Skeleton height={20} width={24} /> : stats.completed}
+                </span>
+              </div>
+
+              <div className={styles.summaryItem}>
+                <div className={styles.summaryItemLabel}>
+                  <span className={styles.summaryDot} style={{ background: "var(--danger)" }} aria-hidden="true" />
+                  <span>Đã hủy / Vắng mặt</span>
+                </div>
+                <span className={styles.summaryItemCount} style={{ color: "var(--danger)" }}>
+                  {loading && !cachedStaffAppointments ? <Skeleton height={20} width={24} /> : stats.cancelled}
+                </span>
+              </div>
+            </div>
+          </section>
+
           {/* 7-day Volume Overview */}
           <section className={styles.sectionCard} aria-labelledby="volume-heading">
             <div className={styles.sectionHeader}>

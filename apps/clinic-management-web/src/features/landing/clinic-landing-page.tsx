@@ -26,7 +26,7 @@ import {
 } from "lucide-react";
 import { useSession } from "../../lib/session/session-context";
 import { clinicRoleLabel, sessionDisplayName } from "../../lib/session/session";
-import { Skeleton } from "../../components/ui";
+import { Modal, Skeleton } from "../../components/ui";
 import styles from "./clinic-landing.module.css";
 
 interface DoctorItem {
@@ -203,8 +203,6 @@ export function ClinicLandingPage() {
   // Blog reading modal state
   const [readingBlog, setReadingBlog] = useState<BlogArticle | null>(null);
 
-  // Video modal state
-  const [isVideoModalOpen, setIsVideoModalOpen] = useState(false);
   // Booking prompt modal state
   const [bookingDoctor, setBookingDoctor] = useState<DoctorItem | null>(null);
 
@@ -324,7 +322,7 @@ export function ClinicLandingPage() {
           </a>
 
           {/* Nav Links */}
-          <nav aria-label="Main Navigation">
+          <nav aria-label="Điều hướng chính">
             <ul className={styles.navLinks}>
               <li className={styles.navLinkItem}>
                 <button
@@ -332,7 +330,7 @@ export function ClinicLandingPage() {
                   className={`${styles.navLink} ${activeSection === "home" ? styles.navLinkActive : ""}`}
                   onClick={() => scrollToSection("home")}
                 >
-                  Home
+                  Trang chủ
                 </button>
               </li>
               <li className={styles.navLinkItem}>
@@ -341,7 +339,7 @@ export function ClinicLandingPage() {
                   className={`${styles.navLink} ${activeSection === "services" ? styles.navLinkActive : ""}`}
                   onClick={() => scrollToSection("services")}
                 >
-                  Service
+                  Dịch vụ
                 </button>
               </li>
               <li className={styles.navLinkItem}>
@@ -350,7 +348,7 @@ export function ClinicLandingPage() {
                   className={`${styles.navLink} ${activeSection === "contact" ? styles.navLinkActive : ""}`}
                   onClick={() => scrollToSection("contact")}
                 >
-                  Contact Us
+                  Liên hệ
                 </button>
               </li>
               <li className={styles.navLinkItem}>
@@ -359,7 +357,7 @@ export function ClinicLandingPage() {
                   className={`${styles.navLink} ${activeSection === "help" ? styles.navLinkActive : ""}`}
                   onClick={() => scrollToSection("help")}
                 >
-                  Help
+                  Hỗ trợ
                 </button>
               </li>
               <li className={styles.navLinkItem}>
@@ -368,7 +366,7 @@ export function ClinicLandingPage() {
                   className={`${styles.navLink} ${activeSection === "blogs" ? styles.navLinkActive : ""}`}
                   onClick={() => scrollToSection("blogs")}
                 >
-                  Blogs
+                  Cẩm nang
                 </button>
               </li>
             </ul>
@@ -408,18 +406,12 @@ export function ClinicLandingPage() {
               </>
             ) : session.status === "loading" ? (
               <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                <Skeleton width={74} height={32} borderRadius="var(--radius-md)" />
-                <Skeleton width={74} height={32} borderRadius="var(--radius-md)" />
+                <Skeleton width={132} height={32} borderRadius="var(--radius-md)" />
               </div>
             ) : (
-              <>
-                <Link href="/auth" className={styles.signUpBtn}>
-                  Sign Up
-                </Link>
-                <Link href="/auth" className={styles.logInBtn}>
-                  Log In
-                </Link>
-              </>
+              <Link href="/auth" className={styles.logInBtn}>
+                Đăng nhập nội bộ
+              </Link>
             )}
           </div>
         </div>
@@ -433,7 +425,7 @@ export function ClinicLandingPage() {
             className={`${styles.mobileNavLink} ${activeSection === "home" ? styles.mobileNavLinkActive : ""}`}
             onClick={() => scrollToSection("home")}
           >
-            <span>Home</span>
+            <span>Trang chủ</span>
             <ArrowRight size={16} />
           </button>
           <button
@@ -441,7 +433,7 @@ export function ClinicLandingPage() {
             className={`${styles.mobileNavLink} ${activeSection === "services" ? styles.mobileNavLinkActive : ""}`}
             onClick={() => scrollToSection("services")}
           >
-            <span>Service</span>
+            <span>Dịch vụ</span>
             <ArrowRight size={16} />
           </button>
           <button
@@ -449,7 +441,7 @@ export function ClinicLandingPage() {
             className={`${styles.mobileNavLink} ${activeSection === "contact" ? styles.mobileNavLinkActive : ""}`}
             onClick={() => scrollToSection("contact")}
           >
-            <span>Contact Us</span>
+            <span>Liên hệ</span>
             <ArrowRight size={16} />
           </button>
           <button
@@ -457,7 +449,7 @@ export function ClinicLandingPage() {
             className={`${styles.mobileNavLink} ${activeSection === "help" ? styles.mobileNavLinkActive : ""}`}
             onClick={() => scrollToSection("help")}
           >
-            <span>Help</span>
+            <span>Hỗ trợ</span>
             <ArrowRight size={16} />
           </button>
           <button
@@ -465,7 +457,7 @@ export function ClinicLandingPage() {
             className={`${styles.mobileNavLink} ${activeSection === "blogs" ? styles.mobileNavLinkActive : ""}`}
             onClick={() => scrollToSection("blogs")}
           >
-            <span>Blogs</span>
+            <span>Cẩm nang</span>
             <ArrowRight size={16} />
           </button>
         </div>
@@ -479,9 +471,9 @@ export function ClinicLandingPage() {
           {/* Left Hero Content */}
           <div className={styles.heroContent}>
             <h1 id="hero-main-heading" className={styles.heroHeading}>
-              Providing Quality Care At{" "}
-              <span className={styles.highlightBrand}>Health&Human</span> For A{" "}
-              <span className={styles.highlightAccent}>Brighter And Healthy Future</span>
+              Chăm Sóc Y Tế Chất Lượng Cao Tại{" "}
+              <span className={styles.highlightBrand}>Health&Human</span> Vì Một{" "}
+              <span className={styles.highlightAccent}>Tương Lai Khỏe Mạnh Hơn</span>
             </h1>
 
             <p className={styles.heroDescription}>
@@ -497,19 +489,19 @@ export function ClinicLandingPage() {
                 className={styles.btnAppointments}
                 onClick={() => scrollToSection("find-doctor")}
               >
-                Appointments
+                Đặt lịch khám
               </button>
 
               <button
                 type="button"
                 className={styles.btnWatchVideo}
-                onClick={() => setIsVideoModalOpen(true)}
-                aria-label="Xem video giới thiệu phòng khám"
+                onClick={() => scrollToSection("services")}
+                aria-label="Xem các dịch vụ chuyên khoa của phòng khám"
               >
                 <span className={styles.playCircle} aria-hidden="true">
-                  <span className={styles.playTriangle} />
+                  <ArrowRight size={16} color="#ffffff" />
                 </span>
-                <span className={styles.watchVideoText}>Watch Video</span>
+                <span className={styles.watchVideoText}>Xem dịch vụ khám</span>
               </button>
             </div>
           </div>
@@ -532,12 +524,12 @@ export function ClinicLandingPage() {
             {/* Floating Badge 1: 24/7 Service */}
             <div className={styles.floatingBadgeService}>
               <span className={styles.badgeNumberBrand}>24/7</span>
-              <span className={styles.badgeLabelMuted}>Service</span>
+              <span className={styles.badgeLabelMuted}>Trực cấp cứu</span>
             </div>
 
             {/* Floating Badge 2: Our Professionals 30+ */}
             <div className={styles.floatingBadgeProfessionals}>
-              <span className={styles.professionalsTitle}>Our Professionals</span>
+              <span className={styles.professionalsTitle}>Đội ngũ chuyên gia</span>
               <div className={styles.avatarStackRow}>
                 <div className={styles.avatarMini}>BS</div>
                 <div className={styles.avatarMini} style={{ backgroundColor: "var(--brand-light)", color: "var(--brand)" }}>
@@ -565,7 +557,7 @@ export function ClinicLandingPage() {
         aria-labelledby="find-doctor-heading"
       >
         <h2 id="find-doctor-heading" className={styles.findDoctorTitle}>
-          Find A Doctor
+          Tìm kiếm bác sĩ
         </h2>
 
         <form onSubmit={handleSearch} className={styles.findDoctorForm}>
@@ -577,7 +569,7 @@ export function ClinicLandingPage() {
               id="doctor-name-search"
               type="text"
               className={styles.textInput}
-              placeholder="Name"
+              placeholder="Nhập tên bác sĩ hoặc chuyên khoa..."
               value={searchName}
               onChange={(e) => setSearchName(e.target.value)}
             />
@@ -593,7 +585,7 @@ export function ClinicLandingPage() {
               value={selectedSpecialty}
               onChange={(e) => setSelectedSpecialty(e.target.value)}
             >
-              <option value="all">Speciality (Tất cả chuyên khoa)</option>
+              <option value="all">Tất cả chuyên khoa</option>
               <option value="Nhi">Nhi khoa (Pediatrics)</option>
               <option value="Tim">Tim mạch (Cardiology)</option>
               <option value="Tai Mũi Họng">Tai Mũi Họng (ENT)</option>
@@ -616,7 +608,7 @@ export function ClinicLandingPage() {
               }
             }}
           >
-            <span className={styles.toggleLabel}>Available</span>
+            <span className={styles.toggleLabel}>Đang nhận lịch</span>
             <div
               className={`${styles.toggleSwitch} ${availableOnly ? styles.toggleSwitchActive : ""}`}
             >
@@ -628,7 +620,7 @@ export function ClinicLandingPage() {
 
           <button type="submit" className={styles.searchSubmitBtn}>
             <Search size={18} aria-hidden="true" />
-            Search
+            Tìm kiếm
           </button>
         </form>
 
@@ -644,7 +636,7 @@ export function ClinicLandingPage() {
                 style={{
                   background: "transparent",
                   border: "none",
-                  color: "#64748b",
+                  color: "var(--muted)",
                   fontSize: "13px",
                   cursor: "pointer",
                 }}
@@ -660,7 +652,7 @@ export function ClinicLandingPage() {
             </div>
 
             {filteredDoctors.length === 0 ? (
-              <div style={{ textAlign: "center", padding: "28px 0", color: "#64748b" }}>
+              <div style={{ textAlign: "center", padding: "28px 0", color: "var(--muted)" }}>
                 <p style={{ margin: 0, fontWeight: 500 }}>
                   Không tìm thấy bác sĩ nào phù hợp với điều kiện tìm kiếm. Vui lòng thử chọn
                   chuyên khoa khác.
@@ -887,10 +879,7 @@ export function ClinicLandingPage() {
             <div>
               <div className={styles.patientAppBadges}>
                 <span className={styles.appStoreBadge}>
-                  <Smartphone size={15} aria-hidden="true" /> Android App (Flutter)
-                </span>
-                <span className={styles.appStoreBadge}>
-                  <Smartphone size={15} aria-hidden="true" /> iOS Patient App
+                  <Smartphone size={15} aria-hidden="true" /> Ứng dụng Android (Flutter)
                 </span>
               </div>
               <p style={{ margin: "14px 0 0 0", fontSize: "13px", color: "rgba(255,255,255,0.8)" }}>
@@ -986,90 +975,41 @@ export function ClinicLandingPage() {
       </section>
 
       {/* --------------------------------------------------------------------
-          7. Video / Tour Modal
+          8. Booking Doctor Dialog (Shared Modal Component)
           -------------------------------------------------------------------- */}
-      {isVideoModalOpen && (
-        <div className={styles.modalOverlay} role="dialog" aria-modal="true">
-          <div className={styles.modalContent}>
+      <Modal
+        isOpen={Boolean(bookingDoctor)}
+        onClose={() => setBookingDoctor(null)}
+        title={bookingDoctor ? `Đặt lịch khám với ${bookingDoctor.name}` : "Đặt lịch khám"}
+        footer={
+          <>
             <button
               type="button"
-              className={styles.modalCloseBtn}
-              onClick={() => setIsVideoModalOpen(false)}
-              aria-label="Đóng video"
-            >
-              <X size={18} aria-hidden="true" />
-            </button>
-            <h3 style={{ fontSize: "20px", fontWeight: 800, marginTop: 0, color: "#1e293b" }}>
-              Giới Thiệu Phòng Khám Health&amp;Human
-            </h3>
-            <p style={{ color: "#64748b", lineHeight: 1.6, fontSize: "14.5px" }}>
-              Chào mừng bạn đến với chuyến tham quan không gian y tế chuẩn quốc tế của chúng tôi.
-              Hệ thống phòng khám tích hợp công nghệ AI và hồ sơ điện tử đồng bộ.
-            </p>
-            <div
-              style={{
-                width: "100%",
-                height: 240,
-                backgroundColor: "#0f172a",
-                borderRadius: 12,
-                display: "flex",
-                flexDirection: "column",
-                alignItems: "center",
-                justifyContent: "center",
-                color: "#ffffff",
-                gap: 12,
-              }}
-            >
-              <Video size={40} aria-hidden="true" color="var(--brand-light)" />
-              <span style={{ fontSize: "15px", fontWeight: 600 }}>
-                Video Tour Giới Thiệu Phòng Khám (HD)
-              </span>
-              <span style={{ fontSize: "12px", color: "#94a3b8" }}>
-                Thời lượng: 2 phút 15 giây
-              </span>
-            </div>
-            <div style={{ marginTop: 20, textAlign: "right" }}>
-              <button
-                type="button"
-                className={styles.logInBtn}
-                onClick={() => setIsVideoModalOpen(false)}
-              >
-                Đóng
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
-      {/* --------------------------------------------------------------------
-          8. Booking Doctor Dialog
-          -------------------------------------------------------------------- */}
-      {bookingDoctor && (
-        <div className={styles.modalOverlay} role="dialog" aria-modal="true">
-          <div className={styles.modalContent}>
-            <button
-              type="button"
-              className={styles.modalCloseBtn}
+              className={styles.signUpBtn}
+              style={{ borderColor: "var(--line)", color: "var(--muted)" }}
               onClick={() => setBookingDoctor(null)}
-              aria-label="Đóng"
             >
-              <X size={18} aria-hidden="true" />
+              Để sau
             </button>
-            <h3 style={{ fontSize: "20px", fontWeight: 800, marginTop: 0, color: "#1e293b" }}>
-              Đặt Lịch Khám với {bookingDoctor.name}
-            </h3>
-            <p style={{ color: "#0d7a73", fontWeight: 600, margin: "4px 0 16px 0" }}>
+            <a href="tel:19008899" className={styles.logInBtn} style={{ textDecoration: "none" }}>
+              Gọi tổng đài 1900 8899
+            </a>
+          </>
+        }
+      >
+        {bookingDoctor && (
+          <div>
+            <p style={{ color: "var(--brand)", fontWeight: 600, margin: "0 0 16px 0" }}>
               {bookingDoctor.specialty} · {bookingDoctor.room}
             </p>
             <div
               style={{
-                backgroundColor: "#f8fafc",
-                border: "1px solid #e2e8f0",
-                borderRadius: 8,
+                backgroundColor: "var(--surface-subtle)",
+                border: "1px solid var(--line)",
+                borderRadius: "var(--radius-lg)",
                 padding: "16px",
-                marginBottom: "20px",
                 fontSize: "14px",
-                color: "#475569",
+                color: "var(--ink)",
                 lineHeight: 1.6,
                 display: "flex",
                 gap: 10,
@@ -1083,48 +1023,46 @@ export function ClinicLandingPage() {
                 hotline tiếp đón <strong>1900 8899</strong> để được hỗ trợ giữ chỗ nhanh nhất.
               </div>
             </div>
-            <div style={{ display: "flex", gap: 12, justifyContent: "flex-end" }}>
-              <button
-                type="button"
-                className={styles.signUpBtn}
-                onClick={() => setBookingDoctor(null)}
-              >
-                Để sau
-              </button>
-              <a href="tel:19008899" className={styles.logInBtn} style={{ textDecoration: "none" }}>
-                Gọi Tổng Đài 1900 8899
-              </a>
-            </div>
           </div>
-        </div>
-      )}
+        )}
+      </Modal>
 
       {/* --------------------------------------------------------------------
-          Blog Article Reading Modal
+          Blog Article Reading Modal (Shared Modal Component)
           -------------------------------------------------------------------- */}
-      {readingBlog && (
-        <div className={styles.modalOverlay} role="dialog" aria-modal="true">
-          <div className={styles.modalContent} style={{ maxWidth: 640 }}>
+      <Modal
+        isOpen={Boolean(readingBlog)}
+        onClose={() => setReadingBlog(null)}
+        title={readingBlog ? readingBlog.title : "Cẩm nang y khoa"}
+        maxWidth="640px"
+        footer={
+          <>
             <button
               type="button"
-              className={styles.modalCloseBtn}
-              onClick={() => setReadingBlog(null)}
-              aria-label="Đóng bài viết"
-            >
-              <X size={18} aria-hidden="true" />
-            </button>
-            <span className={styles.blogCategoryBadge}>{readingBlog.category}</span>
-            <h3
-              style={{
-                fontSize: "22px",
-                fontWeight: 800,
-                margin: "8px 0 10px 0",
-                color: "#1e293b",
-                lineHeight: 1.35,
+              className={styles.logInBtn}
+              onClick={() => {
+                setReadingBlog(null);
+                scrollToSection("find-doctor");
               }}
             >
-              {readingBlog.title}
-            </h3>
+              Đặt Lịch Khám Chuyên Khoa
+            </button>
+            <button
+              type="button"
+              className={styles.signUpBtn}
+              style={{ borderColor: "var(--line)", color: "var(--muted)" }}
+              onClick={() => setReadingBlog(null)}
+            >
+              Đóng
+            </button>
+          </>
+        }
+      >
+        {readingBlog && (
+          <div>
+            <div style={{ marginBottom: 10 }}>
+              <span className={styles.blogCategoryBadge}>{readingBlog.category}</span>
+            </div>
             <p
               style={{
                 color: "var(--brand)",
@@ -1137,7 +1075,7 @@ export function ClinicLandingPage() {
             </p>
             <div
               style={{
-                color: "#475569",
+                color: "var(--ink)",
                 lineHeight: 1.7,
                 fontSize: "15px",
                 display: "flex",
@@ -1151,38 +1089,9 @@ export function ClinicLandingPage() {
                 </p>
               ))}
             </div>
-            <div
-              style={{
-                marginTop: 24,
-                paddingTop: 16,
-                borderTop: "1px solid #e2e8f0",
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-              }}
-            >
-              <button
-                type="button"
-                className={styles.logInBtn}
-                onClick={() => {
-                  setReadingBlog(null);
-                  scrollToSection("find-doctor");
-                }}
-              >
-                Đặt Lịch Khám Chuyên Khoa
-              </button>
-              <button
-                type="button"
-                className={styles.signUpBtn}
-                style={{ borderColor: "#cbd5e1", color: "#64748b" }}
-                onClick={() => setReadingBlog(null)}
-              >
-                Đóng
-              </button>
-            </div>
           </div>
-        </div>
-      )}
+        )}
+      </Modal>
 
       {/* --------------------------------------------------------------------
           9. Footer

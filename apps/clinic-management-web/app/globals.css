@@ -56,7 +56,7 @@ h1 { font-size: clamp(1.5rem, 2.5vw, 1.85rem); font-weight: 600; letter-spacing:
 .app-shell { min-height: 100vh; background: var(--canvas); }
 .topbar { align-items: center; background: #ffffff; color: var(--ink); border-bottom: 1px solid var(--line); display: flex; gap: 24px; justify-content: space-between; height: 56px; padding: 0 clamp(16px, 3vw, 24px); }
 .brand { align-items: center; display: flex; font-weight: 700; gap: 10px; text-decoration: none; color: var(--ink); }
-.brand-mark { align-items: center; background: var(--primary-light); border-radius: 6px; color: var(--primary); display: inline-flex; height: 32px; justify-content: center; width: 32px; font-weight: 800; font-size: 1.1rem; }
+.brand-mark { align-items: center; background: var(--brand); border-radius: 6px; box-shadow: var(--shadow-sm); color: #ffffff; display: inline-flex; height: 32px; justify-content: center; width: 32px; font-weight: 800; font-size: 1.1rem; }
 .session-summary { align-items: center; display: flex; flex-wrap: wrap; font-size: .875rem; gap: 12px; justify-content: flex-end; color: var(--muted); }
 .session-summary a { color: var(--primary); font-weight: 600; text-decoration: none; }
 .session-dot { background: #aeb8c0; border-radius: 50%; height: 8px; width: 8px; }
@@ -78,10 +78,10 @@ h1 { font-size: clamp(1.5rem, 2.5vw, 1.85rem); font-weight: 600; letter-spacing:
 .state-card p { color: var(--muted); line-height: 1.55; margin-bottom: 0; max-width: 580px; }
 .state-card button { margin-top: 18px; }
 .state-card--action { align-items: center; display: inline-flex; gap: 8px; justify-content: center; margin-top: 18px; }
-.state-icon { align-items: center; background: #e5f4f2; border-radius: 50%; color: var(--brand); display: flex; font-size: 1.45rem; height: 44px; justify-content: center; width: 44px; }
-.state-error .state-icon { background: #fbeaea; color: var(--danger); }
+.state-icon { align-items: center; background: var(--primary-light); border-radius: 50%; color: var(--brand); display: flex; font-size: 1.45rem; height: 44px; justify-content: center; width: 44px; }
+.state-error .state-icon { background: var(--danger-light); color: var(--danger); }
 .request-id { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: .8rem; }
-.spinner { animation: spin .8s linear infinite; border: 3px solid #cae4e1; border-right-color: var(--brand); border-radius: 50%; height: 32px; margin-bottom: 14px; width: 32px; }
+.spinner { animation: spin .8s linear infinite; border: 3px solid var(--line); border-right-color: var(--brand); border-radius: 50%; height: 32px; margin-bottom: 14px; width: 32px; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .panel-heading { align-items: center; display: flex; gap: 20px; justify-content: space-between; }
 .panel-heading h2 { margin-bottom: 0; }

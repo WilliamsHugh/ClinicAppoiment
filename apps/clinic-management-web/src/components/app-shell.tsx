@@ -6,10 +6,11 @@ import { usePathname } from "next/navigation";
 import React, { useState, type ReactNode } from "react";
 import { Menu, Bell } from "lucide-react";
 import { visibleRoutes } from "../lib/navigation/routes";
+import { formatVietnamDate } from "../lib/formatting/date-time";
 import { useSession } from "../lib/session/session-context";
 import { clinicRoleLabel, sessionDisplayName } from "../lib/session/session";
 import { RouteGuard } from "./route-guard";
-import { Badge } from "./ui";
+import { Badge, ConfirmModal } from "./ui";
 import styles from "./app-shell.module.css";
 
 export interface AppShellProps {
@@ -38,6 +39,7 @@ export function AppShell({ children, NotificationSlot }: AppShellProps) {
   const pathname = usePathname();
   const session = useSession();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [confirmSignOutOpen, setConfirmSignOutOpen] = useState(false);
 
   // The public clinic home and authentication pages use their own layouts.
   if (pathname === "/auth" || pathname === "/") {
@@ -47,6 +49,7 @@ export function AppShell({ children, NotificationSlot }: AppShellProps) {
   const role = session.identity?.role;
   const displayName = sessionDisplayName(session.identity) || "Tài khoản";
   const initials = getInitials(displayName, role);
+  const todayLabel = formatVietnamDate(new Date());
 
   return (
     <div className={`${styles.shell} app-shell`}>
@@ -71,14 +74,15 @@ export function AppShell({ children, NotificationSlot }: AppShellProps) {
             href="/"
             onClick={() => setMobileMenuOpen(false)}
           >
-            <Image
-              src="/images/logo.png"
-              alt="Health&Human Logo"
-              width={28}
-              height={28}
-              className={`${styles.brandMark} brand-mark`}
-              style={{ objectFit: "contain", padding: 2 }}
-            />
+            <span className={`${styles.brandMark} brand-mark`}>
+              <Image
+                src="/images/logo.png"
+                alt="Health&Human Logo"
+                width={26}
+                height={26}
+                style={{ objectFit: "contain" }}
+              />
+            </span>
             <span className={styles.brandText}>Health&amp;Human</span>
           </Link>
         </div>
@@ -115,7 +119,7 @@ export function AppShell({ children, NotificationSlot }: AppShellProps) {
             </div>
             <button
               type="button"
-              onClick={() => session.signOut()}
+              onClick={() => setConfirmSignOutOpen(true)}
               className={`${styles.logoutButton} logout-button`}
               aria-label="Đăng xuất"
               title="Đăng xuất"
@@ -141,7 +145,7 @@ export function AppShell({ children, NotificationSlot }: AppShellProps) {
               <Menu size={18} aria-hidden="true" />
             </button>
             <span className={styles.topbarSubtitle}>
-              Thứ Năm, 19/10/2026 · Múi giờ GMT+7
+              {todayLabel} · Múi giờ GMT+7
             </span>
           </div>
 
@@ -194,6 +198,20 @@ export function AppShell({ children, NotificationSlot }: AppShellProps) {
           <RouteGuard>{children}</RouteGuard>
         </main>
       </div>
+
+      <ConfirmModal
+        isOpen={confirmSignOutOpen}
+        onClose={() => setConfirmSignOutOpen(false)}
+        onConfirm={() => {
+          setConfirmSignOutOpen(false);
+          session.signOut();
+        }}
+        title="Xác nhận đăng xuất"
+        description="Bạn có chắc chắn muốn đăng xuất khỏi hệ thống quản lý phòng khám?"
+        confirmLabel="Đăng xuất"
+        cancelLabel="Hủy bỏ"
+        variant="danger"
+      />
     </div>
   );
 }
