@@ -279,3 +279,16 @@
   opacity: 0.6;
   cursor: not-allowed;
 }
+.scheduleHeading { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.scheduleHeading > div { display: flex; gap: 8px; }
+.calendarEmpty { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; padding: 16px 0; color: var(--muted); }
+.calendarEmpty p { margin: 0; }
+.calendarViewport { overflow-x: auto; padding: 4px 2px 10px; }
+.calendarWeek { display: grid; grid-template-columns: repeat(7, minmax(150px, 1fr)); gap: 8px; min-width: 1080px; }
+.calendarDay { min-height: 150px; border: 1px solid var(--line); border-radius: var(--radius-md); background: var(--surface-subtle); padding: 10px; }
+.calendarDay h3 { margin: 0 0 8px; font-size: .875rem; }
+.calendarSessions { display: grid; gap: 8px; }
+.calendarSession { display: grid; gap: 4px; border: 1px solid var(--line); border-radius: var(--radius-sm); background: var(--surface); padding: 8px; font-size: .8125rem; }
+.inactiveSession { opacity: .7; }
+.calendarSession button, .calendarEmpty button { justify-self: start; }
+.muted { color: var(--muted); }

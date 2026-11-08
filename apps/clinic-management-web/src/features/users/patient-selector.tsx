@@ -5,6 +5,7 @@ import { createBrowserApiClient, type PaginatedData } from "../../lib/api/client
 import { useSession } from "../../lib/session/session-context";
 import { Alert } from "../../components/ui";
 import styles from "./patient-selector.module.css";
+import { maskInsuranceNumber } from "./patient-lookup-drawer";
 
 export interface PatientItem {
   id: string;
@@ -120,7 +121,7 @@ export function PatientSelector({
                 <div className={styles.patientMeta}>
                   {patient.phone ? `SĐT: ${patient.phone} • ` : ""}
                   {patient.dateOfBirth ? `NS: ${patient.dateOfBirth} • ` : ""}
-                  {patient.insuranceNumber ? `BHYT: ${patient.insuranceNumber}` : ""}
+                    {patient.insuranceNumber ? `BHYT: ${maskInsuranceNumber(patient.insuranceNumber)}` : ""}
                 </div>
               </div>
               <button

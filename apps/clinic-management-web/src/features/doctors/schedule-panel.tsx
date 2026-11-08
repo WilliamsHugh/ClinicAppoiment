@@ -1,6 +1,7 @@
-import React, { type FormEvent } from "react";
+import React, { useState, type FormEvent } from "react";
 import { Button } from "../../components/ui";
 import type { Schedule, TimeOff } from "./doctor-api";
+import { ScheduleCalendar } from "./schedule-calendar";
 import styles from "./doctors-panel.module.css";
 
 const weekdays = ["Chủ nhật", "Thứ hai", "Thứ ba", "Thứ tư", "Thứ năm", "Thứ sáu", "Thứ bảy"];
@@ -78,12 +79,22 @@ export function SchedulePanel({
   onResetTimeOffForm,
   onRetryTimeOff,
 }: SchedulePanelProps) {
+  const [scheduleView, setScheduleView] = useState<"calendar" | "list">("calendar");
   return (
     <>
       {/* Quản lý lịch làm việc tuần */}
       <section className={styles.card} aria-label="Quản lý lịch làm việc">
-        <h2>Lịch làm việc</h2>
-        <div className={styles.list}>
+        <div className={styles.scheduleHeading}>
+          <h2>Lịch làm việc</h2>
+          <div role="group" aria-label="Cách hiển thị lịch làm việc">
+            <Button type="button" variant={scheduleView === "calendar" ? "primary" : "secondary"} aria-pressed={scheduleView === "calendar"} onClick={() => setScheduleView("calendar")}>Lịch tuần</Button>
+            <Button type="button" variant={scheduleView === "list" ? "primary" : "secondary"} aria-pressed={scheduleView === "list"} onClick={() => setScheduleView("list")}>Danh sách</Button>
+          </div>
+        </div>
+        {scheduleView === "calendar" ? <ScheduleCalendar schedules={schedules} disabled={busy} onEdit={onEditSchedule} onAdd={() => {
+          onResetScheduleForm();
+          document.getElementById("schedule-weekday")?.focus();
+        }} /> : <div className={styles.list}>
           {schedules.map((item) => (
             <div key={item.id} className={styles.listRow}>
               <span>
@@ -110,11 +121,12 @@ export function SchedulePanel({
               </Button>
             </div>
           ))}
-        </div>
+        </div>}
         <form className={styles.row} onSubmit={onSubmitSchedule}>
           <label>
             Thứ
             <select
+              id="schedule-weekday"
               value={weekday}
               onChange={(event) => onWeekdayChange(Number(event.target.value))}
             >

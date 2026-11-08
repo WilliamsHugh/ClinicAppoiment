@@ -32,7 +32,7 @@ interface ConfirmDialogState {
   variant: "primary" | "danger";
 }
 
-export function AppointmentsPanel() {
+export function AppointmentsPanel({ onOpenQueue }: { onOpenQueue?: () => void } = {}) {
   const router = useRouter();
   const session = useSession();
   const role = session.identity?.role;
@@ -441,7 +441,10 @@ export function AppointmentsPanel() {
   return (
     <div className={styles.panel}>
       {/* Page Header */}
-      <PageHeader pathname="/appointments" />
+      <PageHeader
+        pathname="/appointments"
+        actions={onOpenQueue ? <Button variant="secondary" type="button" onClick={onOpenQueue}>Bảng hàng đợi</Button> : undefined}
+      />
 
       {/* Filter Bar */}
       <AppointmentFilterBar

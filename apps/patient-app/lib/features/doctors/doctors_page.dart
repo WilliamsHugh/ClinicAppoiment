@@ -4,6 +4,7 @@ import '../../core/api/clinic_api_client.dart';
 import '../../core/session/session.dart';
 import '../appointments/booking_selection.dart';
 import 'doctor_directory_page.dart';
+import 'doctor_booking_controls.dart';
 
 class DoctorsPage extends StatelessWidget {
   const DoctorsPage({
@@ -11,6 +12,7 @@ class DoctorsPage extends StatelessWidget {
     required this.onOpenNotifications,
     required this.onBookingSelection,
     this.apiClient,
+    this.bookingWidgets = const DoctorBookingWidgets(),
     super.key,
   });
 
@@ -18,6 +20,7 @@ class DoctorsPage extends StatelessWidget {
   final VoidCallback onOpenNotifications;
   final ValueChanged<BookingSelection> onBookingSelection;
   final ClinicApiClient? apiClient;
+  final DoctorBookingWidgets bookingWidgets;
 
   @override
   Widget build(BuildContext context) {
@@ -35,9 +38,8 @@ class DoctorsPage extends StatelessWidget {
       body: DoctorDirectoryPage(
         tokenProvider: tokenProvider,
         apiClient: apiClient,
-        onSlotSelected: (doctor, slot) => onBookingSelection(
-          BookingSelection.fromDoctorSlot(doctor, slot),
-        ),
+        bookingWidgets: bookingWidgets,
+        onAppointmentCreated: onBookingSelection,
       ),
     );
   }
