@@ -1,11 +1,21 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/session/session.dart';
+import 'login_form.dart';
+
+const String kRegisterConfirmationNotice =
+    'Đăng ký thành công! Vui lòng kiểm tra email để xác nhận tài khoản.';
 
 class RegisterForm extends StatefulWidget {
-  const RegisterForm({required this.onSubmit, super.key});
+  const RegisterForm({
+    required this.onSubmit,
+    this.onRegisteredSuccess,
+    super.key,
+  });
+
   final Future<bool> Function(String name, String email, String password)
       onSubmit;
+  final ValueChanged<String>? onRegisteredSuccess;
 
   @override
   State<RegisterForm> createState() => _RegisterFormState();
@@ -46,9 +56,9 @@ class _RegisterFormState extends State<RegisterForm> {
       );
       if (!signedIn && mounted) {
         setState(() {
-          _noticeMessage =
-              'Đăng ký thành công. Hãy xác nhận email trước khi đăng nhập.';
+          _noticeMessage = kRegisterConfirmationNotice;
         });
+        widget.onRegisteredSuccess?.call(kRegisterConfirmationNotice);
       }
     } catch (error) {
       if (mounted) setState(() => _errorMessage = _messageFor(error));
@@ -65,88 +75,94 @@ class _RegisterFormState extends State<RegisterForm> {
   Widget build(BuildContext context) {
     return Form(
       key: _formKey,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          TextFormField(
-            controller: _name,
-            decoration: const InputDecoration(
-              hintText: 'Họ và tên',
-              prefixIcon: Icon(Icons.person_outline, size: 18),
-            ),
-            validator: (v) =>
-                (v == null || v.trim().length < 2) ? 'Nhập họ tên' : null,
-          ),
-          const SizedBox(height: 12),
-          TextFormField(
-            controller: _email,
-            keyboardType: TextInputType.emailAddress,
-            decoration: const InputDecoration(
-              hintText: 'Email',
-              prefixIcon: Icon(Icons.mail_outline, size: 18),
-            ),
-            validator: (v) =>
-                (v == null || !v.contains('@')) ? 'Email không hợp lệ' : null,
-          ),
-          const SizedBox(height: 12),
-          TextFormField(
-            controller: _pass,
-            obscureText: _obscure,
-            decoration: InputDecoration(
-              hintText: 'Mật khẩu',
-              prefixIcon: const Icon(Icons.lock_outline, size: 18),
-              suffixIcon: IconButton(
-                icon: Icon(_obscure ? Icons.visibility_off : Icons.visibility,
-                    size: 18),
-                onPressed: () => setState(() => _obscure = !_obscure),
+      autovalidateMode: AutovalidateMode.onUserInteraction,
+      child: SingleChildScrollView(
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            TextFormField(
+              controller: _name,
+              decoration: const InputDecoration(
+                hintText: 'Họ và tên',
+                prefixIcon: Icon(Icons.person_outline, size: 18),
               ),
-            ),
-            validator: (v) =>
-                (v == null || v.length < 6) ? 'Tối thiểu 6 ký tự' : null,
-          ),
-          const SizedBox(height: 12),
-          TextFormField(
-            controller: _confirm,
-            obscureText: _obscure,
-            decoration: const InputDecoration(
-              hintText: 'Xác nhận mật khẩu',
-              prefixIcon: Icon(Icons.lock_outline, size: 18),
-            ),
-            validator: (v) => v != _pass.text ? 'Mật khẩu không khớp' : null,
-          ),
-          const SizedBox(height: 16),
-          if (_errorMessage case final message?) ...[
-            _AuthFeedback(
-              key: const Key('register-error'),
-              message: message,
-              isError: true,
+              validator: (v) =>
+                  (v == null || v.trim().length < 2) ? 'Nhập họ tên' : null,
             ),
             const SizedBox(height: 12),
-          ] else if (_noticeMessage case final message?) ...[
-            _AuthFeedback(
-              key: const Key('register-notice'),
-              message: message,
-              isError: false,
+            TextFormField(
+              controller: _email,
+              keyboardType: TextInputType.emailAddress,
+              decoration: const InputDecoration(
+                hintText: 'Email',
+                prefixIcon: Icon(Icons.mail_outline, size: 18),
+              ),
+              validator: validateAuthEmail,
             ),
             const SizedBox(height: 12),
+            TextFormField(
+              controller: _pass,
+              obscureText: _obscure,
+              decoration: InputDecoration(
+                hintText: 'Mật khẩu',
+                prefixIcon: const Icon(Icons.lock_outline, size: 18),
+                suffixIcon: IconButton(
+                  icon: Icon(
+                    _obscure ? Icons.visibility_off : Icons.visibility,
+                    size: 18,
+                  ),
+                  onPressed: () => setState(() => _obscure = !_obscure),
+                ),
+              ),
+              validator: validateAuthPassword,
+            ),
+            const SizedBox(height: 12),
+            TextFormField(
+              controller: _confirm,
+              obscureText: _obscure,
+              decoration: const InputDecoration(
+                hintText: 'Xác nhận mật khẩu',
+                prefixIcon: Icon(Icons.lock_outline, size: 18),
+              ),
+              validator: (v) => v != _pass.text ? 'Mật khẩu không khớp' : null,
+            ),
+            const SizedBox(height: 16),
+            if (_errorMessage case final message?) ...[
+              _AuthFeedback(
+                key: const Key('register-error'),
+                message: message,
+                isError: true,
+              ),
+              const SizedBox(height: 12),
+            ] else if (_noticeMessage case final message?) ...[
+              _AuthFeedback(
+                key: const Key('register-notice'),
+                message: message,
+                isError: false,
+              ),
+              const SizedBox(height: 12),
+            ],
+            FilledButton(
+              onPressed: _loading ? null : _handle,
+              child: _loading
+                  ? const SizedBox(
+                      height: 18,
+                      width: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Text('Đăng ký'),
+            ),
+            const SizedBox(height: 8),
+            const Text(
+              'Bằng việc đăng ký, bạn đồng ý với điều khoản phòng khám.',
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+            ),
           ],
-          FilledButton(
-            onPressed: _loading ? null : _handle,
-            child: _loading
-                ? const SizedBox(
-                    height: 18,
-                    width: 18,
-                    child: CircularProgressIndicator(
-                        strokeWidth: 2, color: Colors.white))
-                : const Text('Đăng ký'),
-          ),
-          const SizedBox(height: 8),
-          const Text(
-            'Bằng việc đăng ký, bạn đồng ý với điều khoản phòng khám.',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 11, color: Color(0xFF64748B)),
-          ),
-        ],
+        ),
       ),
     );
   }

@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { createBrowserApiClient, type PaginatedData } from "../../lib/api/client";
 import { useSession } from "../../lib/session/session-context";
+import { maskInsuranceNumber } from "./patient-lookup-drawer";
 
 export interface PatientItem {
   id: string;
@@ -115,7 +116,7 @@ export function PatientSelector({ onSelect, selectedPatientId, appointmentId }: 
                 <div style={{ fontSize: "12px", color: "#64748b", marginTop: "2px" }}>
                   {patient.phone ? `SĐT: ${patient.phone} • ` : ""}
                   {patient.dateOfBirth ? `NS: ${patient.dateOfBirth} • ` : ""}
-                  {patient.insuranceNumber ? `BHYT: ${patient.insuranceNumber}` : ""}
+                  {patient.insuranceNumber ? `BHYT: ${maskInsuranceNumber(patient.insuranceNumber)}` : ""}
                 </div>
               </div>
               <button
