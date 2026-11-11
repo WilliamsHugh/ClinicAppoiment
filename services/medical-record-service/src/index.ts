@@ -1,9 +1,10 @@
-import { randomUUID, timingSafeEqual } from "node:crypto";
+import { timingSafeEqual } from "node:crypto";
 import { readFileSync } from "node:fs";
 import express, { type Request, type RequestHandler } from "express";
 import { Pool } from "pg";
 import swaggerUi from "swagger-ui-express";
 import { z } from "zod";
+import { createRequestLoggingMiddleware, logServiceEvent } from "@clinic/request-logging";
 import { MedicalRecordRepository } from "./repository.js";
 import { openapi } from "./openapi.js";
 
@@ -37,12 +38,7 @@ type Appointment = { id: string; patientId: string; doctorId: string; status: st
 export const app = express();
 app.disable("x-powered-by");
 app.use(express.json({ limit: "64kb" }));
-app.use((req, res, next) => {
-  const requestId = req.header("x-request-id") ?? randomUUID();
-  res.setHeader("X-Request-Id", requestId);
-  console.log(JSON.stringify({ requestId, method: req.method, path: req.path }));
-  next();
-});
+app.use(createRequestLoggingMiddleware("medical-record-service"));
 
 function fail(res: express.Response, status: number, code: string, message: string) {
   return res.status(status).json({ success: false, error: { code, message, details: [] },
@@ -117,8 +113,11 @@ export async function sendOutbox() {
         if (!response.ok) throw new Error(`Appointment returned ${response.status}`);
       }
       await repository.markOutboxSent(event.id);
-    } catch (error) {
-      console.warn(JSON.stringify({ eventId: event.id, type: event.eventType, error: String(error) }));
+    } catch {
+      logServiceEvent("medical-record-service", "warn", "outbox.delivery_deferred", {
+        eventType: event.eventType,
+        code: "OUTBOX_DELIVERY_UNAVAILABLE"
+      });
       await repository.deferOutbox(event.id, event.retryCount);
     }
   }
@@ -217,12 +216,15 @@ app.use((req, res, next) => {
 });
 
 app.use((error: unknown, _req: Request, res: express.Response, _next: express.NextFunction) => {
-  console.error(JSON.stringify({ message: "Medical Record request failed", error: String(error) }));
+  logServiceEvent("medical-record-service", "error", "request.failed", {
+    requestId: String(res.getHeader("X-Request-Id") ?? ""),
+    code: error instanceof Error ? error.name : "INTERNAL_SERVER_ERROR"
+  });
   return fail(res, 503, "SERVICE_UNAVAILABLE", "Service temporarily unavailable");
 });
 
 if (process.env.NODE_ENV !== "test") {
-  const timer = setInterval(() => { void sendOutbox().catch((error) => console.error(JSON.stringify({ message: "Outbox dispatch failed", error: String(error) }))); }, 5000);
+  const timer = setInterval(() => { void sendOutbox().catch(() => logServiceEvent("medical-record-service", "error", "outbox.poll_failed")); }, 5000);
   timer.unref();
-  app.listen(port, () => console.log(`Medical Record Service listening on port ${port}`));
+  app.listen(port, () => logServiceEvent("medical-record-service", "info", "service.started", { port }));
 }

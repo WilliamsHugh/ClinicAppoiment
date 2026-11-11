@@ -1,9 +1,10 @@
-import { randomUUID, timingSafeEqual } from "node:crypto";
+import { timingSafeEqual } from "node:crypto";
 import { readFileSync } from "node:fs";
 import express, { type Request, type RequestHandler } from "express";
 import { Pool } from "pg";
 import swaggerUi from "swagger-ui-express";
 import { z } from "zod";
+import { createRequestLoggingMiddleware, logServiceEvent } from "@clinic/request-logging";
 import { NotificationRepository } from "./repository.js";
 import { openapi } from "./openapi.js";
 
@@ -29,12 +30,7 @@ const eventSchema = z.object({ eventId: z.string().min(1), type: z.enum(["appoin
 export const app = express();
 app.disable("x-powered-by");
 app.use(express.json({ limit: "32kb" }));
-app.use((req, res, next) => {
-  const requestId = req.header("x-request-id") ?? randomUUID();
-  res.setHeader("X-Request-Id", requestId);
-  console.log(JSON.stringify({ requestId, method: req.method, path: req.path }));
-  next();
-});
+app.use(createRequestLoggingMiddleware("notification-service"));
 const ok = (data: unknown) => ({ success: true, data });
 const fail = (res: express.Response, status: number, code: string, message: string) => res.status(status).json({
   success: false, error: { code, message, details: [] }, requestId: res.getHeader("X-Request-Id") });
@@ -90,8 +86,10 @@ export async function dispatchReminders() {
       }
       const [title, content] = message("appointment.reminder");
       await repository.deliverClaimedReminder(reminder, title, content);
-    } catch (error) {
-      console.warn(JSON.stringify({ appointmentId: reminder.appointmentId, error: String(error) }));
+    } catch {
+      logServiceEvent("notification-service", "warn", "reminder.delivery_deferred", {
+        code: "APPOINTMENT_LOOKUP_UNAVAILABLE"
+      });
       await repository.deferReminder(reminder.appointmentId, scheduledStartAt);
     }
   }
@@ -174,12 +172,15 @@ app.use((req, res, next) => {
   next();
 });
 app.use((error: unknown, _req: Request, res: express.Response, _next: express.NextFunction) => {
-  console.error(JSON.stringify({ message: "Notification request failed", error: String(error) }));
+  logServiceEvent("notification-service", "error", "request.failed", {
+    requestId: String(res.getHeader("X-Request-Id") ?? ""),
+    code: error instanceof Error ? error.name : "INTERNAL_SERVER_ERROR"
+  });
   return fail(res, 503, "SERVICE_UNAVAILABLE", "Service temporarily unavailable");
 });
 
 if (process.env.NODE_ENV !== "test") {
-  const timer = setInterval(() => { void dispatchReminders().catch((error) => console.error(JSON.stringify({ message: "Reminder worker failed", error: String(error) }))); }, 60_000);
+  const timer = setInterval(() => { void dispatchReminders().catch(() => logServiceEvent("notification-service", "error", "reminder.poll_failed")); }, 60_000);
   timer.unref();
-  app.listen(port, () => console.log(`Notification Service listening on port ${port}`));
+  app.listen(port, () => logServiceEvent("notification-service", "info", "service.started", { port }));
 }

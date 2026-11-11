@@ -96,6 +96,10 @@ Authorization: Bearer <access_token>
 
 `Authorization` bắt buộc với mọi route nghiệp vụ; các ngoại lệ auth public được liệt kê trong chính sách định tuyến ở trên. Gateway tạo hoặc chuyển tiếp `X-Request-Id`; service ghi ID này vào log và response. Client không được dùng các header nội bộ `X-User-Id`, `X-Role` để tự xác định danh tính.
 
+Quy tắc định dạng log chung cho Gateway và năm service được quy định tại
+[`docs/logging-contract.md`](logging-contract.md). Mỗi request được ghi một dòng khi
+hoàn tất; log không chứa query string, body, thông tin định danh bệnh nhân hoặc credential.
+
 Tạo lịch hẹn phải có:
 
 ```http

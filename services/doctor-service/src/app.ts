@@ -1,7 +1,8 @@
 import express, { type ErrorRequestHandler, type Request, type Response } from "express";
-import { randomUUID, timingSafeEqual } from "node:crypto";
+import { timingSafeEqual } from "node:crypto";
 import swaggerUi from "swagger-ui-express";
 import { z } from "zod";
+import { createRequestLoggingMiddleware, logServiceEvent } from "@clinic/request-logging";
 import type { AppointmentOccupancy, UserDirectory } from "./dependencies.js";
 import { DependencyError } from "./dependencies.js";
 import type { DoctorRepository } from "./repository.js";
@@ -98,13 +99,7 @@ export function createDoctorApp(repository: DoctorRepository, users: UserDirecto
     throw new Error("DOCTOR_INTERNAL_API_TOKEN must contain at least 32 bytes");
   }
   const app = express();
-  app.use((req, res, next) => {
-    const supplied = req.header("X-Request-Id");
-    const requestId = supplied && /^[a-zA-Z0-9-]{1,80}$/.test(supplied) ? supplied : randomUUID();
-    res.setHeader("X-Request-Id", requestId);
-    console.log(`${req.method} ${req.originalUrl}`);
-    next();
-  });
+  app.use(createRequestLoggingMiddleware("doctor-service"));
   app.use(express.json());
   app.get("/openapi.json", (_req, res) => res.json(doctorOpenApi));
   app.use("/docs", swaggerUi.serve, swaggerUi.setup(doctorOpenApi));
@@ -166,8 +161,10 @@ export function createDoctorApp(repository: DoctorRepository, users: UserDirecto
     try {
       await repository.health();
       ok(res, { service: "doctor-service", status: "ok" });
-    } catch (e) {
-      console.error("Doctor Service health check failed:", e);
+    } catch {
+      logServiceEvent("doctor-service", "error", "health.check_failed", {
+        requestId: String(res.getHeader("X-Request-Id") ?? "")
+      });
       fail(res, 503, "DATABASE_UNAVAILABLE", "Database is unavailable");
     }
   }));
@@ -337,7 +334,10 @@ export function createDoctorApp(repository: DoctorRepository, users: UserDirecto
       if (code === "23505") { fail(res, 409, "RESOURCE_CONFLICT", "Resource already exists"); return; }
       if (code === "23503") { fail(res, 422, "REFERENCE_INVALID", "Referenced resource does not exist"); return; }
     }
-    console.error("Doctor Service request failed", typeof error === "object" && error !== null && "code" in error ? String(error.code) : "unexpected");
+    logServiceEvent("doctor-service", "error", "request.failed", {
+      requestId: String(res.getHeader("X-Request-Id") ?? ""),
+      code: typeof error === "object" && error !== null && "code" in error ? String(error.code) : "INTERNAL_SERVER_ERROR"
+    });
     fail(res, 500, "INTERNAL_SERVER_ERROR", "Unexpected server error");
   };
   app.use(onError);
