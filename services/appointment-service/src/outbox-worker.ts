@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { logServiceEvent } from "@clinic/request-logging";
 import { type OutboxEvent, PostgresAppointmentRepository } from "./postgres-repository.js";
 
 const patientResponse = z.object({ success: z.literal(true), data: z.object({ id: z.string().uuid(),
@@ -24,7 +25,10 @@ export class AppointmentOutboxWorker {
         } catch (caught) {
           const code = caught instanceof DeliveryError ? caught.code : "DELIVERY_UNAVAILABLE";
           await this.repository.deferOutbox(event.id, event.claimToken, code);
-          console.warn(JSON.stringify({ eventId: event.id, eventType: event.eventType, code }));
+          logServiceEvent("appointment-service", "warn", "outbox.delivery_deferred", {
+            eventType: event.eventType,
+            code
+          });
         }
       }
       return events.length;

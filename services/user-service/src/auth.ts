@@ -1,6 +1,7 @@
 import { createClient } from "@supabase/supabase-js";
 import express from "express";
 import { z } from "zod";
+import { logServiceEvent } from "@clinic/request-logging";
 import type { UserProfile, UserRepository } from "./repository.js";
 
 type AuthTokens = {
@@ -136,7 +137,7 @@ function authFailure(res: express.Response, cause: unknown) {
   const code = cause instanceof Error ? cause.message : "";
   const providerCode = cause instanceof AuthProviderError ? cause.providerCode : undefined;
   const status = cause instanceof AuthProviderError ? cause.status : undefined;
-  console.warn(JSON.stringify({ event: "auth.provider_error", code, providerCode, status }));
+  logServiceEvent("user-service", "warn", "auth.provider_error", { code, providerCode, status });
 
   if (providerCode === "invalid_credentials") return fail(res, 401, "AUTH_INVALID_CREDENTIALS", "Email hoặc mật khẩu không đúng");
   if (providerCode === "email_not_confirmed") return fail(res, 403, "AUTH_EMAIL_NOT_CONFIRMED", "Email chưa được xác nhận");

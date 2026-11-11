@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { readFile } from "node:fs/promises";
 import { Pool } from "pg";
+import { logServiceEvent } from "@clinic/request-logging";
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) throw new Error("DATABASE_URL is required");
@@ -32,7 +33,10 @@ try {
     await client.query("INSERT INTO medical_record_service.schema_migrations (version, checksum) VALUES ($1,$2)", [version, checksum]);
   }
   await client.query("COMMIT");
-  console.log(`Medical Record migration ${version}: ${existing.rows[0] ? "already applied" : "applied"}`);
+  logServiceEvent("medical-record-service", "info", "migration.applied", {
+    version,
+    state: existing.rows[0] ? "already-applied" : "applied"
+  });
 } catch (error) {
   await client.query("ROLLBACK");
   throw error;

@@ -268,7 +268,7 @@ describe("API Gateway platform middleware", () => {
 
     expect(logger.info).toHaveBeenCalled();
     const log = logger.info.mock.calls.at(-1)?.[0] as string;
-    expect(JSON.parse(log)).toMatchObject({ event: "request.completed", actorRole: "ADMIN", statusCode: 200 });
+    expect(log).toMatch(/^\[api-gateway\] GET \/api\/v1\/system\/health 200 \d+ms rid=/);
     expect(log).not.toContain("user-admin");
     expect(log).not.toContain("secret-token");
   });

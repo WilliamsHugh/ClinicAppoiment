@@ -4,6 +4,7 @@ import express, { type ErrorRequestHandler, type RequestHandler } from "express"
 import swaggerUi from "swagger-ui-express";
 import { z } from "zod";
 import type { AppointmentStatus } from "@clinic/shared-types";
+import { createRequestLoggingMiddleware, logServiceEvent } from "@clinic/request-logging";
 import { AppointmentRepository } from "./repository.js";
 import { createAppointmentPool, PostgresAppointmentRepository, SlotConflictError,
   IdempotencyMismatchError, RescheduleStateError, ConcurrentChangeError, InvalidTransitionError,
@@ -51,8 +52,10 @@ function bookingError(res: express.Response, caught: unknown) {
   if (caught instanceof IdempotencyMismatchError) return res.status(409).json(error("IDEMPOTENCY_KEY_REUSED", "Idempotency key was used for another request"));
   if (caught instanceof RescheduleStateError || caught instanceof ConcurrentChangeError || caught instanceof InvalidTransitionError)
     return res.status(409).json(error("APPOINTMENT_INVALID_STATUS_TRANSITION", "Appointment state changed"));
-  console.error("Appointment storage failure", typeof caught === "object" && caught !== null && "code" in caught
-    ? String(caught.code) : "unexpected");
+  logServiceEvent("appointment-service", "error", "storage.failure", {
+    code: typeof caught === "object" && caught !== null && "code" in caught
+      ? String(caught.code) : "APPOINTMENT_STORAGE_UNAVAILABLE"
+  });
   return res.status(503).json(error("APPOINTMENT_STORAGE_UNAVAILABLE", "Appointment storage is unavailable"));
 }
 const occupiedSlotsQuerySchema = z.object({
@@ -63,10 +66,7 @@ const occupiedSlotsQuerySchema = z.object({
 
 app.use(cors());
 app.use(express.json());
-app.use((req, _res, next) => {
-  console.log(`${req.method} ${req.originalUrl}`);
-  next();
-});
+app.use(createRequestLoggingMiddleware("appointment-service"));
 app.get("/openapi.json", (_req, res) => res.json(appointmentOpenApi));
 app.use("/docs", swaggerUi.serve, swaggerUi.setup(appointmentOpenApi));
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(appointmentOpenApi));
@@ -459,8 +459,11 @@ const onError: ErrorRequestHandler = (caught: unknown, _req, res, _next) => {
     return void res.status(503).json(error("DEPENDENCY_UNAVAILABLE", "Required service is unavailable"));
   if (caught instanceof SyntaxError && typeof caught === "object" && "body" in caught)
     return void res.status(400).json(error("VALIDATION_ERROR", "Invalid JSON body"));
-  console.error("Appointment request failed", typeof caught === "object" && caught !== null && "code" in caught
-    ? String(caught.code) : "unexpected");
+  logServiceEvent("appointment-service", "error", "request.failed", {
+    requestId: String(res.getHeader("X-Request-Id") ?? ""),
+    code: typeof caught === "object" && caught !== null && "code" in caught
+      ? String(caught.code) : "APPOINTMENT_STORAGE_UNAVAILABLE"
+  });
   return void res.status(503).json(error("APPOINTMENT_STORAGE_UNAVAILABLE", "Appointment storage is unavailable"));
 };
 app.use(onError);
@@ -468,12 +471,12 @@ app.use(onError);
 if (process.env.NODE_ENV !== "test") {
   const worker = new AppointmentOutboxWorker(store as PostgresAppointmentRepository,
     userServiceUrl, notificationServiceUrl);
-  void worker.dispatchBatch().catch(() => console.error("Appointment outbox poll failed"));
+  void worker.dispatchBatch().catch(() => logServiceEvent("appointment-service", "error", "outbox.poll_failed"));
   const configuredPollMs = Number(process.env.APPOINTMENT_OUTBOX_POLL_MS ?? 5000);
   const pollMs = Number.isFinite(configuredPollMs) ? Math.max(1000, configuredPollMs) : 5000;
-  setInterval(() => void worker.dispatchBatch().catch(() => console.error("Appointment outbox poll failed")),
+  setInterval(() => void worker.dispatchBatch().catch(() => logServiceEvent("appointment-service", "error", "outbox.poll_failed")),
     pollMs);
   app.listen(port, () => {
-    console.log(`Appointment Service listening on port ${port}`);
+    logServiceEvent("appointment-service", "info", "service.started", { port });
   });
 }

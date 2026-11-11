@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { Pool } from "pg";
 import swaggerUi from "swagger-ui-express";
 import { z } from "zod";
+import { createRequestLoggingMiddleware, logServiceEvent } from "@clinic/request-logging";
 import { createAuthRouter, createInternalVerifyHandler, createSupabaseAuthProvider } from "./auth.js";
 import { createDoctorEligibilityHandler } from "./doctor-eligibility.js";
 import { internalCredentialsFromEnv, requireInternalCaller } from "./internal-auth.js";
@@ -79,10 +80,7 @@ const listPatientsQuerySchema = z.object({
 
 app.use(cors());
 app.use(express.json());
-app.use((req, _res, next) => {
-  console.log(`${req.method} ${req.originalUrl}`);
-  next();
-});
+app.use(createRequestLoggingMiddleware("user-service"));
 app.get("/openapi.json", (_req, res) => res.json(swaggerDocument));
 app.use("/docs", swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerDocument));
@@ -268,12 +266,15 @@ app.use((err: unknown, _req: express.Request, res: express.Response, _next: expr
   if (err instanceof PatientScopeUnavailableError) {
     return res.status(503).json(error("PATIENT_SCOPE_UNAVAILABLE", "Patient scope verification is unavailable"));
   }
-  console.error("User Service request failed", err instanceof Error ? err.message : "Unknown error");
+  logServiceEvent("user-service", "error", "request.failed", {
+    requestId: res.getHeader("X-Request-Id")?.toString(),
+    code: "SERVICE_UNAVAILABLE"
+  });
   return res.status(503).json(error("SERVICE_UNAVAILABLE", "User Service is temporarily unavailable"));
 });
 
 if (process.env.NODE_ENV !== "test") {
   app.listen(port, () => {
-    console.log(`User Service listening on port ${port}`);
+    logServiceEvent("user-service", "info", "service.started", { port });
   });
 }
