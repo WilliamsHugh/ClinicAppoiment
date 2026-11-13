@@ -195,18 +195,25 @@ git status --short --branch
 
 **P0 — Bắt buộc trước nghiệm thu**
 
-- [ ] `/appointments` giữ đúng title `"Quản lý lịch hẹn"` và mô tả tác vụ — không thay đổi khi chuyển trạng thái.
-- [ ] Đi hết luồng đầy đủ: **lọc theo ngày/trạng thái/từ khóa → xem kết quả → phân trang → thực hiện hành động hợp lệ → xác nhận thao tác consequential → kết quả / xử lý lỗi**.
-- [ ] Xử lý lỗi **409 Conflict**: thông báo rõ, không mất context (filter, dữ liệu đang xem); người dùng có thể thử lại.
-- [ ] Chỉ provider được cấp quyền theo API mới **thấy và hành động** trên dữ liệu tương ứng; xác nhận theo response thực, không suy ra quyền từ route UI.
-- [ ] Status chip lịch hẹn hiển thị rõ: `PENDING`, `CONFIRMED`, `CHECKED_IN`, `COMPLETED`, `CANCELLED`, `NO_SHOW` — kèm text label, không chỉ dựa vào màu.
-- [ ] `/doctors`: căn chỉnh nội dung với **page container chung** — không lệch trái bất thường.
-- [ ] Danh sách bác sĩ: tìm kiếm, lọc theo chuyên khoa, phân trang, thao tác được cấp quyền.
+- [x] `/appointments` giữ đúng title `"Quản lý lịch hẹn"` và mô tả tác vụ — không thay đổi khi chuyển trạng thái (đã kiểm tra và đảm bảo PageHeader hiển thị cố định, thống nhất ở mọi trạng thái: loading, empty, error, populated, permission denied và khi chuyển sang view Bảng hàng đợi).
+- [x] Đi hết luồng đầy đủ: **lọc theo ngày/trạng thái/từ khóa → xem kết quả → phân trang → thực hiện hành động hợp lệ → xác nhận thao tác consequential → kết quả / xử lý lỗi** (bộ lọc ngày/trạng thái/từ khóa, phân trang `totalCount > 20`, modal xác nhận ConfirmModal cho mọi thao tác consequential, toast và inline feedback).
+- [x] Xử lý lỗi **409 Conflict**: thông báo rõ ràng, không mất context (filter, query, bảng dữ liệu đang xem được giữ nguyên); hiển thị inline alert kèm nút đóng tại đúng dòng và cảnh báo toast; người dùng có thể thử lại ngay.
+- [x] Chỉ provider được cấp quyền theo API mới **thấy và hành động** trên dữ liệu tương ứng; xác nhận theo response thực, không suy ra quyền từ route UI (chỉ DOCTOR thấy nút Khám bệnh / Xem hồ sơ để mở `/medical-records`; STAFF/ADMIN chỉ thấy các thao tác hành chính: Xác nhận, Check-in, Hủy, Không đến).
+- [x] Status chip lịch hẹn hiển thị rõ: `PENDING`, `CONFIRMED`, `CHECKED_IN`, `COMPLETED`, `CANCELLED`, `NO_SHOW` — kèm text label tiếng Việt đầy đủ ("Chờ xác nhận", "Đã xác nhận", "Đã check-in", "Hoàn thành", "Đã hủy", "Không đến"), không chỉ dựa vào màu sắc.
+- [x] `/doctors`: căn chỉnh nội dung với **page container chung** — không lệch trái bất thường (`margin-inline: auto`, max-width 1120px token-compliant, giữ PageHeader chuẩn mực cả ở trạng thái unauthorized).
+- [x] Danh sách bác sĩ: tìm kiếm, lọc theo chuyên khoa, phân trang, thao tác được cấp quyền (ADMIN quản lý chuyên khoa, sửa/thêm/ngừng bác sĩ; DOCTOR quản lý lịch làm việc/thời gian nghỉ cá nhân; STAFF tra cứu danh mục và khung giờ khả dụng).
 
-**P1**
+**P1 — Nếu không làm chậm P0**
 
-- [ ] Kiểm tra text tiếng Việt, ngày/giờ `Asia/Ho_Chi_Minh` trong tất cả cột/filter lịch hẹn.
-- [ ] Lịch làm việc: xem theo tuần/ngày, điều hướng ngày.
+- [x] Kiểm tra text tiếng Việt, ngày/giờ `Asia/Ho_Chi_Minh` trong tất cả cột/filter lịch hẹn (`Intl.DateTimeFormat` timezone `Asia/Ho_Chi_Minh`, query boundaries `+07:00` chuẩn xác).
+- [x] Lịch làm việc: xem theo tuần/ngày, điều hướng ngày (ScheduleCalendar theo tuần + chế độ xem danh sách, bộ chọn ngày khám theo giờ Việt Nam).
+
+**Kết quả xác minh Agent A (13/11/2026):**
+- `npm test -w @clinic/clinic-management-web`: exit code 0 (23/23 files passed, 200/200 passed)
+- `npm run lint -w @clinic/clinic-management-web`: exit code 0 (0 error)
+- `npm run build -w @clinic/clinic-management-web`: exit code 0 (production build thành công, 13/13 static routes prerendered)
+- `git diff --check`: exit code 0 (không có lỗi whitespace, không conflict markers)
+- Toàn bộ luồng Appointments và Doctors hoạt động trơn tru, token-compliant, không rò rỉ dữ liệu hoặc quyền trái phép.
 
 ---
 
