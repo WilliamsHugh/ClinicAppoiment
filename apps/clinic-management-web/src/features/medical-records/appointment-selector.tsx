@@ -1,4 +1,5 @@
 import React from "react";
+import { formatVietnamDateTime } from "../../lib/formatting/date-time";
 import styles from "./medical-records-panel.module.css";
 
 export interface AppointmentOption {
@@ -7,6 +8,7 @@ export interface AppointmentOption {
   doctorId: string;
   scheduledStartAt: string;
   status: string;
+  reason?: string;
 }
 
 export interface AppointmentSelectorProps {
@@ -27,22 +29,6 @@ function formatShortPatientName(patientId: string, fullName?: string): string {
   return `Bệnh nhân #${suffix}`;
 }
 
-function formatAppointmentDate(isoString: string): string {
-  try {
-    const d = new Date(isoString);
-    if (isNaN(d.getTime())) return isoString;
-    return d.toLocaleString("vi-VN", {
-      hour: "2-digit",
-      minute: "2-digit",
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-    });
-  } catch {
-    return isoString;
-  }
-}
-
 export function AppointmentSelector({
   appointments,
   selectedAppointmentId,
@@ -51,6 +37,9 @@ export function AppointmentSelector({
   patientNames = {},
   error,
 }: AppointmentSelectorProps) {
+  const visibleAppointments = appointments.filter(
+    (a) => a.status === "CHECKED_IN" || a.id === selectedAppointmentId
+  );
   const checkedInList = appointments.filter((a) => a.status === "CHECKED_IN");
 
   return (
@@ -62,21 +51,22 @@ export function AppointmentSelector({
         id="appointment-select"
         className={`${styles.select} ${error ? styles.inputError : ""}`.trim()}
         value={selectedAppointmentId}
-        disabled={disabled || checkedInList.length === 0}
+        disabled={disabled || (visibleAppointments.length === 0)}
         aria-label="Chọn lịch hẹn đã check-in"
         aria-invalid={Boolean(error)}
         onChange={(e) => onSelect(e.target.value)}
       >
         <option value="">-- Chọn lịch hẹn đã tiếp nhận --</option>
-        {checkedInList.map((appt) => {
+        {visibleAppointments.map((appt) => {
           const displayName = formatShortPatientName(
             appt.patientId,
             patientNames[appt.patientId]
           );
-          const formattedDate = formatAppointmentDate(appt.scheduledStartAt);
+          const formattedDate = formatVietnamDateTime(appt.scheduledStartAt);
+          const statusText = appt.status === "CHECKED_IN" ? "Đã tiếp nhận" : appt.status;
           return (
             <option key={appt.id} value={appt.id}>
-              {displayName} — {formattedDate} ({appt.status})
+              {displayName} — {formattedDate} ({statusText})
             </option>
           );
         })}
@@ -88,7 +78,7 @@ export function AppointmentSelector({
         </span>
       )}
 
-      {checkedInList.length === 0 && (
+      {checkedInList.length === 0 && !selectedAppointmentId && (
         <p className={styles.fieldHelp} style={{ color: "var(--warning)" }}>
           Không có lịch hẹn nào đang ở trạng thái CHECKED_IN. Bệnh nhân cần được nhân viên lễ tân tiếp nhận (Check-in) trước khi lập bệnh án.
         </p>

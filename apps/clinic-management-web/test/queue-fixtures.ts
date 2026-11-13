@@ -1,5 +1,5 @@
 import { vi } from "vitest";
-import type { Appointment } from "../src/features/appointments/appointment-api";
+import type { Appointment } from "../src/features/appointments/queue-api";
 
 export const patientId = "00000000-0000-4000-8000-000000000001";
 export const doctorId = "00000000-0000-4000-8000-000000000002";

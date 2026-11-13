@@ -163,7 +163,7 @@ export function RouteLoadingFallback({ pathname, route }: { pathname: string; ro
 
   if (pathname.startsWith("/medical-records")) {
     return (
-      <div className="page-stack" aria-busy="true" aria-label="Đang nạp hồ sơ khám">
+      <div className="page-stack" aria-label="Đang nạp hồ sơ khám">
         <PageHeader pathname="/medical-records" />
 
         <section
@@ -175,13 +175,101 @@ export function RouteLoadingFallback({ pathname, route }: { pathname: string; ro
             marginTop: 16,
           }}
         >
-          <h2 style={{ fontSize: "1.2rem", margin: "0 0 16px 0", color: "var(--ink)" }}>
-            Lập hồ sơ khám bệnh mới
-          </h2>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+            <div>
+              <h2 style={{ fontSize: "1.15rem", margin: 0, color: "var(--ink)", fontWeight: 600 }}>
+                Lập hồ sơ khám bệnh mới
+              </h2>
+              <p style={{ margin: "4px 0 0", fontSize: "0.875rem", color: "var(--muted)" }}>
+                Chọn lịch hẹn đã check-in để bắt đầu khám và lưu kết quả
+              </p>
+            </div>
+            <Badge variant="warning" size="sm">Bản nháp (DRAFT)</Badge>
+          </div>
+
           <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            <Skeleton height={38} width="100%" borderRadius="var(--radius-md)" />
-            <Skeleton height={70} width="100%" borderRadius="var(--radius-md)" />
-            <Skeleton height={70} width="100%" borderRadius="var(--radius-md)" />
+            <div aria-busy="true">
+              <span style={{ fontSize: "0.875rem", fontWeight: 600, color: "var(--ink)" }}>
+                Lịch hẹn khám đã check-in
+              </span>
+              <Skeleton height={42} width="100%" borderRadius="var(--radius-md)" style={{ marginTop: 6 }} />
+            </div>
+
+            <div>
+              <span style={{ fontSize: "0.875rem", fontWeight: 600, color: "var(--ink)" }}>
+                Triệu chứng lâm sàng
+              </span>
+              <textarea
+                rows={2}
+                disabled
+                placeholder="Mô tả triệu chứng bệnh nhân phản ánh..."
+                style={{
+                  width: "100%",
+                  marginTop: 6,
+                  padding: "10px 12px",
+                  borderRadius: "var(--radius-md)",
+                  border: "1px solid var(--line)",
+                  background: "var(--surface-subtle)",
+                }}
+              />
+            </div>
+
+            <div>
+              <span style={{ fontSize: "0.875rem", fontWeight: 600, color: "var(--ink)" }}>
+                Chẩn đoán sơ bộ / xác định
+              </span>
+              <textarea
+                rows={2}
+                disabled
+                placeholder="Chẩn đoán bệnh lý của bác sĩ..."
+                style={{
+                  width: "100%",
+                  marginTop: 6,
+                  padding: "10px 12px",
+                  borderRadius: "var(--radius-md)",
+                  border: "1px solid var(--line)",
+                  background: "var(--surface-subtle)",
+                }}
+              />
+            </div>
+
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 12 }}>
+              <Button disabled variant="secondary">
+                Lưu nháp (DRAFT)
+              </Button>
+              <Button disabled variant="primary">
+                Chốt bệnh án (FINAL)
+              </Button>
+            </div>
+          </div>
+        </section>
+
+        <section
+          style={{
+            background: "var(--surface)",
+            border: "1px solid var(--line)",
+            borderRadius: "var(--radius-lg)",
+            padding: "24px",
+            marginTop: 16,
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+            <div>
+              <h2 style={{ fontSize: "1.15rem", margin: 0, color: "var(--ink)", fontWeight: 600 }}>
+                Hồ sơ bệnh án gần đây
+              </h2>
+              <p style={{ margin: "4px 0 0", fontSize: "0.875rem", color: "var(--muted)" }}>
+                Danh sách các ca khám đã ghi nhận trong hệ thống
+              </p>
+            </div>
+            <Button disabled variant="secondary" size="sm">
+              Làm mới
+            </Button>
+          </div>
+
+          <div aria-busy="true" style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+            <Skeleton height={100} width="100%" borderRadius="var(--radius-md)" />
+            <Skeleton height={100} width="100%" borderRadius="var(--radius-md)" />
           </div>
         </section>
       </div>

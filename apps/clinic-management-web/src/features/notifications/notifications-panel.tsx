@@ -1,12 +1,14 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Button, Skeleton } from "../../components/ui";
+import { Badge, Button, Skeleton } from "../../components/ui";
+import { Alert } from "../../components/ui/alert";
 import { EmptyState, ErrorState, SkeletonPage } from "../../components/states";
 import { Pagination } from "../../components/pagination";
 import { ApiClientError, createBrowserApiClient } from "../../lib/api/client";
 import { useSession } from "../../lib/session/session-context";
 import { Notification, NotificationItem } from "./notification-item";
+import { useNotifications } from "./notification-context";
 import { PageHeader } from "../../components/page-header";
 import styles from "./notifications-panel.module.css";
 
@@ -15,6 +17,7 @@ export type NotificationFilter = "ALL" | "UNREAD" | "READ";
 export function NotificationsPanel() {
   const session = useSession();
   const client = useMemo(() => createBrowserApiClient(session), [session]);
+  const { setUnreadCount, decrementUnreadCount } = useNotifications();
 
   const [items, setItems] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
@@ -54,6 +57,10 @@ export function NotificationsPanel() {
       const fetchedItems = res.data?.items ?? [];
       setItems(fetchedItems);
       setTotal(typeof res.data?.total === "number" ? res.data.total : fetchedItems.length);
+
+      if (filter === "UNREAD") {
+        setUnreadCount(typeof res.data?.total === "number" ? res.data.total : fetchedItems.length);
+      }
     } catch (caught) {
       setError(
         caught instanceof ApiClientError
@@ -66,7 +73,7 @@ export function NotificationsPanel() {
       setLoading(false);
       setIsRefreshing(false);
     }
-  }, [client, session.status, page, limit, filter, items.length]);
+  }, [client, session.status, page, limit, filter, items.length, setUnreadCount]);
 
   useEffect(() => {
     if (session.status === "authenticated") {
@@ -94,6 +101,8 @@ export function NotificationsPanel() {
       setItems((prev) =>
         prev.map((item) => (item.id === id ? { ...item, status: "READ" } : item))
       );
+      // Đồng bộ giảm ngay badge header
+      decrementUnreadCount(1);
     } catch (caught) {
       setError(
         caught instanceof ApiClientError
@@ -116,6 +125,7 @@ export function NotificationsPanel() {
 
   const handleMarkAllRead = async () => {
     if (unreadOnPage.length === 0) return;
+    const countToDecrement = unreadOnPage.length;
     setMarkingAll(true);
     try {
       await Promise.all(
@@ -128,6 +138,8 @@ export function NotificationsPanel() {
 
       // Cập nhật tất cả thành READ
       setItems((prev) => prev.map((item) => ({ ...item, status: "READ" })));
+      // Đồng bộ giảm badge header
+      decrementUnreadCount(countToDecrement);
     } catch (caught) {
       setError(
         caught instanceof ApiClientError
@@ -253,15 +265,49 @@ export function NotificationsPanel() {
         </span>
       </section>
 
-      {/* Error state */}
-      {error && <ErrorState message={error} onRetry={() => void loadNotifications(false)} />}
+      {/* Error state khi chưa có dữ liệu */}
+      {error && items.length === 0 && (
+        <ErrorState message={error} onRetry={() => void loadNotifications(false)} />
+      )}
 
       {/* Main Content / Notification List */}
       <section aria-label="Danh sách thông báo" className={styles.listContainer}>
+        {/* Error cảnh báo khi refresh thất bại nhưng vẫn giữ dữ liệu cũ */}
+        {error && items.length > 0 && (
+          <Alert variant="warning" title="Không thể cập nhật danh sách thông báo">
+            Đang giữ dữ liệu đã tải trước đó. {error}{" "}
+            <Button
+              type="button"
+              variant="secondary"
+              size="sm"
+              onClick={() => void loadNotifications(false)}
+            >
+              Thử lại
+            </Button>
+          </Alert>
+        )}
+
+        {/* Stale data indicator khi đang làm mới */}
+        {isRefreshing && items.length > 0 && (
+          <div
+            className={styles.staleNotice}
+            role="status"
+            aria-live="polite"
+            aria-label="Đang làm mới danh sách thông báo"
+          >
+            <Badge variant="warning" size="sm">
+              Đang làm mới…
+            </Badge>
+            <span className={styles.staleText}>
+              Đang tải dữ liệu thông báo mới nhất. Dữ liệu bên dưới được giữ từ lần tải trước.
+            </span>
+          </div>
+        )}
+
         {loading ? (
           <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
             {[1, 2, 3, 4].map((i) => (
-              <div key={i} className={styles.skeletonCard}>
+              <div key={i} className={styles.skeletonCard} aria-busy="true">
                 <div style={{ display: "flex", gap: 8 }}>
                   <Skeleton height={20} width={70} />
                   <Skeleton height={20} width={60} />
@@ -294,7 +340,13 @@ export function NotificationsPanel() {
           ) : (
             <EmptyState
               title="Chưa có thông báo nào"
-              message="Thông báo điều hành và thông tin lâm sàng dành cho tài khoản của bạn sẽ hiển thị tại đây."
+              message={
+                session.identity?.role === "DOCTOR"
+                  ? "Thông báo lâm sàng (kết quả khám, xét nghiệm) và lịch khám được phân công cho bác sĩ sẽ xuất hiện tại đây."
+                  : session.identity?.role === "STAFF"
+                  ? "Thông báo tiếp đón bệnh nhân và hàng đợi điều hành phòng khám sẽ xuất hiện tại đây."
+                  : "Thông báo điều hành và cập nhật hệ thống dành cho tài khoản của bạn sẽ hiển thị tại đây."
+              }
               action={{
                 label: "Làm mới",
                 onClick: () => void loadNotifications(),
@@ -308,6 +360,7 @@ export function NotificationsPanel() {
               notification={notification}
               onMarkRead={handleMarkRead}
               isMarkingRead={markingIds.has(notification.id)}
+              userRole={session.identity?.role}
             />
           ))
         )}

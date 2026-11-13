@@ -82,16 +82,16 @@ export function AppointmentActionMenu({
         </button>
       )}
 
-      {/* DOCTOR & ADMIN: Xem hồ sơ khi status = CHECKED_IN hoặc COMPLETED */}
-      {(isDoctor || role === "ADMIN") && (status === "CHECKED_IN" || status === "COMPLETED") && (
+      {/* DOCTOR only: Xem hồ sơ khi status = CHECKED_IN hoặc COMPLETED */}
+      {isDoctor && (status === "CHECKED_IN" || status === "COMPLETED") && (
         <button
           type="button"
           disabled={inFlight}
           onClick={() => onViewRecord(appointment)}
           className={`${styles.actionBtn} ${styles.actionBtnRecord}`}
-          title={isDoctor && status === "CHECKED_IN" ? "Tiến hành khám bệnh" : "Xem hồ sơ bệnh án"}
+          title={status === "CHECKED_IN" ? "Tiến hành khám bệnh" : "Xem hồ sơ bệnh án"}
         >
-          {isDoctor && status === "CHECKED_IN" ? "Khám bệnh" : "Xem hồ sơ"}
+          {status === "CHECKED_IN" ? "Khám bệnh" : "Xem hồ sơ"}
         </button>
       )}
     </div>

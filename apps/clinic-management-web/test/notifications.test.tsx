@@ -2,6 +2,11 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import NotificationsPage from "../app/notifications/page";
+import { AppShell } from "../src/components/app-shell";
+import {
+  NotificationContext,
+  NotificationProvider,
+} from "../src/features/notifications/notification-context";
 import {
   Notification,
   NotificationItem,
@@ -15,6 +20,12 @@ Object.assign(globalThis, { React });
 let currentSession: Session;
 vi.mock("../src/lib/session/session-context", () => ({
   useSession: () => currentSession,
+}));
+
+let mockPathname = "/notifications";
+vi.mock("next/navigation", () => ({
+  usePathname: () => mockPathname,
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
 }));
 
 describe("Notification Badge & Target Mapping", () => {
@@ -43,15 +54,37 @@ describe("Notification Badge & Target Mapping", () => {
     const record = getNotificationBadgeConfig("medical-record.created");
     expect(record.label).toBe("Kết quả");
     expect(record.variant).toBe("success");
+
+    // Xét nghiệm / Lab result -> success
+    const lab = getNotificationBadgeConfig("lab.result");
+    expect(lab.label).toBe("Kết quả");
+    expect(lab.variant).toBe("success");
+
+    const clinicalTest = getNotificationBadgeConfig("xét nghiệm máu");
+    expect(clinicalTest.label).toBe("Kết quả");
+    expect(clinicalTest.variant).toBe("success");
+
+    // Phân công lịch khám cho bác sĩ -> primary
+    const assigned = getNotificationBadgeConfig("doctor.assigned");
+    expect(assigned.label).toBe("Phân công");
+    expect(assigned.variant).toBe("primary");
   });
 
-  it("resolves target navigation links for medical records and appointments", () => {
-    const recordLink = notificationTarget({ recordId: "rec-123" });
-    expect(recordLink).not.toBeNull();
-    expect(recordLink?.href).toBe("/medical-records?recordId=rec-123");
-    expect(recordLink?.label).toBe("Xem hồ sơ khám →");
+  it("resolves target navigation links for medical records and appointments based on role", () => {
+    // DOCTOR gets access to /medical-records link
+    const doctorRecordLink = notificationTarget({ recordId: "rec-123" }, "DOCTOR");
+    expect(doctorRecordLink).not.toBeNull();
+    expect(doctorRecordLink?.href).toBe("/medical-records?recordId=rec-123");
+    expect(doctorRecordLink?.label).toBe("Xem hồ sơ khám →");
 
-    const apptLink = notificationTarget({ appointmentId: "appt-456" });
+    // STAFF and ADMIN do NOT get access to clinical /medical-records link
+    const staffRecordLink = notificationTarget({ recordId: "rec-123" }, "STAFF");
+    expect(staffRecordLink).toBeNull();
+
+    const adminRecordLink = notificationTarget({ recordId: "rec-123" }, "ADMIN");
+    expect(adminRecordLink).toBeNull();
+
+    const apptLink = notificationTarget({ appointmentId: "appt-456" }, "STAFF");
     expect(apptLink).not.toBeNull();
     expect(apptLink?.href).toBe("/appointments?id=appt-456");
     expect(apptLink?.label).toBe("Xem lịch hẹn →");
@@ -141,5 +174,53 @@ describe("NotificationsPage Orchestration", () => {
     expect(html).toContain("Tất cả");
     expect(html).toContain("Chưa đọc");
     expect(html).toContain("Đã đọc");
+  });
+
+  it("synchronizes notification badge with panel using shared data source", () => {
+    currentSession = {
+      status: "authenticated",
+      identity: { id: "user-1", role: "DOCTOR", displayName: "BS. Nguyễn Văn A" },
+      getAccessToken: async () => "valid-token",
+      signIn: async () => {},
+      signOut: async () => {},
+    };
+
+    // When unreadCount is 0, no badge rendered
+    const htmlZero = renderToStaticMarkup(
+      <NotificationContext.Provider
+        value={{
+          unreadCount: 0,
+          loading: false,
+          refreshUnreadCount: async () => {},
+          decrementUnreadCount: () => {},
+          setUnreadCount: () => {},
+          markAsRead: async () => {},
+          markAllAsRead: async () => {},
+        }}
+      >
+        <AppShell>Page Content</AppShell>
+      </NotificationContext.Provider>
+    );
+    expect(htmlZero).not.toContain("data-testid=\"notification-badge\"");
+
+    // When unreadCount is 5, badge renders '5'
+    const htmlFive = renderToStaticMarkup(
+      <NotificationContext.Provider
+        value={{
+          unreadCount: 5,
+          loading: false,
+          refreshUnreadCount: async () => {},
+          decrementUnreadCount: () => {},
+          setUnreadCount: () => {},
+          markAsRead: async () => {},
+          markAllAsRead: async () => {},
+        }}
+      >
+        <AppShell>Page Content</AppShell>
+      </NotificationContext.Provider>
+    );
+    expect(htmlFive).toContain("data-testid=\"notification-badge\"");
+    expect(htmlFive).toContain("5 thông báo chưa đọc");
+    expect(htmlFive).toContain(">5<");
   });
 });

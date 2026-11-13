@@ -11,6 +11,7 @@ import { useSession } from "../lib/session/session-context";
 import { clinicRoleLabel, sessionDisplayName } from "../lib/session/session";
 import { RouteGuard } from "./route-guard";
 import { Badge, ConfirmModal } from "./ui";
+import { useNotifications } from "../features/notifications/notification-context";
 import styles from "./app-shell.module.css";
 
 export interface AppShellProps {
@@ -38,6 +39,7 @@ function getInitials(name?: string, role?: string): string {
 export function AppShell({ children, NotificationSlot }: AppShellProps) {
   const pathname = usePathname();
   const session = useSession();
+  const { unreadCount } = useNotifications();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [confirmSignOutOpen, setConfirmSignOutOpen] = useState(false);
 
@@ -163,7 +165,18 @@ export function AppShell({ children, NotificationSlot }: AppShellProps) {
                     title="Thông báo"
                     className={styles.notificationLink}
                   >
-                    <Bell size={16} aria-hidden="true" />
+                    <div className={styles.bellWrapper}>
+                      <Bell size={16} aria-hidden="true" />
+                      {unreadCount > 0 && (
+                        <span
+                          className={styles.notificationBadge}
+                          aria-label={`${unreadCount} thông báo chưa đọc`}
+                          data-testid="notification-badge"
+                        >
+                          {unreadCount > 99 ? "99+" : unreadCount}
+                        </span>
+                      )}
+                    </div>
                     <span>Thông báo</span>
                   </Link>
                 )}

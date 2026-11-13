@@ -19,6 +19,7 @@ export interface NotificationItemProps {
   notification: Notification;
   onMarkRead?: (id: string) => Promise<void> | void;
   isMarkingRead?: boolean;
+  userRole?: string;
 }
 
 /**
@@ -29,7 +30,8 @@ export interface NotificationItemProps {
  * | Hủy lịch hẹn | danger | Hủy lịch |
  * | Thay đổi lịch hẹn | warning | Thay đổi |
  * | Nhắc nhở | info | Nhắc nhở |
- * | Hồ sơ sẵn sàng | success | Kết quả |
+ * | Hồ sơ sẵn sàng / Xét nghiệm | success | Kết quả |
+ * | Phân công lịch khám | primary | Phân công |
  */
 export function getNotificationBadgeConfig(type: string): {
   label: string;
@@ -37,32 +39,41 @@ export function getNotificationBadgeConfig(type: string): {
 } {
   const lower = type.toLowerCase();
 
-  // 1. Hồ sơ sẵn sàng / Kết quả khám
+  // 1. Hồ sơ sẵn sàng / Kết quả khám / Xét nghiệm lâm sàng
   if (
     lower.includes("record") ||
     lower.includes("medical") ||
     lower.includes("hồ sơ") ||
-    lower.includes("kết quả")
+    lower.includes("kết quả") ||
+    lower.includes("lab") ||
+    lower.includes("test") ||
+    lower.includes("xét nghiệm") ||
+    lower.includes("lâm sàng")
   ) {
     return { label: "Kết quả", variant: "success" };
   }
 
-  // 2. Hủy lịch hẹn
+  // 2. Phân công bác sĩ / ca khám
+  if (lower.includes("assign") || lower.includes("phân công")) {
+    return { label: "Phân công", variant: "primary" };
+  }
+
+  // 3. Hủy lịch hẹn
   if (lower.includes("cancel") || lower.includes("hủy")) {
     return { label: "Hủy lịch", variant: "danger" };
   }
 
-  // 3. Xác nhận lịch hẹn
+  // 4. Xác nhận lịch hẹn
   if (lower.includes("confirm") || lower.includes("xác nhận")) {
     return { label: "Xác nhận", variant: "primary" };
   }
 
-  // 4. Nhắc nhở lịch hẹn
+  // 5. Nhắc nhở lịch hẹn
   if (lower.includes("remind") || lower.includes("nhắc")) {
     return { label: "Nhắc nhở", variant: "info" };
   }
 
-  // 5. Thay đổi lịch hẹn / lịch mới
+  // 6. Thay đổi lịch hẹn / lịch mới
   if (
     lower.includes("reschedule") ||
     lower.includes("change") ||
@@ -73,17 +84,24 @@ export function getNotificationBadgeConfig(type: string): {
     return { label: "Thay đổi", variant: "warning" };
   }
 
-  if (lower.includes("checked_in") || lower.includes("tiếp đón")) {
+  if (lower.includes("checked_in") || lower.includes("tiếp đón") || lower.includes("check-in")) {
     return { label: "Tiếp đón", variant: "info" };
   }
 
   return { label: type, variant: "neutral" };
 }
 
-export function notificationTarget(payload: unknown): { href: string; label: string } | null {
+export function notificationTarget(
+  payload: unknown,
+  userRole?: string
+): { href: string; label: string } | null {
   if (!payload || typeof payload !== "object") return null;
   const data = payload as Record<string, unknown>;
   if (typeof data.recordId === "string") {
+    // Chỉ DOCTOR có quyền truy cập /medical-records. ADMIN/STAFF không hiển thị liên kết lâm sàng.
+    if (userRole && userRole !== "DOCTOR") {
+      return null;
+    }
     return {
       href: `/medical-records?recordId=${encodeURIComponent(data.recordId)}`,
       label: "Xem hồ sơ khám →",
@@ -118,10 +136,11 @@ export function NotificationItem({
   notification,
   onMarkRead,
   isMarkingRead = false,
+  userRole,
 }: NotificationItemProps) {
   const isUnread = notification.status === "UNREAD";
   const badgeConfig = getNotificationBadgeConfig(notification.type);
-  const target = notificationTarget(notification.payload);
+  const target = notificationTarget(notification.payload, userRole);
 
   return (
     <article

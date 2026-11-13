@@ -79,7 +79,7 @@ export function SchedulePanel({
   onResetTimeOffForm,
   onRetryTimeOff,
 }: SchedulePanelProps) {
-  const [scheduleView, setScheduleView] = useState<"calendar" | "list">("calendar");
+  const [scheduleView, setScheduleView] = useState<"calendar" | "list">("list");
   return (
     <>
       {/* Quản lý lịch làm việc tuần */}
