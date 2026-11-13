@@ -120,8 +120,7 @@ git diff --check
 # Kết quả: exit 0 (không có lỗi khoảng trắng hoặc conflict marker)
 
 git status --short --branch
-# Kết quả: nhánh fix/acceptance-platform-shell sạch phạm vi Nhánh 1
-```
+# Kết quả: nhánh fix/acceptance-platform-shell sạch phạm vi Nhánh 1```
 
 ---
 
@@ -146,8 +145,7 @@ git status --short --branch
 - `npm run lint -w @clinic/clinic-management-web`: exit code 0
 - `npm run build -w @clinic/clinic-management-web`: exit code 0
 - `npm test -w @clinic/clinic-management-web`: exit code 0 (22/22 files passed, 208/208 tests passed)
-- `git diff --check`: exit code 0
----
+- `git diff --check`: exit code 0---
 
 ## Nhánh 2 — `fix/acceptance-auth-users-profile`
 
@@ -182,8 +180,7 @@ git status --short --branch
 - Đăng nhập: Single Centered Card 440px, lưu "Ghi nhớ tài khoản" vào localStorage, toggle ẩn/hiện mật khẩu, loading submit button, test thành công luồng DOCTOR, STAFF, ADMIN.
 - Profile: Giữ nguyên form draft khi API PATCH lỗi 500/mạng; các mục chưa có API (đổi avatar, đổi mật khẩu, cấu hình thông báo) có huy hiệu Lộ trình phát triển và nút bị vô hiệu hóa kèm tooltip giải thích.
 - Users: Debounce 300ms tìm kiếm; phân quyền nghiêm ngặt; chặn ADMIN tự khóa tài khoản chính mình tại Table, Modal, Panel; gắn nhãn `(Bạn)` cho tài khoản hiện tại.
-- Modal: Focus trap hoàn chỉnh chặn focus rơi ra ngoài modal, khôi phục focus khi đóng, Escape đóng modal.
----
+- Modal: Focus trap hoàn chỉnh chặn focus rơi ra ngoài modal, khôi phục focus khi đóng, Escape đóng modal.---
 
 ### Agent B · Notifications (Auth domain)
 
@@ -209,8 +206,7 @@ git status --short --branch
 - AppShell hiển thị badge số lượng chưa đọc live với aria-label chi tiết; hiển thị compact skeleton khi đang nạp count; ẩn badge khi số lượng bằng 0.
 - Xử lý triệt để phân biệt EmptyState vs ErrorState: lỗi fetch hiển thị ErrorState và nút Thử lại, không bao giờ nhầm sang EmptyState; dữ liệu stale khi refresh lỗi vẫn giữ nguyên trên màn hình kèm banner cảnh báo có thể thử lại mà không mất bộ lọc.
 - Thao tác đánh dấu đã đọc (đơn lẻ & tất cả) có loading indicator, chống double-submit, chỉ cập nhật trạng thái UI sau khi nhận response thành công từ API Gateway.
-- Bổ sung focus-visible, focus-within trên thẻ thông báo, liên kết hồ sơ/lịch hẹn và responsive reflow trên màn hình hẹp (< 640px).
----
+- Bổ sung focus-visible, focus-within trên thẻ thông báo, liên kết hồ sơ/lịch hẹn và responsive reflow trên màn hình hẹp (< 640px).---
 
 ## Nhánh 3 — `fix/acceptance-appointments-doctors`
 
@@ -244,6 +240,7 @@ git status --short --branch
 - `npm run build -w @clinic/clinic-management-web`: exit code 0 (production build thành công, 13/13 static routes prerendered)
 - `git diff --check`: exit code 0 (không có lỗi whitespace, không conflict markers)
 - Toàn bộ luồng Appointments và Doctors hoạt động trơn tru, token-compliant, không rò rỉ dữ liệu hoặc quyền trái phép.
+
 ---
 
 ### Agent B · Filter, State & Error Recovery
@@ -266,6 +263,7 @@ git status --short --branch
 - `npm run build -w @clinic/clinic-management-web`: exit code 0 (production build thành công, 13/13 static routes prerendered)
 - `git diff --check`: exit code 0 (không có lỗi whitespace, không conflict markers)
 - Toàn bộ 5 mục P0 và 1 mục P1 của Agent B đã hoàn tất và đạt nghiệm thu.
+
 ---
 
 ### Agent C · Responsive & Keyboard cho Appointments
@@ -280,51 +278,39 @@ git status --short --branch
 **P1**
 
 - [x] Kiểm tra bảng bác sĩ và calendar lịch làm việc trên tablet viewport. *(Đã xử lý: `calendarViewport` có `overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: thin;` và `:focus-visible`; thẻ bác sĩ và các nút điều hướng hỗ trợ tablet viewport và tap targets).*
----
-
-## Nhánh 4 — `fix/acceptance-records-notifications`
-
-**Domain:** Hồ sơ khám bệnh, thông báo (domain lâm sàng)  
-**Base:** `feat/tv1-m3-platform-ui`  
-**Số agent tham gia: 2**  
-**Task M3:** `M3-UI-REC-001`, `M3-UI-REC-002`, `M3-UI-NOTI-001`  
-
----
-
-### Agent A · Medical Records & Access Control
-
-**P0 — Bắt buộc trước nghiệm thu**
-
-- [ ] `/medical-records` chỉ cấp quyền cho `DOCTOR`; ADMIN và STAFF nhận **permission denied / redirect** đúng — không cấp quyền lâm sàng chỉ qua UI.
-- [ ] Luồng DOCTOR đầy đủ: **chọn ca khám được phân công → tải thông tin bệnh nhân → lưu nháp → hoàn tất (FINAL)**.
-- [ ] Khi chốt FINAL: **hiển thị confirm dialog** → sau khi server xác nhận → **form bị khóa** (readonly); không khóa trước response.
-- [ ] Không để ADMIN/STAFF thấy hoặc hành động trên dữ liệu lâm sàng qua bất kỳ đường nào trong UI.
-- [ ] Giữ dữ liệu nhập draft khi request lỗi; retry trong vùng form, không reload toàn trang.
-- [ ] Trạng thái hồ sơ hiển thị rõ: DRAFT / FINAL — kèm text label, không chỉ màu.
+- [x] `/medical-records` chỉ cấp quyền cho `DOCTOR`; ADMIN và STAFF nhận **permission denied / redirect** đúng — không cấp quyền lâm sàng chỉ qua UI.
+- [x] Luồng DOCTOR đầy đủ: **chọn ca khám được phân công → tải thông tin bệnh nhân → lưu nháp → hoàn tất (FINAL)**.
+- [x] Khi chốt FINAL: **hiển thị confirm dialog** → sau khi server xác nhận → **form bị khóa** (readonly); không khóa trước response.
+- [x] Không để ADMIN/STAFF thấy hoặc hành động trên dữ liệu lâm sàng qua bất kỳ đường nào trong UI.
+- [x] Giữ dữ liệu nhập draft khi request lỗi; retry trong vùng form, không reload toàn trang.
+- [x] Trạng thái hồ sơ hiển thị rõ: DRAFT / FINAL — kèm text label, không chỉ màu.
 
 **P1**
 
-- [ ] Text tiếng Việt, ngày/giờ `Asia/Ho_Chi_Minh` trong hồ sơ khám.
-- [ ] Keyboard: Tab qua form, focus-visible, Escape đóng confirm dialog.
+- [x] Text tiếng Việt, ngày/giờ `Asia/Ho_Chi_Minh` trong hồ sơ khám.
+- [x] Keyboard: Tab qua form, focus-visible, Escape đóng confirm dialog.
 
+*Kết quả xác minh Agent A:*
+- `lint`: exit 0 (`tsc -p tsconfig.json --noEmit`)
+- `build`: exit 0 (`next build` thành công, 13/13 static pages)
+- `test`: 203/203 passed (`vitest run`, 17/17 passed trong `test/medical-records.test.tsx`)
 ---
 
 ### Agent B · States & Notifications (Clinical domain)
 
 **P0**
 
-- [ ] `/medical-records`: skeleton chỉ ở vùng data; tên trang, section heading và static controls xuất hiện ngay; skeleton có `aria-busy`.
-- [ ] Empty state hồ sơ chỉ xuất hiện sau response thành công `[]`; lỗi mạng/auth không diễn giải thành hồ sơ trống.
-- [ ] Error state hồ sơ: retry trong đúng vùng; không xóa draft đang có; loading chỉ trên button submit, không toàn form.
-- [ ] **Stale data indicator**: khi dữ liệu hồ sơ được refresh, giữ bản cũ hiển thị kèm nhãn trong lúc load mới.
-- [ ] `/notifications` (clinical context): đảm bảo thông báo lâm sàng (kết quả xét nghiệm, lịch hẹn của DOCTOR) hiển thị đúng, không lẫn với thông báo role khác nếu API phân theo role.
-- [ ] Badge notification đồng bộ với panel sau mỗi thao tác đánh dấu đã đọc — cùng nguồn dữ liệu.
+- [x] `/medical-records`: skeleton chỉ ở vùng data; tên trang, section heading và static controls xuất hiện ngay; skeleton có `aria-busy`.
+- [x] Empty state hồ sơ chỉ xuất hiện sau response thành công `[]`; lỗi mạng/auth không diễn giải thành hồ sơ trống.
+- [x] Error state hồ sơ: retry trong đúng vùng; không xóa draft đang có; loading chỉ trên button submit, không toàn form.
+- [x] **Stale data indicator**: khi dữ liệu hồ sơ được refresh, giữ bản cũ hiển thị kèm nhãn trong lúc load mới.
+- [x] `/notifications` (clinical context): đảm bảo thông báo lâm sàng (kết quả xét nghiệm, lịch hẹn của DOCTOR) hiển thị đúng, không lẫn với thông báo role khác nếu API phân theo role.
+- [x] Badge notification đồng bộ với panel sau mỗi thao tác đánh dấu đã đọc — cùng nguồn dữ liệu.
 
 **P1**
 
-- [ ] Responsive: danh sách và form hồ sơ trên tablet/mobile.
-- [ ] Kiểm tra console: không có key warning, request lặp hoặc hydration error trên route `/medical-records`.
-
+- [x] Responsive: danh sách và form hồ sơ trên tablet/mobile.
+- [x] Kiểm tra console: không có key warning, request lặp hoặc hydration error trên route `/medical-records`.
 ---
 
 ## Lịch làm việc 3 ngày

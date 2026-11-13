@@ -189,6 +189,24 @@
   flex-shrink: 0;
 }
 
+/* Stale data indicator */
+.staleNotice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  background: var(--warning-light, rgba(245, 158, 11, 0.1));
+  border: 1px solid var(--warning, #f59e0b);
+  border-radius: var(--radius-md, 6px);
+  margin-bottom: 8px;
+}
+
+.staleText {
+  font-size: 0.8125rem;
+  color: var(--ink);
+  line-height: 1.4;
+}
+
 /* Skeleton Loading State */
 .skeletonCard {
   background: var(--surface);

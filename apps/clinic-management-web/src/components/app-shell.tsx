@@ -182,7 +182,18 @@ export function AppShell({ children, NotificationSlot }: AppShellProps) {
                         : "Thông báo"
                     }
                   >
-                    <Bell size={16} aria-hidden="true" />
+                    <div className={styles.bellWrapper}>
+                      <Bell size={16} aria-hidden="true" />
+                      {unreadCount !== null && unreadCount > 0 && (
+                        <span
+                          className={styles.notificationBadge}
+                          aria-label={`${unreadCount} thông báo chưa đọc`}
+                          data-testid="notification-badge"
+                        >
+                          {unreadCount > 99 ? "99+" : unreadCount}
+                        </span>
+                      )}
+                    </div>
                     <span>Thông báo</span>
                     {isLoadingUnread && unreadCount === null ? (
                       <span
@@ -190,15 +201,6 @@ export function AppShell({ children, NotificationSlot }: AppShellProps) {
                         aria-label="Đang nạp số lượng thông báo"
                         title="Đang tải..."
                       />
-                    ) : unreadCount !== null && unreadCount > 0 ? (
-                      <Badge
-                        variant="danger"
-                        size="sm"
-                        className={styles.notificationBadge}
-                        aria-hidden="true"
-                      >
-                        {unreadCount > 99 ? "99+" : unreadCount}
-                      </Badge>
                     ) : null}
                   </Link>
                 )}
