@@ -29,12 +29,6 @@ vi.mock("../src/lib/session/session-context", () => ({
   useSession: () => currentSession,
 }));
 
-let mockPathname = "/notifications";
-vi.mock("next/navigation", () => ({
-  usePathname: () => mockPathname,
-  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
-}));
-
 describe("Notification Badge & Target Mapping", () => {
   it("maps notification types to correct badge variant and label per design contract", () => {
     // Xác nhận lịch hẹn -> primary

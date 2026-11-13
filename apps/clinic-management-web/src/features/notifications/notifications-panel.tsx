@@ -311,7 +311,7 @@ export function NotificationsPanel() {
       <section aria-label="Danh sách thông báo" className={styles.listContainer}>
         {/* Error cảnh báo khi refresh thất bại nhưng vẫn giữ dữ liệu cũ */}
         {error && items.length > 0 && (
-          <Alert variant="warning" title="Không thể cập nhật danh sách thông báo">
+          <Alert variant="warning" title="Không thể làm mới danh sách">
             Đang giữ dữ liệu đã tải trước đó. {error}{" "}
             <Button
               type="button"
