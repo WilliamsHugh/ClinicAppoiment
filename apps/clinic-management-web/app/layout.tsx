@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { AppShell } from "../src/components/app-shell";
 import { SessionProvider } from "../src/lib/session/session-context";
+import { NotificationProvider } from "../src/features/notifications/notification-context";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -13,7 +14,9 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html lang="vi">
       <body>
         <SessionProvider>
-          <AppShell>{children}</AppShell>
+          <NotificationProvider>
+            <AppShell>{children}</AppShell>
+          </NotificationProvider>
         </SessionProvider>
       </body>
     </html>

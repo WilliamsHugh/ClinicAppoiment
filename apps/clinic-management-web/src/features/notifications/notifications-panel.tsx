@@ -1,13 +1,14 @@
 "use client";
 
 import React, { useCallback, useEffect, useMemo, useState } from "react";
-import { Button, Skeleton } from "../../components/ui";
-import { EmptyState, ErrorState, SkeletonPage } from "../../components/states";
+import { Alert, Button, Skeleton } from "../../components/ui";
+import { EmptyState, ErrorState } from "../../components/states";
 import { Pagination } from "../../components/pagination";
 import { ApiClientError, createBrowserApiClient } from "../../lib/api/client";
 import { useSession } from "../../lib/session/session-context";
 import { Notification, NotificationItem } from "./notification-item";
 import { PageHeader } from "../../components/page-header";
+import { useNotifications } from "./notification-context";
 import styles from "./notifications-panel.module.css";
 
 export type NotificationFilter = "ALL" | "UNREAD" | "READ";
@@ -15,6 +16,12 @@ export type NotificationFilter = "ALL" | "UNREAD" | "READ";
 export function NotificationsPanel() {
   const session = useSession();
   const client = useMemo(() => createBrowserApiClient(session), [session]);
+  const {
+    unreadCount,
+    setUnreadCount,
+    decrementUnreadCount,
+    refreshUnreadCount,
+  } = useNotifications();
 
   const [items, setItems] = useState<Notification[]>([]);
   const [loading, setLoading] = useState(true);
@@ -25,7 +32,6 @@ export function NotificationsPanel() {
   const [total, setTotal] = useState(0);
   const [markingIds, setMarkingIds] = useState<Set<string>>(new Set());
   const [markingAll, setMarkingAll] = useState(false);
-
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const loadNotifications = useCallback(async (isRefresh = false) => {
@@ -53,7 +59,14 @@ export function NotificationsPanel() {
 
       const fetchedItems = res.data?.items ?? [];
       setItems(fetchedItems);
-      setTotal(typeof res.data?.total === "number" ? res.data.total : fetchedItems.length);
+      const totalCount = typeof res.data?.total === "number" ? res.data.total : fetchedItems.length;
+      setTotal(totalCount);
+
+      if (filter === "UNREAD") {
+        setUnreadCount(totalCount);
+      } else if (isRefresh) {
+        void refreshUnreadCount();
+      }
     } catch (caught) {
       setError(
         caught instanceof ApiClientError
@@ -66,7 +79,7 @@ export function NotificationsPanel() {
       setLoading(false);
       setIsRefreshing(false);
     }
-  }, [client, session.status, page, limit, filter, items.length]);
+  }, [client, session.status, page, limit, filter, items.length, setUnreadCount, refreshUnreadCount]);
 
   useEffect(() => {
     if (session.status === "authenticated") {
@@ -74,26 +87,38 @@ export function NotificationsPanel() {
     }
   }, [session.status, loadNotifications]);
 
-  // Đổi bộ lọc -> reset về page 1
+  // Đổi bộ lọc -> reset về page 1 và xóa lỗi tạm thời
   const handleFilterChange = (newFilter: NotificationFilter) => {
     if (newFilter !== filter) {
       setFilter(newFilter);
       setPage(1);
+      setError(null);
     }
+  };
+
+  // Thử lại khi gặp lỗi mà không làm mất bộ lọc
+  const handleRetry = () => {
+    void loadNotifications(false);
   };
 
   // Đánh dấu 1 thông báo đã đọc
   const handleMarkRead = async (id: string) => {
+    if (markingIds.has(id)) return;
     setMarkingIds((prev) => new Set(prev).add(id));
+    setError(null);
     try {
       await client.patch(`/api/v1/notifications/${encodeURIComponent(id)}/read`, {
         body: {},
       });
 
-      // Cập nhật trạng thái trực quan ngay lập tức
+      // Cập nhật trạng thái trực quan chỉ sau khi API thành công
       setItems((prev) =>
         prev.map((item) => (item.id === id ? { ...item, status: "READ" } : item))
       );
+      decrementUnreadCount(1);
+      if (filter === "UNREAD") {
+        setTotal((prev) => Math.max(0, prev - 1));
+      }
     } catch (caught) {
       setError(
         caught instanceof ApiClientError
@@ -115,10 +140,11 @@ export function NotificationsPanel() {
   }, [items]);
 
   const handleMarkAllRead = async () => {
-    if (unreadOnPage.length === 0) return;
+    if (markingAll || unreadOnPage.length === 0) return;
     setMarkingAll(true);
+    setError(null);
     try {
-      await Promise.all(
+      const results = await Promise.allSettled(
         unreadOnPage.map((item) =>
           client.patch(`/api/v1/notifications/${encodeURIComponent(item.id)}/read`, {
             body: {},
@@ -126,8 +152,31 @@ export function NotificationsPanel() {
         )
       );
 
-      // Cập nhật tất cả thành READ
-      setItems((prev) => prev.map((item) => ({ ...item, status: "READ" })));
+      const successfulIds = new Set<string>();
+      let hasError = false;
+      results.forEach((res, index) => {
+        if (res.status === "fulfilled") {
+          successfulIds.add(unreadOnPage[index].id);
+        } else {
+          hasError = true;
+        }
+      });
+
+      if (successfulIds.size > 0) {
+        setItems((prev) =>
+          prev.map((item) =>
+            successfulIds.has(item.id) ? { ...item, status: "READ" } : item
+          )
+        );
+        decrementUnreadCount(successfulIds.size);
+        if (filter === "UNREAD") {
+          setTotal((prev) => Math.max(0, prev - successfulIds.size));
+        }
+      }
+
+      if (hasError) {
+        setError("Một số thông báo không thể đánh dấu đã đọc. Vui lòng thử lại.");
+      }
     } catch (caught) {
       setError(
         caught instanceof ApiClientError
@@ -235,7 +284,7 @@ export function NotificationsPanel() {
             role="tab"
             aria-selected={filter === "UNREAD"}
           >
-            Chưa đọc
+            Chưa đọc{typeof unreadCount === "number" && unreadCount > 0 ? ` (${unreadCount})` : ""}
           </Button>
           <Button
             variant={filter === "READ" ? "primary" : "secondary"}
@@ -253,13 +302,22 @@ export function NotificationsPanel() {
         </span>
       </section>
 
-      {/* Error state */}
-      {error && <ErrorState message={error} onRetry={() => void loadNotifications(false)} />}
+      {/* Stale/refresh error banner: preserves existing items in view */}
+      {error && items.length > 0 && (
+        <Alert variant="danger" title="Không thể làm mới danh sách">
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12, flexWrap: "wrap" }}>
+            <span>{error}</span>
+            <Button variant="secondary" size="sm" onClick={handleRetry}>
+              Thử lại
+            </Button>
+          </div>
+        </Alert>
+      )}
 
       {/* Main Content / Notification List */}
       <section aria-label="Danh sách thông báo" className={styles.listContainer}>
         {loading ? (
-          <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 12 }} aria-busy="true">
             {[1, 2, 3, 4].map((i) => (
               <div key={i} className={styles.skeletonCard}>
                 <div style={{ display: "flex", gap: 8 }}>
@@ -272,7 +330,11 @@ export function NotificationsPanel() {
               </div>
             ))}
           </div>
+        ) : error && items.length === 0 ? (
+          /* Error state: only rendered when initial fetch failed with no items */
+          <ErrorState message={error} onRetry={handleRetry} />
         ) : items.length === 0 ? (
+          /* Empty state: only rendered after successful response returning 0 items */
           filter === "UNREAD" ? (
             <EmptyState
               title="Không có thông báo chưa đọc"
@@ -302,6 +364,7 @@ export function NotificationsPanel() {
             />
           )
         ) : (
+          /* Populated list */
           items.map((notification) => (
             <NotificationItem
               key={notification.id}

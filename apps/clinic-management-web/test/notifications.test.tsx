@@ -2,17 +2,29 @@ import React from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import NotificationsPage from "../app/notifications/page";
+import { AppShell } from "../src/components/app-shell";
 import {
   Notification,
   NotificationItem,
   getNotificationBadgeConfig,
   notificationTarget,
 } from "../src/features/notifications/notification-item";
+import {
+  NotificationProvider,
+  NotificationContext,
+} from "../src/features/notifications/notification-context";
 import type { Session } from "../src/lib/session/session";
 
 Object.assign(globalThis, { React });
 
+let mockPathname = "/notifications";
 let currentSession: Session;
+
+vi.mock("next/navigation", () => ({
+  usePathname: () => mockPathname,
+  useRouter: () => ({ push: vi.fn(), replace: vi.fn() }),
+}));
+
 vi.mock("../src/lib/session/session-context", () => ({
   useSession: () => currentSession,
 }));
@@ -141,5 +153,138 @@ describe("NotificationsPage Orchestration", () => {
     expect(html).toContain("Tất cả");
     expect(html).toContain("Chưa đọc");
     expect(html).toContain("Đã đọc");
+  });
+
+  it("renders notification page for all authorized roles: DOCTOR, STAFF, ADMIN", () => {
+    const roles = ["DOCTOR", "STAFF", "ADMIN"] as const;
+    for (const role of roles) {
+      currentSession = {
+        status: "authenticated",
+        identity: { id: `user-${role}`, role, displayName: `Test ${role}` },
+        getAccessToken: async () => "valid-token",
+        signIn: async () => {},
+        signOut: async () => {},
+      };
+
+      const html = renderToStaticMarkup(React.createElement(NotificationsPage));
+      expect(html).toContain("Thông báo");
+      expect(html).toContain("Theo dõi các sự kiện lịch hẹn");
+      expect(html).toContain("Đánh dấu tất cả đã đọc");
+    }
+  });
+});
+
+describe("Header Badge & Notification Center Shared Source of Truth", () => {
+  it("displays identical unread badge count in header and panel when count > 0", () => {
+    currentSession = {
+      status: "authenticated",
+      identity: { id: "doc-1", role: "DOCTOR", displayName: "BS. Trần Văn H" },
+      getAccessToken: async () => "valid-token",
+      signIn: async () => {},
+      signOut: async () => {},
+    };
+
+    const contextValue = {
+      unreadCount: 7,
+      isLoading: false,
+      error: null,
+      refreshUnreadCount: async () => {},
+      setUnreadCount: () => {},
+      decrementUnreadCount: () => {},
+      markAllReadSuccess: () => {},
+    };
+
+    // 1. AppShell topbar renders unread badge "7"
+    const shellHtml = renderToStaticMarkup(
+      React.createElement(
+        NotificationContext.Provider,
+        { value: contextValue },
+        React.createElement(AppShell, null, "Main Content")
+      )
+    );
+    expect(shellHtml).toContain("Thông báo (7 chưa đọc)");
+    expect(shellHtml).toContain("7");
+
+    // 2. NotificationsPage renders "Chưa đọc (7)"
+    const pageHtml = renderToStaticMarkup(
+      React.createElement(
+        NotificationContext.Provider,
+        { value: contextValue },
+        React.createElement(NotificationsPage)
+      )
+    );
+    expect(pageHtml).toContain("Chưa đọc (7)");
+  });
+
+  it("does not render unread badge when unreadCount is 0", () => {
+    currentSession = {
+      status: "authenticated",
+      identity: { id: "admin-1", role: "ADMIN", displayName: "Admin Quản Trị" },
+      getAccessToken: async () => "valid-token",
+      signIn: async () => {},
+      signOut: async () => {},
+    };
+
+    const contextValue = {
+      unreadCount: 0,
+      isLoading: false,
+      error: null,
+      refreshUnreadCount: async () => {},
+      setUnreadCount: () => {},
+      decrementUnreadCount: () => {},
+      markAllReadSuccess: () => {},
+    };
+
+    const shellHtml = renderToStaticMarkup(
+      React.createElement(
+        NotificationContext.Provider,
+        { value: contextValue },
+        React.createElement(AppShell, null, "Main Content")
+      )
+    );
+    expect(shellHtml).toContain("Thông báo");
+    expect(shellHtml).not.toContain("Thông báo (0 chưa đọc)");
+    expect(shellHtml).not.toContain("notificationBadge");
+
+    const pageHtml = renderToStaticMarkup(
+      React.createElement(
+        NotificationContext.Provider,
+        { value: contextValue },
+        React.createElement(NotificationsPage)
+      )
+    );
+    // Tab "Chưa đọc" without number suffix when count is 0
+    expect(pageHtml).toContain("Chưa đọc");
+    expect(pageHtml).not.toContain("Chưa đọc (0)");
+  });
+
+  it("renders badge skeleton while unreadCount is loading instead of defaulting to 0 or fake count", () => {
+    currentSession = {
+      status: "authenticated",
+      identity: { id: "staff-1", role: "STAFF", displayName: "Tiếp Đón 1" },
+      getAccessToken: async () => "valid-token",
+      signIn: async () => {},
+      signOut: async () => {},
+    };
+
+    const contextValue = {
+      unreadCount: null,
+      isLoading: true,
+      error: null,
+      refreshUnreadCount: async () => {},
+      setUnreadCount: () => {},
+      decrementUnreadCount: () => {},
+      markAllReadSuccess: () => {},
+    };
+
+    const shellHtml = renderToStaticMarkup(
+      React.createElement(
+        NotificationContext.Provider,
+        { value: contextValue },
+        React.createElement(AppShell, null, "Main Content")
+      )
+    );
+    expect(shellHtml).toContain("notificationBadgeSkeleton");
+    expect(shellHtml).not.toContain("Thông báo (0 chưa đọc)");
   });
 });

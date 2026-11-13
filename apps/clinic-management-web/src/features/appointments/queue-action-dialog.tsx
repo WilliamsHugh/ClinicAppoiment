@@ -3,7 +3,7 @@
 import React, { useEffect, useRef, useState, type FormEvent } from "react";
 import { ApiClientError } from "../../lib/api/client";
 import { clinicTime, clinicToday, queueError, type Appointment, type AppointmentApi,
-  type QueueAction, type QueueAppointment, type Slot } from "./appointment-api";
+  type QueueAction, type QueueAppointment, type Slot } from "./queue-api";
 import { QueueDialog } from "./queue-dialog";
 import styles from "./queue-board.module.css";
 

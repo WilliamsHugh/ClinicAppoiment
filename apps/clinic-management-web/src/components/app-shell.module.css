@@ -254,9 +254,36 @@
   border-radius: var(--radius-md, 6px);
   background-color: var(--primary-light);
   font-size: 0.8125rem;
-  gap: 4px;
+  gap: 6px;
   font-weight: 600;
   transition: opacity 0.15s ease;
+}
+
+.notificationBadge {
+  background-color: var(--danger, #dc2626);
+  color: #ffffff;
+  font-size: 0.6875rem;
+  font-weight: 700;
+  line-height: 1;
+  padding: 2px 6px;
+  border-radius: var(--radius-full, 9999px);
+  min-width: 18px;
+  text-align: center;
+}
+
+.notificationBadgeSkeleton {
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-full, 9999px);
+  background: linear-gradient(90deg, #e2e8f0 25%, #f1f5f9 50%, #e2e8f0 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+  display: inline-block;
+}
+
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
 }
 
 .notificationLink:hover {
