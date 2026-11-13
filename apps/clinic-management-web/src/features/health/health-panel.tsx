@@ -1,56 +1,22 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { CheckCircle2, AlertTriangle, XCircle } from "lucide-react";
-import { ErrorState, Skeleton, SkeletonTable, SkeletonPage } from "../../components/states";
+import { CheckCircle2, AlertTriangle } from "lucide-react";
+import { ErrorState, Skeleton } from "../../components/states";
 import { Badge, Button } from "../../components/ui";
 import { ApiClientError, createBrowserApiClient } from "../../lib/api/client";
 import { useSession } from "../../lib/session/session-context";
-import { canViewSystemHealth, loadSystemHealth, type SystemHealth } from "./health";
-
-function getServiceStatusBadge(rawStatus?: string) {
-  const s = (rawStatus || "").toLowerCase();
-  if (s === "ok" || s === "up" || s === "healthy") {
-    return (
-      <Badge variant="success">
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-          <CheckCircle2 size={13} style={{ flexShrink: 0 }} aria-hidden="true" />
-          <span>Hoạt động bình thường</span>
-        </span>
-      </Badge>
-    );
-  }
-  if (s === "degraded" || s === "warning") {
-    return (
-      <Badge variant="warning">
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-          <AlertTriangle size={13} style={{ flexShrink: 0 }} aria-hidden="true" />
-          <span>Cảnh báo suy giảm</span>
-        </span>
-      </Badge>
-    );
-  }
-  if (s === "down" || s === "unhealthy" || s === "error") {
-    return (
-      <Badge variant="danger">
-        <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-          <XCircle size={13} style={{ flexShrink: 0 }} aria-hidden="true" />
-          <span>Mất kết nối</span>
-        </span>
-      </Badge>
-    );
-  }
-  return <Badge variant="neutral">{rawStatus || "Không xác định"}</Badge>;
-}
-
-const STATIC_PANEL_SERVICES = [
-  { key: "api-gateway", title: "API Gateway" },
-  { key: "users", title: "User Service" },
-  { key: "doctors", title: "Doctor Service" },
-  { key: "appointments", title: "Appointment Service" },
-  { key: "medicalRecords", title: "Medical Record Service" },
-  { key: "notifications", title: "Notification Service" },
-];
+import {
+  canViewSystemHealth,
+  formatClientCheckedAt,
+  getSystemServiceHealth,
+  getSystemServiceStatus,
+  isSystemAllHealthy,
+  loadSystemHealth,
+  SYSTEM_SERVICES,
+  type SystemHealth,
+} from "./health";
+import { ServiceStatusBadge } from "./service-status-badge";
 
 let cachedSystemHealth: SystemHealth | null = null;
 let cachedHealthLastChecked: Date | null = null;
@@ -64,32 +30,39 @@ export function HealthPanel() {
   const [error, setError] = useState<ApiClientError | null>(null);
   const [lastChecked, setLastChecked] = useState<Date | null>(cachedHealthLastChecked);
 
-  const refresh = useCallback(async (isBackground = false) => {
-    if (!canViewSystemHealth(session)) return;
-    if (isBackground) {
-      setIsRefreshing(true);
-    } else {
-      setLoading(true);
-    }
-    setError(null);
-    try {
-      const result = await loadSystemHealth(client, session);
-      setHealth(result.data);
-      cachedSystemHealth = result.data;
-      const checkedAt = new Date();
-      setLastChecked(checkedAt);
-      cachedHealthLastChecked = checkedAt;
-    } catch (caught) {
-      setError(
-        caught instanceof ApiClientError
-          ? caught
-          : new ApiClientError("Không thể tải sức khỏe hệ thống.", 0, "UNKNOWN_ERROR")
-      );
-    } finally {
-      setLoading(false);
-      setIsRefreshing(false);
-    }
-  }, [client, session]);
+  const refresh = useCallback(
+    async (isBackground = false) => {
+      if (!canViewSystemHealth(session)) return;
+      if (isBackground) {
+        setIsRefreshing(true);
+      } else {
+        setLoading(true);
+      }
+      setError(null);
+      try {
+        const result = await loadSystemHealth(client, session);
+        setHealth(result.data);
+        cachedSystemHealth = result.data;
+        const checkedAt = new Date();
+        setLastChecked(checkedAt);
+        cachedHealthLastChecked = checkedAt;
+      } catch (caught) {
+        setError(
+          caught instanceof ApiClientError
+            ? caught
+            : new ApiClientError(
+                caught instanceof Error ? caught.message : "Không thể tải sức khỏe hệ thống.",
+                0,
+                "UNKNOWN_ERROR"
+              )
+        );
+      } finally {
+        setLoading(false);
+        setIsRefreshing(false);
+      }
+    },
+    [client, session]
+  );
 
   useEffect(() => {
     void refresh(Boolean(cachedSystemHealth));
@@ -103,7 +76,7 @@ export function HealthPanel() {
             <p className="eyebrow">API Gateway &amp; Microservices</p>
             <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 10, marginTop: 4 }}>
               <h2 style={{ margin: 0 }}>Hạ tầng hệ thống</h2>
-              <Skeleton height={24} width={140} borderRadius="var(--radius-full)" />
+              <Skeleton height={24} width={140} borderRadius="var(--radius-full)" aria-busy="true" />
             </div>
             <span style={{ fontSize: "0.8rem", color: "var(--muted)", marginTop: 4, display: "block" }}>
               Đang kết nối và kiểm tra trạng thái các dịch vụ...
@@ -114,14 +87,14 @@ export function HealthPanel() {
           </Button>
         </div>
 
-        <div className="health-grid">
-          {STATIC_PANEL_SERVICES.map((svc) => (
+        <div className="health-grid" aria-busy="true">
+          {SYSTEM_SERVICES.map((svc) => (
             <article key={svc.key} className="health-service">
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                <h3 style={{ margin: 0 }}>{svc.title}</h3>
+                <h3 style={{ margin: 0 }}>{svc.shortName}</h3>
               </div>
               <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap" }}>
-                <Skeleton height={24} width={140} borderRadius="var(--radius-full)" />
+                <Skeleton height={24} width={140} borderRadius="var(--radius-full)" aria-busy="true" />
               </div>
             </article>
           ))}
@@ -129,9 +102,11 @@ export function HealthPanel() {
       </section>
     );
   }
+
   if (!canViewSystemHealth(session)) {
     return <ErrorState message="Trang này chỉ dành cho quản trị viên đã đăng nhập." />;
   }
+
   if (error && !health) {
     return (
       <ErrorState
@@ -142,82 +117,98 @@ export function HealthPanel() {
     );
   }
 
-  const isAllHealthy =
-    (health?.status || "").toLowerCase() === "ok" ||
-    (health?.status || "").toLowerCase() === "up" ||
-    (health?.status || "").toLowerCase() === "healthy";
-
-  const formattedTime = lastChecked
-    ? new Intl.DateTimeFormat("vi-VN", {
-        timeZone: "Asia/Ho_Chi_Minh",
-        hour: "2-digit",
-        minute: "2-digit",
-        second: "2-digit",
-        day: "2-digit",
-        month: "2-digit",
-        year: "numeric",
-      }).format(lastChecked)
-    : "Đang kiểm tra";
+  const allHealthy = isSystemAllHealthy(health);
+  const formattedTime = formatClientCheckedAt(lastChecked);
 
   return (
-    <section className="health-panel" style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+    <section
+      className="health-panel"
+      style={{ display: "flex", flexDirection: "column", gap: 20 }}
+      aria-busy={loading || isRefreshing}
+    >
       <div className="panel-heading">
         <div>
           <p className="eyebrow">API Gateway &amp; Microservices</p>
           <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap", gap: 10, marginTop: 4 }}>
             <h2 style={{ margin: 0 }}>Hạ tầng hệ thống</h2>
-            {error ? (
-              <Badge variant="warning" size="md">
-                Kết quả cũ (Chưa cập nhật)
+            {isRefreshing && health ? (
+              <Badge variant="info" size="md">
+                Đang làm mới...
               </Badge>
             ) : health ? (
-              <Badge variant={isAllHealthy ? "success" : "warning"} size="md">
-                {isAllHealthy ? "Tất cả hoạt động tốt" : health.status ?? "Đang kiểm tra"}
+              <Badge variant={allHealthy ? "success" : "warning"} size="md">
+                <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
+                  {allHealthy ? (
+                    <CheckCircle2 size={13} aria-hidden="true" />
+                  ) : (
+                    <AlertTriangle size={13} aria-hidden="true" />
+                  )}
+                  <span>{allHealthy ? "Tất cả hoạt động tốt" : "Cảnh báo dịch vụ"}</span>
+                </span>
               </Badge>
             ) : (
-              <Skeleton height={24} width={140} borderRadius="var(--radius-full)" />
+              <Skeleton height={24} width={140} borderRadius="var(--radius-full)" aria-busy="true" />
             )}
           </div>
           <span style={{ fontSize: "0.8rem", color: "var(--muted)", marginTop: 4, display: "block" }}>
             {isRefreshing
-              ? "Đang kiểm tra lại dịch vụ..."
+              ? `Đang kiểm tra lại dịch vụ... (hiển thị kết quả nhận lúc ${formattedTime})`
               : error
-              ? `Lần kiểm tra thành công gần nhất: ${formattedTime} (Giờ Việt Nam UTC+7)`
-              : `Lần kiểm tra gần nhất: ${formattedTime} (Giờ Việt Nam UTC+7)`}
+              ? `Lần nhận phản hồi thành công gần nhất tại trình duyệt: ${formattedTime} (Giờ Việt Nam UTC+7)`
+              : `Thời điểm nhận kết quả tại trình duyệt: ${formattedTime} (Giờ Việt Nam UTC+7)`}
           </span>
         </div>
-        <Button variant="outline" onClick={() => void refresh(false)} loading={loading || isRefreshing}>
-          {loading || isRefreshing ? "Đang tải…" : "Kiểm tra lại"}
+        <Button
+          variant="outline"
+          onClick={() => void refresh(Boolean(health))}
+          loading={loading || isRefreshing}
+          disabled={loading || isRefreshing}
+          aria-label="Kiểm tra lại tình trạng hệ thống"
+        >
+          {loading || isRefreshing ? "Đang kiểm tra…" : "Kiểm tra lại"}
         </Button>
       </div>
 
-      {error && (
-        <div style={{ padding: "12px 16px", borderRadius: "var(--radius-md)", background: "var(--warning-light)", border: "1px solid var(--warning)", color: "var(--warning)" }}>
-          <span>Lần kiểm tra lại gần nhất thất bại: {error.message}. Đang hiển thị kết quả lưu trước đó.</span>
+      {error && health && (
+        <div
+          role="alert"
+          style={{
+            padding: "12px 16px",
+            borderRadius: "var(--radius-md)",
+            background: "var(--warning-light)",
+            border: "1px solid var(--warning)",
+            color: "var(--ink)",
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+          }}
+        >
+          <AlertTriangle size={18} style={{ color: "var(--warning)", flexShrink: 0 }} aria-hidden="true" />
+          <span style={{ fontSize: "0.875rem" }}>
+            Lần kiểm tra lại gần nhất thất bại ({error.message}). Đang hiển thị kết quả kiểm tra trước đó nhận lúc {formattedTime}.
+          </span>
         </div>
       )}
 
-      <div className="health-grid">
-        {STATIC_PANEL_SERVICES.map((svc) => {
-          const liveData =
-            health?.services?.[svc.key] ??
-            health?.services?.[svc.key.toLowerCase()] ??
-            health?.services?.[svc.key.replace(/-/g, "")];
-          const statusStr = typeof liveData === "string" ? liveData : liveData?.status;
-          const version = typeof liveData === "object" && liveData !== null && "version" in liveData
-            ? String(liveData.version)
-            : undefined;
+      <div className="health-grid" aria-busy={loading || isRefreshing}>
+        {SYSTEM_SERVICES.map((svc) => {
+          const liveData = getSystemServiceHealth(health, svc.key);
+          const statusStr = getSystemServiceStatus(health, svc.key);
+          const version =
+            typeof liveData === "object" && liveData !== null && "version" in liveData
+              ? String(liveData.version)
+              : undefined;
 
           return (
             <article key={svc.key} className="health-service">
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
-                <h3 style={{ margin: 0 }}>{svc.title}</h3>
+                <h3 style={{ margin: 0 }}>{svc.shortName}</h3>
               </div>
               <div style={{ display: "flex", alignItems: "center", flexWrap: "wrap" }}>
-                {statusStr ? (
-                  getServiceStatusBadge(statusStr)
+                {loading && !health ? (
+                  <Skeleton height={24} width={140} borderRadius="var(--radius-full)" aria-busy="true" />
                 ) : (
-                  <Skeleton height={24} width={140} borderRadius="var(--radius-full)" />
+                  <ServiceStatusBadge rawStatus={statusStr} />
                 )}
               </div>
               {version && (
