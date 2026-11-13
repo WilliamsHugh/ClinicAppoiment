@@ -510,7 +510,15 @@ export function ProfileForm() {
           {activeTab === "notifications" && (
             <div className={styles.card} id="section-notifications">
               <div className={styles.cardHeader}>
-                <h2 className={styles.cardTitle}>Cài đặt thông báo</h2>
+                <div>
+                  <h2 className={styles.cardTitle}>Cài đặt thông báo</h2>
+                  <p className={styles.cardSubtitle}>
+                    Tính năng tùy biến thông báo đang trong lộ trình phát triển (Roadmap). Các kênh thông báo hiện được áp dụng mặc định theo phân quyền hệ thống.
+                  </p>
+                </div>
+                <Badge variant="neutral" size="sm">
+                  Lộ trình phát triển
+                </Badge>
               </div>
               <div className={styles.divider} />
 
@@ -518,14 +526,16 @@ export function ProfileForm() {
                 <div className={styles.switchRow}>
                   <div className={styles.switchInfo}>
                     <p className={styles.switchTitle}>Lịch hẹn mới được giao cho tôi</p>
-                    <p className={styles.switchDesc}>Nhận thông báo khi trợ lý xác nhận lịch hẹn mới</p>
+                    <p className={styles.switchDesc}>Nhận thông báo khi trợ lý xác nhận lịch hẹn mới (Mặc định: Bật)</p>
                   </div>
                   <button
                     type="button"
                     role="switch"
                     aria-checked={notifications.assigned}
+                    disabled
+                    title="Tính năng tùy biến thông báo đang trong lộ trình phát triển"
                     className={`${styles.switchButton} ${notifications.assigned ? styles.switchButtonOn : ""}`}
-                    onClick={() => setNotifications((n) => ({ ...n, assigned: !n.assigned }))}
+                    style={{ opacity: 0.6, cursor: "not-allowed" }}
                   >
                     <span className={styles.switchThumb} />
                   </button>
@@ -536,14 +546,16 @@ export function ProfileForm() {
                 <div className={styles.switchRow}>
                   <div className={styles.switchInfo}>
                     <p className={styles.switchTitle}>Lịch hẹn bị hủy hoặc đổi giờ</p>
-                    <p className={styles.switchDesc}>Luôn bật để kịp thời cập nhật thay đổi trong ngày</p>
+                    <p className={styles.switchDesc}>Luôn bật để kịp thời cập nhật thay đổi trong ngày (Mặc định: Bật)</p>
                   </div>
                   <button
                     type="button"
                     role="switch"
                     aria-checked={notifications.cancelled}
+                    disabled
+                    title="Tính năng tùy biến thông báo đang trong lộ trình phát triển"
                     className={`${styles.switchButton} ${notifications.cancelled ? styles.switchButtonOn : ""}`}
-                    onClick={() => setNotifications((n) => ({ ...n, cancelled: !n.cancelled }))}
+                    style={{ opacity: 0.6, cursor: "not-allowed" }}
                   >
                     <span className={styles.switchThumb} />
                   </button>
@@ -554,14 +566,16 @@ export function ProfileForm() {
                 <div className={styles.switchRow}>
                   <div className={styles.switchInfo}>
                     <p className={styles.switchTitle}>Bệnh nhân đã check-in</p>
-                    <p className={styles.switchDesc}>Báo khi bệnh nhân đã có mặt tại phòng chờ</p>
+                    <p className={styles.switchDesc}>Báo khi bệnh nhân đã có mặt tại phòng chờ (Mặc định: Bật)</p>
                   </div>
                   <button
                     type="button"
                     role="switch"
                     aria-checked={notifications.checkedIn}
+                    disabled
+                    title="Tính năng tùy biến thông báo đang trong lộ trình phát triển"
                     className={`${styles.switchButton} ${notifications.checkedIn ? styles.switchButtonOn : ""}`}
-                    onClick={() => setNotifications((n) => ({ ...n, checkedIn: !n.checkedIn }))}
+                    style={{ opacity: 0.6, cursor: "not-allowed" }}
                   >
                     <span className={styles.switchThumb} />
                   </button>
@@ -572,14 +586,16 @@ export function ProfileForm() {
                 <div className={styles.switchRow}>
                   <div className={styles.switchInfo}>
                     <p className={styles.switchTitle}>Email tóm tắt hằng ngày</p>
-                    <p className={styles.switchDesc}>Gửi lúc 07:00 sáng mỗi ngày làm việc (GMT+7)</p>
+                    <p className={styles.switchDesc}>Gửi lúc 07:00 sáng mỗi ngày làm việc (GMT+7) (Mặc định: Tắt)</p>
                   </div>
                   <button
                     type="button"
                     role="switch"
                     aria-checked={notifications.dailySummary}
+                    disabled
+                    title="Tính năng tùy biến thông báo đang trong lộ trình phát triển"
                     className={`${styles.switchButton} ${notifications.dailySummary ? styles.switchButtonOn : ""}`}
-                    onClick={() => setNotifications((n) => ({ ...n, dailySummary: !n.dailySummary }))}
+                    style={{ opacity: 0.6, cursor: "not-allowed" }}
                   >
                     <span className={styles.switchThumb} />
                   </button>

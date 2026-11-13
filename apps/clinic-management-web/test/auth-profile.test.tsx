@@ -133,6 +133,114 @@ describe("Auth & Profile Pages (M3-WEB-030)", () => {
       expect(mockPush).toHaveBeenCalledWith("/dashboard");
     });
 
+    it("toggles password visibility when eye button is clicked", async () => {
+      currentSession = makeSession();
+
+      await act(async () => {
+        root.render(<AuthPage />);
+      });
+
+      const passInput = host.querySelector("#auth-password") as HTMLInputElement;
+      expect(passInput.type).toBe("password");
+
+      const toggleBtn = host.querySelector("button[aria-label='Hiện mật khẩu']") as HTMLButtonElement;
+      expect(toggleBtn).toBeTruthy();
+
+      await act(async () => {
+        toggleBtn.click();
+      });
+
+      expect(passInput.type).toBe("text");
+      expect(toggleBtn.getAttribute("aria-label")).toBe("Ẩn mật khẩu");
+
+      await act(async () => {
+        toggleBtn.click();
+      });
+
+      expect(passInput.type).toBe("password");
+      expect(toggleBtn.getAttribute("aria-label")).toBe("Hiện mật khẩu");
+    });
+
+    it("pre-fills email from localStorage and saves/removes on submit with rememberMe", async () => {
+      currentSession = makeSession();
+      mockSignIn.mockResolvedValue(undefined);
+      localStorage.setItem("clinic_remembered_email", "saved@clinic.vn");
+
+      await act(async () => {
+        root.render(<AuthPage />);
+      });
+
+      const emailInput = host.querySelector("#auth-email") as HTMLInputElement;
+      const rememberCheckbox = host.querySelector("#auth-remember-me") as HTMLInputElement;
+
+      expect(emailInput.value).toBe("saved@clinic.vn");
+      expect(rememberCheckbox.checked).toBe(true);
+
+      const passInput = host.querySelector("#auth-password") as HTMLInputElement;
+      const form = host.querySelector("form")!;
+
+      await act(async () => {
+        changeInput(passInput, "password123");
+      });
+
+      await act(async () => {
+        form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+      });
+
+      expect(localStorage.getItem("clinic_remembered_email")).toBe("saved@clinic.vn");
+
+      // Now uncheck and submit with different email
+      await act(async () => {
+        changeInput(emailInput, "temporary@clinic.vn");
+        rememberCheckbox.click();
+      });
+
+      expect(rememberCheckbox.checked).toBe(false);
+
+      await act(async () => {
+        form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+      });
+
+      expect(localStorage.getItem("clinic_remembered_email")).toBeNull();
+      localStorage.clear();
+    });
+
+    it("handles login flow correctly for each role (DOCTOR, STAFF, ADMIN)", async () => {
+      currentSession = makeSession();
+      mockSignIn.mockResolvedValue(undefined);
+
+      const testRoles = [
+        { email: "doctor@clinic.vn", pass: "docPass123" },
+        { email: "staff@clinic.vn", pass: "staffPass123" },
+        { email: "admin@clinic.vn", pass: "adminPass123" },
+      ];
+
+      for (const credential of testRoles) {
+        mockSignIn.mockClear();
+        mockPush.mockClear();
+
+        await act(async () => {
+          root.render(<AuthPage />);
+        });
+
+        const emailInput = host.querySelector("#auth-email") as HTMLInputElement;
+        const passInput = host.querySelector("#auth-password") as HTMLInputElement;
+        const form = host.querySelector("form")!;
+
+        await act(async () => {
+          changeInput(emailInput, credential.email);
+          changeInput(passInput, credential.pass);
+        });
+
+        await act(async () => {
+          form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+        });
+
+        expect(mockSignIn).toHaveBeenCalledWith(credential.email, credential.pass);
+        expect(mockPush).toHaveBeenCalledWith("/dashboard");
+      }
+    });
+
     it("renders authenticated screen with ConfirmModal on sign out", async () => {
       currentSession = makeSession("DOCTOR");
 
@@ -284,6 +392,111 @@ describe("Auth & Profile Pages (M3-WEB-030)", () => {
 
       // Verify success notice
       expect(host.textContent).toContain("Đã cập nhật hồ sơ cá nhân thành công.");
+    });
+
+    it("preserves user input values and displays alert when API save request fails", async () => {
+      // Mock PATCH to return failure
+      vi.spyOn(globalThis, "fetch").mockImplementation(async (input, options) => {
+        const url = new URL(String(input));
+        const method = options?.method ?? "GET";
+
+        if (url.pathname === "/api/v1/users/me" && method === "GET") {
+          return envelope(mockProfile);
+        }
+
+        if (url.pathname === "/api/v1/users/me" && method === "PATCH") {
+          return new Response(
+            JSON.stringify({
+              success: false,
+              error: { code: "INTERNAL_ERROR", message: "Máy chủ cơ sở dữ liệu tạm thời bận." },
+            }),
+            { status: 500, headers: { "Content-Type": "application/json" } }
+          );
+        }
+
+        return envelope({});
+      });
+
+      await act(async () => {
+        root.render(<ProfileForm />);
+      });
+
+      const nameInput = host.querySelector("#profile-fullname") as HTMLInputElement;
+      const phoneInput = host.querySelector("#profile-phone") as HTMLInputElement;
+      const saveBtn = Array.from(host.querySelectorAll("button")).find(
+        (b) => b.textContent?.includes("Lưu thay đổi")
+      )!;
+
+      // Type new inputs
+      await act(async () => {
+        changeInput(nameInput, "BS. Hoàng Văn Thử Nghiệm");
+        changeInput(phoneInput, "0988776655");
+      });
+
+      // Submit
+      await act(async () => {
+        saveBtn.click();
+      });
+
+      // Confirm in modal
+      const modalConfirmBtn = Array.from(host.querySelectorAll("button")).find(
+        (b) => b.textContent?.trim() === "Lưu thay đổi" && b.getAttribute("type") !== "submit"
+      )!;
+
+      await act(async () => {
+        modalConfirmBtn.click();
+      });
+
+      // Error alert should show up
+      expect(host.textContent).toContain("Máy chủ cơ sở dữ liệu tạm thời bận.");
+
+      // CRITICAL CHECK: User input is NOT wiped or reset on failure!
+      expect(nameInput.value).toBe("BS. Hoàng Văn Thử Nghiệm");
+      expect(phoneInput.value).toBe("0988776655");
+    });
+
+    it("shows roadmap badges and disables controls for features without APIs", async () => {
+      await act(async () => {
+        root.render(<ProfileForm />);
+      });
+
+      // 1. Avatar button
+      const avatarBtn = Array.from(host.querySelectorAll("button")).find(
+        (b) => b.textContent?.includes("Đổi ảnh đại diện")
+      )!;
+      expect(avatarBtn).toBeTruthy();
+      expect(avatarBtn.disabled).toBe(true);
+      expect(avatarBtn.textContent).toContain("Sắp ra mắt");
+
+      // 2. Security tab
+      const securityTabBtn = Array.from(host.querySelectorAll("button")).find(
+        (b) => b.textContent?.includes("Bảo mật")
+      )!;
+      await act(async () => {
+        securityTabBtn.click();
+      });
+
+      const changePassBtn = Array.from(host.querySelectorAll("button")).find(
+        (b) => b.textContent?.includes("Đổi mật khẩu")
+      )!;
+      expect(changePassBtn).toBeTruthy();
+      expect(changePassBtn.disabled).toBe(true);
+      expect(changePassBtn.textContent).toContain("Sắp ra mắt");
+
+      // 3. Notifications tab
+      const notifTabBtn = Array.from(host.querySelectorAll("button")).find(
+        (b) => b.textContent?.includes("Thông báo")
+      )!;
+      await act(async () => {
+        notifTabBtn.click();
+      });
+
+      expect(host.textContent).toContain("Lộ trình phát triển");
+      const switchButtons = host.querySelectorAll("button[role='switch']");
+      expect(switchButtons.length).toBeGreaterThan(0);
+      switchButtons.forEach((btn) => {
+        expect((btn as HTMLButtonElement).disabled).toBe(true);
+      });
     });
 
     it("switches to sessions tab and opens ConfirmModal on logout from sessions card", async () => {

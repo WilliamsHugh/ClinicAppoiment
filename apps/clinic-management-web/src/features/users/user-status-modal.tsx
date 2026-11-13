@@ -14,6 +14,7 @@ export interface UserStatusModalProps {
     status: UserStatus;
   } | null;
   targetStatus?: UserStatus;
+  currentUserId?: string;
   onClose: () => void;
   onConfirm: (userId: string, newStatus: UserStatus) => Promise<void>;
   isLoading?: boolean;
@@ -23,6 +24,7 @@ export function UserStatusModal({
   isOpen,
   user,
   targetStatus,
+  currentUserId,
   onClose,
   onConfirm,
   isLoading = false,
@@ -43,8 +45,13 @@ export function UserStatusModal({
 
   const isLocking = selectedStatus === "LOCKED";
   const isUnchanged = selectedStatus === user.status;
+  const isSelf = Boolean(currentUserId && user.id === currentUserId);
+  const cannotLockSelf = isSelf && isLocking;
 
   const handleConfirm = async () => {
+    if (cannotLockSelf) {
+      return;
+    }
     if (isUnchanged) {
       onClose();
       return;
@@ -74,6 +81,7 @@ export function UserStatusModal({
       cancelLabel="Hủy"
       variant={isLocking ? "danger" : "primary"}
       isLoading={isLoading}
+      confirmDisabled={cannotLockSelf}
       onConfirm={handleConfirm}
       onCancel={onClose}
     >
@@ -95,11 +103,21 @@ export function UserStatusModal({
           >
             <option value="ACTIVE">Hoạt động (ACTIVE)</option>
             <option value="INACTIVE">Chưa kích hoạt (INACTIVE)</option>
-            <option value="LOCKED">Bị khóa (LOCKED)</option>
+            <option value="LOCKED" disabled={isSelf}>
+              Bị khóa (LOCKED){isSelf ? " — Không áp dụng cho chính bạn" : ""}
+            </option>
           </select>
         </div>
 
-        {isLocking && (
+        {cannotLockSelf ? (
+          <div className={styles.dangerBox} role="alert">
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <ShieldAlert size={16} aria-hidden="true" />
+              <strong>Không được phép:</strong>
+            </span>{" "}
+            Bạn không thể tự khóa tài khoản của chính mình.
+          </div>
+        ) : isLocking ? (
           <div className={styles.dangerBox} role="alert">
             <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
               <ShieldAlert size={16} aria-hidden="true" />
@@ -107,7 +125,7 @@ export function UserStatusModal({
             </span>{" "}
             Tài khoản bị khóa sẽ lập tức mất quyền đăng nhập và không thể thực hiện bất kỳ thao tác nào trên toàn bộ hệ thống.
           </div>
-        )}
+        ) : null}
 
         {selectedStatus === "INACTIVE" && (
           <div className={styles.warningBox}>

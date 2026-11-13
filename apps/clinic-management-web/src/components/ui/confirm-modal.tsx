@@ -20,6 +20,7 @@ export interface ConfirmModalProps {
   isDanger?: boolean;
   isLoading?: boolean;
   loading?: boolean;
+  confirmDisabled?: boolean;
   children?: React.ReactNode;
 }
 
@@ -39,6 +40,7 @@ export function ConfirmModal({
   isDanger = false,
   isLoading,
   loading = false,
+  confirmDisabled = false,
   children,
 }: ConfirmModalProps) {
   const handleCancel = onCancel || onClose || (() => {});
@@ -67,6 +69,7 @@ export function ConfirmModal({
             type="button"
             variant={isDestructive ? "danger" : "primary"}
             loading={isActionLoading}
+            disabled={isActionLoading || confirmDisabled}
             onClick={onConfirm}
           >
             {confirmBtnLabel}

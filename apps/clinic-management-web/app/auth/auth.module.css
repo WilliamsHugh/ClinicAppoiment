@@ -88,6 +88,60 @@
   gap: 16px;
 }
 
+.passwordFieldWrapper {
+  position: relative;
+  width: 100%;
+}
+
+.passwordToggleBtn {
+  position: absolute;
+  right: 10px;
+  bottom: 8px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--muted);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px;
+  border-radius: var(--radius-sm, 4px);
+  transition: color 0.15s ease;
+}
+
+.passwordToggleBtn:hover {
+  color: var(--ink);
+}
+
+.passwordToggleBtn:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 1px;
+}
+
+.rememberRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.rememberLabel {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--ink);
+  cursor: pointer;
+  font-size: 0.875rem;
+  user-select: none;
+}
+
+.checkbox {
+  width: 16px;
+  height: 16px;
+  border-radius: var(--radius-sm, 4px);
+  accent-color: var(--primary);
+  cursor: pointer;
+}
+
 .submitButton {
   margin-top: 6px;
 }

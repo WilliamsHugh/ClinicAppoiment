@@ -1,20 +1,39 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
+import { Eye, EyeOff } from "lucide-react";
 import { useSession } from "../../src/lib/session/session-context";
 import { Alert, Button, ConfirmModal, Input } from "../../src/components/ui";
 import styles from "./auth.module.css";
+
+const REMEMBERED_EMAIL_KEY = "clinic_remembered_email";
 
 export default function AuthPage() {
   const router = useRouter();
   const session = useSession();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [rememberMe, setRememberMe] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [confirmSignOutOpen, setConfirmSignOutOpen] = useState(false);
+
+  useEffect(() => {
+    try {
+      if (typeof window !== "undefined") {
+        const savedEmail = localStorage.getItem(REMEMBERED_EMAIL_KEY);
+        if (savedEmail) {
+          setEmail(savedEmail);
+          setRememberMe(true);
+        }
+      }
+    } catch {
+      // Ignore storage access errors in restricted environments
+    }
+  }, []);
 
   // Authenticated Screen
   if (session.status === "authenticated" && session.identity) {
@@ -91,6 +110,17 @@ export default function AuthPage() {
     setLoading(true);
     try {
       await session.signIn(email, password);
+      try {
+        if (typeof window !== "undefined") {
+          if (rememberMe) {
+            localStorage.setItem(REMEMBERED_EMAIL_KEY, email.trim());
+          } else {
+            localStorage.removeItem(REMEMBERED_EMAIL_KEY);
+          }
+        }
+      } catch {
+        // Ignore localStorage write failures
+      }
       router.push("/dashboard");
     } catch (err: unknown) {
       const message =
@@ -150,17 +180,43 @@ export default function AuthPage() {
               autoComplete="email"
             />
 
-            <Input
-              id="auth-password"
-              label="Mật khẩu"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              placeholder="••••••••"
-              required
-              disabled={loading}
-              autoComplete="current-password"
-            />
+            <div className={styles.passwordFieldWrapper}>
+              <Input
+                id="auth-password"
+                label="Mật khẩu"
+                type={showPassword ? "text" : "password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="••••••••"
+                required
+                disabled={loading}
+                autoComplete="current-password"
+                style={{ paddingRight: 40 }}
+              />
+              <button
+                type="button"
+                className={styles.passwordToggleBtn}
+                onClick={() => setShowPassword((prev) => !prev)}
+                aria-label={showPassword ? "Ẩn mật khẩu" : "Hiện mật khẩu"}
+                disabled={loading}
+              >
+                {showPassword ? <EyeOff size={18} aria-hidden="true" /> : <Eye size={18} aria-hidden="true" />}
+              </button>
+            </div>
+
+            <div className={styles.rememberRow}>
+              <label htmlFor="auth-remember-me" className={styles.rememberLabel}>
+                <input
+                  type="checkbox"
+                  id="auth-remember-me"
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
+                  disabled={loading}
+                  className={styles.checkbox}
+                />
+                <span>Ghi nhớ tài khoản</span>
+              </label>
+            </div>
           </div>
 
           <Button

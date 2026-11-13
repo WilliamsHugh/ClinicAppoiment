@@ -9,6 +9,7 @@ import { visibleRoutes } from "../lib/navigation/routes";
 import { formatVietnamDate } from "../lib/formatting/date-time";
 import { useSession } from "../lib/session/session-context";
 import { clinicRoleLabel, sessionDisplayName } from "../lib/session/session";
+import { useNotifications } from "../features/notifications/notification-context";
 import { RouteGuard } from "./route-guard";
 import { Badge, ConfirmModal } from "./ui";
 import styles from "./app-shell.module.css";
@@ -38,6 +39,7 @@ function getInitials(name?: string, role?: string): string {
 export function AppShell({ children, NotificationSlot }: AppShellProps) {
   const pathname = usePathname();
   const session = useSession();
+  const { unreadCount, isLoading: isLoadingUnread } = useNotifications();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [confirmSignOutOpen, setConfirmSignOutOpen] = useState(false);
 
@@ -162,9 +164,30 @@ export function AppShell({ children, NotificationSlot }: AppShellProps) {
                     href="/notifications"
                     title="Thông báo"
                     className={styles.notificationLink}
+                    aria-label={
+                      unreadCount !== null && unreadCount > 0
+                        ? `Thông báo (${unreadCount} chưa đọc)`
+                        : "Thông báo"
+                    }
                   >
                     <Bell size={16} aria-hidden="true" />
                     <span>Thông báo</span>
+                    {isLoadingUnread && unreadCount === null ? (
+                      <span
+                        className={styles.notificationBadgeSkeleton}
+                        aria-label="Đang nạp số lượng thông báo"
+                        title="Đang tải..."
+                      />
+                    ) : unreadCount !== null && unreadCount > 0 ? (
+                      <Badge
+                        variant="danger"
+                        size="sm"
+                        className={styles.notificationBadge}
+                        aria-hidden="true"
+                      >
+                        {unreadCount > 99 ? "99+" : unreadCount}
+                      </Badge>
+                    ) : null}
                   </Link>
                 )}
                 <Badge variant="info" size="sm">

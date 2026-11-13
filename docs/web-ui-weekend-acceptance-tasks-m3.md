@@ -192,16 +192,27 @@ git status --short --branch
 
 **P0**
 
-- [ ] `/notifications` hiển thị đúng theo role (`DOCTOR`, `STAFF`, `ADMIN`): danh sách, lọc chưa đọc, đánh dấu đã đọc từng thông báo và đánh dấu tất cả.
-- [ ] **Badge header và panel notification dùng cùng nguồn dữ liệu** — không để badge hiển thị số khác với count thực trong panel.
-- [ ] Empty state chỉ xuất hiện sau response thành công trả danh sách rỗng; lỗi mạng/auth không diễn giải thành trống.
-- [ ] Loading, error, empty state phân biệt rõ; retry trong đúng vùng, không xóa filter.
-- [ ] Mutation đánh dấu đã đọc: loading trên item/control tương ứng; chống submit lặp; chỉ cập nhật UI sau response thành công.
+- [x] `/notifications` hiển thị đúng theo role (`DOCTOR`, `STAFF`, `ADMIN`): danh sách, lọc chưa đọc, đánh dấu đã đọc từng thông báo và đánh dấu tất cả.
+- [x] **Badge header và panel notification dùng cùng nguồn dữ liệu** — không để badge hiển thị số khác với count thực trong panel.
+- [x] Empty state chỉ xuất hiện sau response thành công trả danh sách rỗng; lỗi mạng/auth không diễn giải thành trống.
+- [x] Loading, error, empty state phân biệt rõ; retry trong đúng vùng, không xóa filter.
+- [x] Mutation đánh dấu đã đọc: loading trên item/control tương ứng; chống submit lặp; chỉ cập nhật UI sau response thành công.
 
 **P1**
 
-- [ ] Kiểm tra responsive: danh sách notification trên viewport hẹp.
-- [ ] Keyboard: điều hướng danh sách, focus-visible.
+- [x] Kiểm tra responsive: danh sách notification trên viewport hẹp.
+- [x] Keyboard: điều hướng danh sách, focus-visible.
+
+**Kết quả xác minh Agent B (13/11/2026):**
+- `npm run lint -w @clinic/clinic-management-web`: exit code 0 (`tsc -p tsconfig.json --noEmit` hoàn toàn sạch lỗi)
+- `npm run build -w @clinic/clinic-management-web`: exit code 0 (Next.js 15.5 production build thành công 13/13 static routes)
+- `npx vitest run test/notifications.test.tsx test/notifications-interactive.test.tsx`: exit code 0 (16/16 passed)
+- `git diff --check`: exit code 0 (sạch lỗi whitespace)
+- Tạo `NotificationContext` / `NotificationProvider` cung cấp nguồn dữ liệu duy nhất (`unreadCount`, `refreshUnreadCount`, `decrementUnreadCount`, `markAllReadSuccess`) đồng bộ tức thì giữa Header Badge và NotificationsPanel.
+- AppShell hiển thị badge số lượng chưa đọc live với aria-label chi tiết; hiển thị compact skeleton khi đang nạp count; ẩn badge khi số lượng bằng 0.
+- Xử lý triệt để phân biệt EmptyState vs ErrorState: lỗi fetch hiển thị ErrorState và nút Thử lại, không bao giờ nhầm sang EmptyState; dữ liệu stale khi refresh lỗi vẫn giữ nguyên trên màn hình kèm banner cảnh báo có thể thử lại mà không mất bộ lọc.
+- Thao tác đánh dấu đã đọc (đơn lẻ & tất cả) có loading indicator, chống double-submit, chỉ cập nhật trạng thái UI sau khi nhận response thành công từ API Gateway.
+- Bổ sung focus-visible, focus-within trên thẻ thông báo, liên kết hồ sơ/lịch hẹn và responsive reflow trên màn hình hẹp (< 640px).
 
 ---
 

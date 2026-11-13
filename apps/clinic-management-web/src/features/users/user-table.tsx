@@ -4,6 +4,7 @@ import { Button } from "../../components/ui/button";
 import { SkeletonTable } from "../../components/states";
 import { EmptyState } from "../../components/states";
 import { Pagination } from "../../components/pagination";
+import { formatVietnamDateShort } from "../../lib/formatting/date-time";
 import type { ClinicRole } from "../../lib/session/session";
 import type { UserStatus } from "./user-status-modal";
 import styles from "./users-panel.module.css";
@@ -21,6 +22,7 @@ export interface UserItem {
 
 export interface UserTableProps {
   users: UserItem[];
+  currentUserId?: string;
   loading: boolean;
   page: number;
   limit: number;
@@ -58,6 +60,7 @@ function StatusBadge({ status }: { status: UserStatus }) {
 
 export function UserTable({
   users,
+  currentUserId,
   loading,
   page,
   limit,
@@ -104,55 +107,81 @@ export function UserTable({
             </tr>
           </thead>
           <tbody>
-            {users.map((user) => (
-              <tr key={user.id} className={styles.tr}>
-                <td className={styles.td}>
-                  <div className={styles.userName}>{user.fullName}</div>
-                </td>
-                <td className={styles.td}>
-                  <div className={styles.userEmail}>{user.email}</div>
-                  {user.phone && <div className={styles.userPhone}>{user.phone}</div>}
-                </td>
-                <td className={styles.td}>
-                  <RoleBadge role={user.role} />
-                </td>
-                <td className={styles.td}>
-                  <StatusBadge status={user.status} />
-                </td>
-                <td className={styles.td}>
-                  <div className={styles.cellActions}>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      size="sm"
-                      onClick={() => onEditRole(user)}
-                    >
-                      Đổi vai trò
-                    </Button>
+            {users.map((user) => {
+              const isSelf = Boolean(currentUserId && user.id === currentUserId);
 
-                    {user.status === "LOCKED" ? (
-                      <Button
-                        type="button"
-                        variant="secondary"
-                        size="sm"
-                        onClick={() => onEditStatus(user, "ACTIVE")}
-                      >
-                        Mở khóa
-                      </Button>
-                    ) : (
-                      <Button
-                        type="button"
-                        variant="danger"
-                        size="sm"
-                        onClick={() => onEditStatus(user, "LOCKED")}
-                      >
-                        Khóa
-                      </Button>
+              return (
+                <tr key={user.id} className={styles.tr}>
+                  <td className={styles.td}>
+                    <div className={styles.userName}>
+                      {user.fullName}
+                      {isSelf && (
+                        <span className={styles.selfTag} title="Tài khoản hiện tại của bạn">
+                          (Bạn)
+                        </span>
+                      )}
+                    </div>
+                    {user.createdAt && (
+                      <div className={styles.userJoinedDate}>
+                        Tạo ngày: {formatVietnamDateShort(user.createdAt)}
+                      </div>
                     )}
-                  </div>
-                </td>
-              </tr>
-            ))}
+                  </td>
+                  <td className={styles.td}>
+                    <div className={styles.userEmail}>{user.email}</div>
+                    {user.phone && <div className={styles.userPhone}>{user.phone}</div>}
+                  </td>
+                  <td className={styles.td}>
+                    <RoleBadge role={user.role} />
+                  </td>
+                  <td className={styles.td}>
+                    <StatusBadge status={user.status} />
+                  </td>
+                  <td className={styles.td}>
+                    <div className={styles.cellActions}>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() => onEditRole(user)}
+                      >
+                        Đổi vai trò
+                      </Button>
+
+                      {isSelf ? (
+                        <Button
+                          type="button"
+                          variant="danger"
+                          size="sm"
+                          disabled
+                          title="Không thể tự khóa tài khoản của chính mình"
+                        >
+                          Khóa
+                        </Button>
+                      ) : user.status === "LOCKED" ? (
+                        <Button
+                          type="button"
+                          variant="secondary"
+                          size="sm"
+                          onClick={() => onEditStatus(user, "ACTIVE")}
+                        >
+                          Mở khóa
+                        </Button>
+                      ) : (
+                        <Button
+                          type="button"
+                          variant="danger"
+                          size="sm"
+                          onClick={() => onEditStatus(user, "LOCKED")}
+                        >
+                          Khóa
+                        </Button>
+                      )}
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
           </tbody>
         </table>
       </div>
