@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { X } from "lucide-react";
 import type { AppointmentStatus } from "@clinic/shared-types";
@@ -61,6 +61,7 @@ export function AppointmentsPanel({ onOpenQueue }: { onOpenQueue?: () => void } 
 
   // Action states
   const [actionLoadingId, setActionLoadingId] = useState<string | null>(null);
+  const actionBusyRef = useRef(false);
   const [rowConflicts, setRowConflicts] = useState<Record<string, string>>({});
   const [toast, setToast] = useState<{ message: string; type: "success" | "warning" | "error" } | null>(null);
 
@@ -229,7 +230,8 @@ export function AppointmentsPanel({ onOpenQueue }: { onOpenQueue?: () => void } 
   // Handlers for status transitions
   const handleExecuteConfirm = async () => {
     const appointment = confirmDialog.appointment;
-    if (!appointment || actionLoadingId) return;
+    if (!appointment || actionBusyRef.current) return;
+    actionBusyRef.current = true;
 
     setActionLoadingId(appointment.id);
     setConfirmDialog((prev) => ({ ...prev, isOpen: false }));
@@ -256,13 +258,15 @@ export function AppointmentsPanel({ onOpenQueue }: { onOpenQueue?: () => void } 
         showToast(toUserFriendlyError(err, "Không thể xác nhận lịch hẹn"), "error");
       }
     } finally {
+      actionBusyRef.current = false;
       setActionLoadingId(null);
     }
   };
 
   const handleExecuteCheckIn = async () => {
     const appointment = confirmDialog.appointment;
-    if (!appointment || actionLoadingId) return;
+    if (!appointment || actionBusyRef.current) return;
+    actionBusyRef.current = true;
 
     setActionLoadingId(appointment.id);
     setConfirmDialog((prev) => ({ ...prev, isOpen: false }));
@@ -289,6 +293,7 @@ export function AppointmentsPanel({ onOpenQueue }: { onOpenQueue?: () => void } 
         showToast(toUserFriendlyError(err, "Không thể thực hiện check-in"), "error");
       }
     } finally {
+      actionBusyRef.current = false;
       setActionLoadingId(null);
     }
   };
@@ -321,7 +326,8 @@ export function AppointmentsPanel({ onOpenQueue }: { onOpenQueue?: () => void } 
 
   const handleExecuteCancel = async () => {
     const appointment = confirmDialog.appointment;
-    if (!appointment || actionLoadingId) return;
+    if (!appointment || actionBusyRef.current) return;
+    actionBusyRef.current = true;
 
     setActionLoadingId(appointment.id);
     setConfirmDialog((prev) => ({ ...prev, isOpen: false }));
@@ -348,13 +354,15 @@ export function AppointmentsPanel({ onOpenQueue }: { onOpenQueue?: () => void } 
         showToast(toUserFriendlyError(err, "Không thể hủy lịch hẹn"), "error");
       }
     } finally {
+      actionBusyRef.current = false;
       setActionLoadingId(null);
     }
   };
 
   const handleExecuteNoShow = async () => {
     const appointment = confirmDialog.appointment;
-    if (!appointment || actionLoadingId) return;
+    if (!appointment || actionBusyRef.current) return;
+    actionBusyRef.current = true;
 
     setActionLoadingId(appointment.id);
     setConfirmDialog((prev) => ({ ...prev, isOpen: false }));
@@ -381,6 +389,7 @@ export function AppointmentsPanel({ onOpenQueue }: { onOpenQueue?: () => void } 
         showToast(toUserFriendlyError(err, "Không thể cập nhật trạng thái"), "error");
       }
     } finally {
+      actionBusyRef.current = false;
       setActionLoadingId(null);
     }
   };

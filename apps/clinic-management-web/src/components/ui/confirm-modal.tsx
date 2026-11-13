@@ -67,6 +67,7 @@ export function ConfirmModal({
             type="button"
             variant={isDestructive ? "danger" : "primary"}
             loading={isActionLoading}
+            disabled={isActionLoading}
             onClick={onConfirm}
           >
             {confirmBtnLabel}

@@ -221,15 +221,22 @@ git status --short --branch
 
 **P0**
 
-- [ ] **Giữ filter và form draft khi retry**: lỗi mạng/server không xóa bộ lọc, lựa chọn hoặc dữ liệu đang nhập của người dùng.
-- [ ] Phân biệt rõ **empty state vs error state**: danh sách rỗng (response 200 với `[]`) khác với lỗi fetch; không hiển thị "Không có lịch hẹn" khi thực chất là lỗi server.
-- [ ] Dữ liệu stale khi refresh: giữ kết quả cũ trong vùng data kèm nhãn rõ ràng trong lúc đang tải lại.
-- [ ] Các request độc lập không làm toàn trang vào lỗi — lỗi phân trang không ảnh hưởng vùng filter header; lỗi một row không ẩn toàn bộ table.
-- [ ] Mọi mutation có **loading trên control/row tương ứng**; chống double-submit; chỉ hiển thị toast/feedback thành công sau response từ Gateway.
+- [x] **Giữ filter và form draft khi retry**: lỗi mạng/server không xóa bộ lọc, lựa chọn hoặc dữ liệu đang nhập của người dùng. (Đã xác minh: Appointments giữ selectedDate, selectedStatus, searchQuery khi retry/lỗi; QueueActionDialog giữ reason, date, selected; DoctorPanel giữ drafts form chuyên khoa, bác sĩ, lịch làm việc và thời gian nghỉ khi submit lỗi).
+- [x] Phân biệt rõ **empty state vs error state**: danh sách rỗng (response 200 với `[]`) khác với lỗi fetch; không hiển thị "Không có lịch hẹn" khi thực chất là lỗi server. (Đã xác minh: AppointmentsPanel phân tách ErrorState vs EmptyState; DoctorList hiển thị ErrorState kèm nút Thử lại khi fetch lỗi thay vì EmptyState; DoctorPanel phân tách lỗi slotError kèm nút Thử lại khung giờ thay vì báo không có khung giờ).
+- [x] Dữ liệu stale khi refresh: giữ kết quả cũ trong vùng data kèm nhãn rõ ràng trong lúc đang tải lại. (Đã xác minh: AppointmentsPanel hiển thị banner refreshingNotice kèm spinner trong vùng table khi refresh và Alert cảnh báo dữ liệu cũ kèm nút Thử lại; QueueBoard giữ card cũ và hiển thị thông báo đang tải lại; DoctorList giữ danh sách cũ và nhãn đang tải lại).
+- [x] Các request độc lập không làm toàn trang vào lỗi — lỗi phân trang không ảnh hưởng vùng filter header; lỗi một row không ẩn toàn bộ table. (Đã xác minh: filter header của Appointments và Doctor nằm độc lập ngoài vùng data; Promise.allSettled cho doctor/specialty; lỗi slot/time-off độc lập không làm crash chi tiết bác sĩ; lỗi row action dùng inline conflict alert không ẩn table).
+- [x] Mọi mutation có **loading trên control/row tương ứng**; chống double-submit; chỉ hiển thị toast/feedback thành công sau response từ Gateway. (Đã xác minh: row có aria-busy và button "Đang xử lý..."; actionBusyRef / busyRef chặn double-click tức thì; ConfirmModal có loading và disabled; DoctorPanel hiển thị "Đang lưu..." trên button tương ứng; toast chỉ xuất hiện sau khi Gateway phản hồi thành công).
 
 **P1**
 
-- [ ] Rà skeleton: `aria-busy`; label trạng thái không chỉ dựa vào màu.
+- [x] Rà skeleton: `aria-busy`; label trạng thái không chỉ dựa vào màu. (Đã xác minh: SkeletonTable, SkeletonBoard, SkeletonCard, slot skeletons đều có aria-busy="true"; StatusBadge và queue statusLabels đều có text label tiếng Việt rõ ràng, không phụ thuộc màu sắc).
+
+**Kết quả xác minh Agent B (13/11/2026):**
+- `npm test -w @clinic/clinic-management-web`: exit code 0 (24/24 files passed, 207/207 passed, bao gồm 7 bài test mới chuyên biệt cho Agent B tại `test/appointments-doctors-agent-b.test.tsx`)
+- `npm run lint -w @clinic/clinic-management-web`: exit code 0 (0 error, tsc kiểm tra thành công)
+- `npm run build -w @clinic/clinic-management-web`: exit code 0 (production build thành công, 13/13 static routes prerendered)
+- `git diff --check`: exit code 0 (không có lỗi whitespace, không conflict markers)
+- Toàn bộ 5 mục P0 và 1 mục P1 của Agent B đã hoàn tất và đạt nghiệm thu.
 
 ---
 
