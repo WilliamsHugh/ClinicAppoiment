@@ -25,7 +25,16 @@ export function UsersPanel() {
   const [roleFilter, setRoleFilter] = useState<string>("");
   const [statusFilter, setStatusFilter] = useState<string>("");
   const [searchQuery, setSearchQuery] = useState<string>("");
+  const [debouncedQuery, setDebouncedQuery] = useState<string>("");
   const [, startTransition] = useTransition();
+
+  // Debounce search query by 300ms per M3-UI-USER-004
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedQuery(searchQuery);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
 
   // Alert Messages
   const [actionSuccess, setActionSuccess] = useState<string | null>(null);
@@ -37,22 +46,24 @@ export function UsersPanel() {
   const [statusModalTarget, setStatusModalTarget] = useState<UserStatus | undefined>(undefined);
   const [mutating, setMutating] = useState(false);
 
+  const currentUserId = session.identity?.id;
   const isAdmin = session.status === "authenticated" && session.identity?.role === "ADMIN";
 
   const fetchUsers = useCallback(
-    async (targetPage = page) => {
+    async (targetPage = page, queryOverride?: string) => {
       if (!isAdmin) return;
       setLoading(true);
       setError(null);
       try {
         const api = createBrowserApiClient(session);
+        const activeQuery = queryOverride !== undefined ? queryOverride : debouncedQuery;
         const query: Record<string, string | number> = {
           page: targetPage,
           limit: 10,
         };
         if (roleFilter) query.role = roleFilter;
         if (statusFilter) query.status = statusFilter;
-        if (searchQuery.trim()) query.q = searchQuery.trim();
+        if (activeQuery.trim()) query.q = activeQuery.trim();
 
         const res = await api.get<PaginatedData<UserItem>>("/api/v1/users", { query });
         setUsers(res.data.items || []);
@@ -64,7 +75,7 @@ export function UsersPanel() {
         setLoading(false);
       }
     },
-    [isAdmin, page, roleFilter, statusFilter, searchQuery, session]
+    [isAdmin, page, roleFilter, statusFilter, debouncedQuery, session]
   );
 
   useEffect(() => {
@@ -73,12 +84,13 @@ export function UsersPanel() {
     } else if (session.status !== "loading") {
       setLoading(false);
     }
-  }, [isAdmin, session.status, roleFilter, statusFilter]);
+  }, [isAdmin, session.status, roleFilter, statusFilter, debouncedQuery]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setDebouncedQuery(searchQuery);
     startTransition(() => {
-      void fetchUsers(1);
+      void fetchUsers(1, searchQuery);
     });
   };
 
@@ -100,6 +112,13 @@ export function UsersPanel() {
   };
 
   const handleConfirmStatusChange = async (userId: string, newStatus: UserStatus) => {
+    if (currentUserId && userId === currentUserId && newStatus === "LOCKED") {
+      setActionError("Bạn không thể tự khóa tài khoản của chính mình.");
+      setStatusModalUser(null);
+      setStatusModalTarget(undefined);
+      return;
+    }
+
     setMutating(true);
     setActionSuccess(null);
     setActionError(null);
@@ -248,6 +267,7 @@ export function UsersPanel() {
       {/* Data Table */}
       <UserTable
         users={users}
+        currentUserId={currentUserId}
         loading={loading}
         page={page}
         limit={10}
@@ -267,6 +287,7 @@ export function UsersPanel() {
       <UserRoleModal
         isOpen={roleModalUser !== null}
         user={roleModalUser}
+        currentUserId={currentUserId}
         isLoading={mutating}
         onClose={() => setRoleModalUser(null)}
         onConfirm={handleConfirmRoleChange}
@@ -277,6 +298,7 @@ export function UsersPanel() {
         isOpen={statusModalUser !== null}
         user={statusModalUser}
         targetStatus={statusModalTarget}
+        currentUserId={currentUserId}
         isLoading={mutating}
         onClose={() => {
           setStatusModalUser(null);

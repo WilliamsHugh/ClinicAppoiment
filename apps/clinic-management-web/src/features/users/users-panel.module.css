@@ -138,6 +138,26 @@
   font-weight: 600;
   color: var(--ink);
   margin-bottom: 2px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.selfTag {
+  display: inline-block;
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--primary);
+  background: var(--primary-light);
+  padding: 1px 6px;
+  border-radius: var(--radius-sm, 4px);
+  line-height: 1.3;
+}
+
+.userJoinedDate {
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin-top: 2px;
 }
 
 .userEmail {

@@ -16,3 +16,14 @@ export function getVietnamTodayISO(date: Date = new Date()): string {
     day: "2-digit",
   }).format(date);
 }
+
+export function formatVietnamDateShort(date: Date | string): string {
+  const d = typeof date === "string" ? new Date(date) : date;
+  if (isNaN(d.getTime())) return "—";
+  return new Intl.DateTimeFormat("vi-VN", {
+    timeZone: "Asia/Ho_Chi_Minh",
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+  }).format(d);
+}

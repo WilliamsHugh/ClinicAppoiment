@@ -12,6 +12,7 @@ export interface UserRoleModalProps {
     email: string;
     role: ClinicRole;
   } | null;
+  currentUserId?: string;
   onClose: () => void;
   onConfirm: (userId: string, newRole: ClinicRole) => Promise<void>;
   isLoading?: boolean;
@@ -20,6 +21,7 @@ export interface UserRoleModalProps {
 export function UserRoleModal({
   isOpen,
   user,
+  currentUserId,
   onClose,
   onConfirm,
   isLoading = false,
@@ -35,6 +37,7 @@ export function UserRoleModal({
   if (!user) return null;
 
   const isUnchanged = selectedRole === user.role;
+  const isSelfDemoting = Boolean(currentUserId && user.id === currentUserId && selectedRole !== "ADMIN");
 
   const handleConfirm = async () => {
     if (isUnchanged) {
@@ -77,6 +80,16 @@ export function UserRoleModal({
             <option value="ADMIN">Quản trị viên (ADMIN)</option>
           </select>
         </div>
+
+        {isSelfDemoting && (
+          <div className={styles.dangerBox} role="alert">
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <AlertTriangle size={16} aria-hidden="true" />
+              <strong>Cảnh báo phân quyền:</strong>
+            </span>{" "}
+            Bạn đang chuyển vai trò của chính mình sang {selectedRole}. Bạn sẽ mất quyền truy cập trang quản trị này ngay sau khi lưu.
+          </div>
+        )}
 
         {selectedRole === "ADMIN" && (
           <div className={styles.warningBox} role="alert">

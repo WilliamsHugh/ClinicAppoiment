@@ -19,14 +19,62 @@ export function Modal({ isOpen, onClose, title, children, footer, maxWidth }: Mo
   useEffect(() => {
     if (!isOpen) return;
 
+    const previousActiveElement = document.activeElement as HTMLElement | null;
+    const focusableSelector =
+      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+    const focusTimer = setTimeout(() => {
+      if (contentRef.current) {
+        const focusableElements = contentRef.current.querySelectorAll<HTMLElement>(focusableSelector);
+        if (focusableElements.length > 0) {
+          focusableElements[0].focus();
+        } else {
+          contentRef.current.focus();
+        }
+      }
+    }, 0);
+
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
         onClose();
+        return;
+      }
+
+      if (event.key === "Tab" && contentRef.current) {
+        const focusables = Array.from(
+          contentRef.current.querySelectorAll<HTMLElement>(focusableSelector)
+        );
+
+        if (focusables.length === 0) {
+          event.preventDefault();
+          return;
+        }
+
+        const firstElement = focusables[0];
+        const lastElement = focusables[focusables.length - 1];
+
+        if (event.shiftKey) {
+          if (document.activeElement === firstElement) {
+            event.preventDefault();
+            lastElement.focus();
+          }
+        } else {
+          if (document.activeElement === lastElement) {
+            event.preventDefault();
+            firstElement.focus();
+          }
+        }
       }
     }
 
     document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
+    return () => {
+      clearTimeout(focusTimer);
+      document.removeEventListener("keydown", handleKeyDown);
+      if (previousActiveElement && typeof previousActiveElement.focus === "function") {
+        previousActiveElement.focus();
+      }
+    };
   }, [isOpen, onClose]);
 
   if (!isOpen) return null;
