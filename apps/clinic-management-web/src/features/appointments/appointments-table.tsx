@@ -13,6 +13,7 @@ export interface AppointmentsTableProps {
   specialtiesMap: Record<string, string>;
   actionLoadingId: string | null;
   rowConflicts: Record<string, string>;
+  onClearConflict?: (appointmentId: string) => void;
   onConfirm: (appointment: Appointment) => void;
   onRequestCancel: (appointment: Appointment) => void;
   onCheckIn: (appointment: Appointment) => void;
@@ -20,13 +21,26 @@ export interface AppointmentsTableProps {
   onViewRecord: (appointment: Appointment) => void;
 }
 
+const timeFormatter = new Intl.DateTimeFormat("vi-VN", {
+  timeZone: "Asia/Ho_Chi_Minh",
+  hour: "2-digit",
+  minute: "2-digit",
+  hour12: false,
+});
+
+const dateFormatter = new Intl.DateTimeFormat("vi-VN", {
+  timeZone: "Asia/Ho_Chi_Minh",
+  day: "2-digit",
+  month: "2-digit",
+  year: "numeric",
+});
+
 function formatTime(startIso: string, endIso: string) {
   try {
     const start = new Date(startIso);
     const end = new Date(endIso);
-    const pad = (n: number) => String(n).padStart(2, "0");
-    const timeRange = `${pad(start.getHours())}:${pad(start.getMinutes())} - ${pad(end.getHours())}:${pad(end.getMinutes())}`;
-    const dateStr = `${pad(start.getDate())}/${pad(start.getMonth() + 1)}/${start.getFullYear()}`;
+    const timeRange = `${timeFormatter.format(start)} - ${timeFormatter.format(end)}`;
+    const dateStr = dateFormatter.format(start);
     return { timeRange, dateStr };
   } catch {
     return { timeRange: startIso, dateStr: "" };
@@ -51,6 +65,7 @@ export function AppointmentsTable({
   specialtiesMap,
   actionLoadingId,
   rowConflicts,
+  onClearConflict,
   onConfirm,
   onRequestCancel,
   onCheckIn,
@@ -62,7 +77,12 @@ export function AppointmentsTable({
 
   return (
     <div className={styles.tableCard}>
-      <div className={styles.tableWrapper}>
+      <div
+        className={styles.tableWrapper}
+        tabIndex={0}
+        role="region"
+        aria-label="Danh sách lịch hẹn"
+      >
         <table className={styles.table} aria-label="Danh sách lịch hẹn">
           <thead>
             <tr>
@@ -93,7 +113,12 @@ export function AppointmentsTable({
 
               return (
                 <React.Fragment key={appointment.id}>
-                  <tr>
+                  <tr
+                    tabIndex={0}
+                    className={styles.tableRow}
+                    aria-busy={inFlight ? "true" : undefined}
+                    aria-label={`Lịch hẹn ${patient.name}`}
+                  >
                     <td>
                       <div className={styles.timeCell}>
                         <span className={styles.timeHours}>{timeRange}</span>
@@ -139,7 +164,11 @@ export function AppointmentsTable({
                   {conflict && (
                     <tr>
                       <td colSpan={colCount} className={styles.conflictAlert}>
-                        <Alert type="warning" title="Xung đột trạng thái lịch hẹn (409)">
+                        <Alert
+                          variant="warning"
+                          title="Xung đột trạng thái lịch hẹn (409)"
+                          onClose={onClearConflict ? () => onClearConflict(appointment.id) : undefined}
+                        >
                           {conflict}
                         </Alert>
                       </td>

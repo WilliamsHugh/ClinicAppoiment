@@ -56,8 +56,12 @@ export function DoctorPanel() {
   const [loading, setLoading] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState("");
+  const [doctorError, setDoctorError] = useState("");
+  const [slotError, setSlotError] = useState("");
+  const [slotLoading, setSlotLoading] = useState(false);
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
+  const [mutatingAction, setMutatingAction] = useState<string | null>(null);
   const busyRef = useRef(false);
   const [revision, setRevision] = useState(0);
 
@@ -105,7 +109,8 @@ export function DoctorPanel() {
     let alive = true;
     setLoading(true);
     setError("");
-    Promise.all([
+    setDoctorError("");
+    Promise.allSettled([
       api.specialties({ page: 1, limit: 100, ...(admin ? {} : { isActive: true }) }),
       api.doctors({
         page,
@@ -117,11 +122,24 @@ export function DoctorPanel() {
     ])
       .then(([specialtyResponse, doctorResponse]) => {
         if (!alive) return;
-        setSpecialties(specialtyResponse.data.items);
-        setDoctors(doctorResponse.data);
+        if (specialtyResponse.status === "fulfilled") {
+          setSpecialties(specialtyResponse.value.data.items);
+        }
+        if (doctorResponse.status === "fulfilled") {
+          setDoctors(doctorResponse.value.data);
+          setDoctorError("");
+        } else {
+          const err = message(doctorResponse.reason);
+          setDoctorError(err);
+          setError(err);
+        }
       })
       .catch((caught: unknown) => {
-        if (alive) setError(message(caught));
+        if (alive) {
+          const err = message(caught);
+          setDoctorError(err);
+          setError(err);
+        }
       })
       .finally(() => {
         if (alive) setLoading(false);
@@ -168,12 +186,22 @@ export function DoctorPanel() {
         setSchedules(scheduleResult.data.items);
         if (doctorResult.data.isActive) {
           try {
+            setSlotLoading(true);
+            setSlotError("");
             const slotResult = await api.slots(selectedId, date);
             if (alive) setSlots(slotResult.data);
           } catch (caught) {
-            if (alive) setError(message(caught));
+            if (alive) {
+              setSlotError(message(caught));
+              setSlots([]);
+            }
+          } finally {
+            if (alive) setSlotLoading(false);
           }
-        } else if (alive) setSlots([]);
+        } else if (alive) {
+          setSlots([]);
+          setSlotError("");
+        }
 
         if (
           role === "ADMIN" ||
@@ -201,10 +229,11 @@ export function DoctorPanel() {
     };
   }, [api, selectedId, date, revision, role, session.status]);
 
-  async function mutate(action: () => Promise<unknown>, success: string, onSuccess?: () => void) {
+  async function mutate(action: () => Promise<unknown>, success: string, onSuccess?: () => void, actionKey?: string) {
     if (busyRef.current) return;
     busyRef.current = true;
     setBusy(true);
+    setMutatingAction(actionKey ?? null);
     setError("");
     setNotice("");
     try {
@@ -217,8 +246,23 @@ export function DoctorPanel() {
     } finally {
       busyRef.current = false;
       setBusy(false);
+      setMutatingAction(null);
     }
   }
+
+  const handleRetrySlots = async () => {
+    if (!selectedId) return;
+    setSlotLoading(true);
+    setSlotError("");
+    try {
+      const slotResult = await api.slots(selectedId, date);
+      setSlots(slotResult.data);
+    } catch (caught) {
+      setSlotError(message(caught));
+    } finally {
+      setSlotLoading(false);
+    }
+  };
 
   function submitSearch(event: FormEvent) {
     event.preventDefault();
@@ -257,7 +301,10 @@ export function DoctorPanel() {
   }
   if (session.status !== "authenticated" || !role || role === "PATIENT") {
     return (
-      <ErrorState message="Bạn cần tài khoản bác sĩ, nhân viên hoặc quản trị viên để xem trang này." />
+      <div className={styles.stack}>
+        <PageHeader pathname="/doctors" />
+        <ErrorState message="Bạn cần tài khoản bác sĩ, nhân viên hoặc quản trị viên để xem trang này." />
+      </div>
     );
   }
 
@@ -312,6 +359,8 @@ export function DoctorPanel() {
         loading={loading}
         page={page}
         onPageChange={setPage}
+        error={doctorError}
+        onRetry={() => setRevision((value) => value + 1)}
       />
 
       {/* Chi tiết bác sĩ và khung giờ khả dụng */}
@@ -344,11 +393,18 @@ export function DoctorPanel() {
                     onChange={(event) => setDate(event.target.value)}
                   />
                 </label>
-                {detailLoading ? (
+                {slotLoading || detailLoading ? (
                   <div className={styles.chips} aria-busy="true" aria-label="Đang nạp khung giờ khả dụng">
                     <Skeleton height={28} width={130} borderRadius="var(--radius-full)" />
                     <Skeleton height={28} width={130} borderRadius="var(--radius-full)" />
                     <Skeleton height={28} width={130} borderRadius="var(--radius-full)" />
+                  </div>
+                ) : slotError ? (
+                  <div role="alert" className={styles.error} style={{ margin: "12px 0" }}>
+                    <span>{slotError}</span>
+                    <Button type="button" variant="secondary" size="sm" onClick={handleRetrySlots}>
+                      Thử lại khung giờ
+                    </Button>
                   </div>
                 ) : slots.length === 0 ? (
                   <p>Không có khung giờ phù hợp trong ngày này.</p>
@@ -411,19 +467,23 @@ export function DoctorPanel() {
                             setPendingDeactivate(null);
                             void mutate(
                               () => api.updateSpecialty(item.id, { isActive: false }),
-                              "Đã cập nhật chuyên khoa."
+                              "Đã cập nhật chuyên khoa.",
+                              undefined,
+                              `specialty-toggle-${item.id}`
                             );
                           },
                         });
                       } else {
                         void mutate(
                           () => api.updateSpecialty(item.id, { isActive: true }),
-                          "Đã cập nhật chuyên khoa."
+                          "Đã cập nhật chuyên khoa.",
+                          undefined,
+                          `specialty-toggle-${item.id}`
                         );
                       }
                     }}
                   >
-                    {item.isActive ? "Ngừng" : "Kích hoạt"}
+                    {busy && mutatingAction === `specialty-toggle-${item.id}` ? "Đang xử lý..." : (item.isActive ? "Ngừng" : "Kích hoạt")}
                   </Button>
                 </div>
               ))
@@ -449,7 +509,8 @@ export function DoctorPanel() {
                   setEditingSpecialtyId(null);
                   setSpecialtyName("");
                   setSpecialtyDescription("");
-                }
+                },
+                "specialty"
               );
             }}
           >
@@ -471,7 +532,7 @@ export function DoctorPanel() {
             </label>
             <div className={styles.row}>
               <Button disabled={busy} type="submit" variant="primary">
-                {editingSpecialtyId ? "Lưu chuyên khoa" : "Thêm chuyên khoa"}
+                {busy && mutatingAction === "specialty" ? "Đang lưu..." : (editingSpecialtyId ? "Lưu chuyên khoa" : "Thêm chuyên khoa")}
               </Button>
               {editingSpecialtyId && (
                 <Button
@@ -537,7 +598,8 @@ export function DoctorPanel() {
                   setDoctorSpecialtyId("");
                   setDoctorName("");
                   setDoctorBio("");
-                }
+                },
+                "doctor"
               );
             }}
           >
@@ -598,7 +660,7 @@ export function DoctorPanel() {
             </label>
             <div className={styles.row}>
               <Button disabled={busy} type="submit" variant="primary">
-                {editingDoctor ? "Lưu bác sĩ" : "Thêm bác sĩ"}
+                {busy && mutatingAction === "doctor" ? "Đang lưu..." : (editingDoctor ? "Lưu bác sĩ" : "Thêm bác sĩ")}
               </Button>
               {editingDoctor && (
                 <Button
@@ -631,19 +693,23 @@ export function DoctorPanel() {
                           setPendingDeactivate(null);
                           void mutate(
                             () => api.updateDoctor(selected.id, { isActive: false }),
-                            "Đã cập nhật trạng thái bác sĩ."
+                            "Đã cập nhật trạng thái bác sĩ.",
+                            undefined,
+                            `doctor-toggle-${selected.id}`
                           );
                         },
                       });
                     } else {
                       void mutate(
                         () => api.updateDoctor(selected.id, { isActive: true }),
-                        "Đã cập nhật trạng thái bác sĩ."
+                        "Đã cập nhật trạng thái bác sĩ.",
+                        undefined,
+                        `doctor-toggle-${selected.id}`
                       );
                     }
                   }}
                 >
-                  {selected.isActive ? "Ngừng hoạt động" : "Kích hoạt"}
+                  {busy && mutatingAction === `doctor-toggle-${selected.id}` ? "Đang xử lý..." : (selected.isActive ? "Ngừng hoạt động" : "Kích hoạt")}
                 </Button>
               )}
             </div>
@@ -658,6 +724,7 @@ export function DoctorPanel() {
           timeOffs={timeOffs}
           timeOffError={timeOffError}
           busy={busy}
+          busyAction={mutatingAction}
           detailLoading={detailLoading}
           scheduleId={scheduleId}
           weekday={weekday}
@@ -679,14 +746,18 @@ export function DoctorPanel() {
                   setPendingDeactivate(null);
                   void mutate(
                     () => api.updateSchedule(item.id, { isActive: false }),
-                    "Đã cập nhật lịch làm việc."
+                    "Đã cập nhật lịch làm việc.",
+                    undefined,
+                    `schedule-toggle-${item.id}`
                   );
                 },
               });
             } else {
               void mutate(
                 () => api.updateSchedule(item.id, { isActive: true }),
-                "Đã cập nhật lịch làm việc."
+                "Đã cập nhật lịch làm việc.",
+                undefined,
+                `schedule-toggle-${item.id}`
               );
             }
           }}
@@ -708,7 +779,8 @@ export function DoctorPanel() {
                       slotDurationMinutes: duration,
                     }),
               "Đã lưu lịch làm việc.",
-              () => setScheduleId(null)
+              () => setScheduleId(null),
+              "schedule"
             );
           }}
           onResetScheduleForm={() => setScheduleId(null)}
@@ -741,7 +813,8 @@ export function DoctorPanel() {
                 setOffStart("");
                 setOffEnd("");
                 setOffReason("");
-              }
+              },
+              "time-off"
             );
           }}
           onResetTimeOffForm={() => {

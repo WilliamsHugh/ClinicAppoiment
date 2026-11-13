@@ -83,7 +83,7 @@ export function QueueActionDialog({ item, action, api, onClose, onUpdated, onSta
         {action === "reschedule" && <>
           <label>Ngày khám mới (giờ Việt Nam)<input type="date" required min={clinicToday()} value={date}
             onChange={(event) => { setDate(event.target.value); setSelected(""); }} /></label>
-          {loading ? <div role="status" className={styles.skeleton} aria-label="Đang tải khung giờ" /> :
+          {loading ? <div role="status" className={styles.skeleton} aria-label="Đang tải khung giờ" aria-busy="true" /> :
             slotError ? <div role="alert">{slotError} <button type="button" onClick={() => setRevision((value) => value + 1)}>Thử lại khung giờ</button></div> :
             slots.length === 0 ? <p role="status">Ngày này không còn khung giờ phù hợp. Hãy chọn ngày khác.</p> :
             <label>Khung giờ trống<select required value={selected} onChange={(event) => setSelected(event.target.value)}>

@@ -111,6 +111,11 @@
   color: var(--primary);
 }
 
+.quickBtn:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
 .searchGroup {
   flex: 1;
   min-width: 240px;
@@ -163,6 +168,11 @@
   color: var(--ink);
 }
 
+.statusTab:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
+
 .statusTabActive {
   background: var(--primary);
   border-color: var(--primary);
@@ -190,18 +200,26 @@
   overflow-x: auto;
   width: 100%;
   -webkit-overflow-scrolling: touch;
+  scrollbar-width: thin;
+  position: relative;
+}
+
+.tableWrapper:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
 }
 
 .table {
   width: 100%;
-  border-collapse: collapse;
+  min-width: 820px;
+  border-collapse: separate;
+  border-spacing: 0;
   text-align: left;
   font-size: 0.875rem;
 }
 
 .table thead {
   background: var(--surface-subtle);
-  border-bottom: 1px solid var(--line);
 }
 
 .table th {
@@ -212,18 +230,22 @@
   text-transform: uppercase;
   letter-spacing: 0.05em;
   white-space: nowrap;
+  border-bottom: 1px solid var(--line);
 }
 
 .table tbody tr {
-  border-bottom: 1px solid var(--line);
   transition: background 0.1s ease;
 }
 
-.table tbody tr:hover {
+.table tbody tr td {
+  border-bottom: 1px solid var(--line);
+}
+
+.table tbody tr:hover td {
   background: #f8fafc;
 }
 
-.table tbody tr:last-child {
+.table tbody tr:last-child td {
   border-bottom: none;
 }
 
@@ -231,6 +253,44 @@
   padding: 14px 16px;
   color: var(--ink);
   vertical-align: middle;
+  background: var(--surface);
+}
+
+.tableRow {
+  outline: none;
+}
+
+.tableRow:focus-visible td {
+  background-color: #f1f5f9;
+}
+
+.tableRow:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: -2px;
+}
+
+/* Sticky action column: preserved and never lost when scrolling horizontally on narrow viewports */
+.table th:last-child,
+.table td:last-child {
+  position: sticky;
+  right: 0;
+  background: var(--surface);
+  z-index: 2;
+  box-shadow: -4px 0 8px -2px rgba(0, 0, 0, 0.06);
+  border-left: 1px solid var(--line);
+}
+
+.table thead th:last-child {
+  background: var(--surface-subtle);
+  z-index: 3;
+}
+
+.table tbody tr:hover td:last-child {
+  background: #f8fafc;
+}
+
+.tableRow:focus-visible td:last-child {
+  background: #f1f5f9;
 }
 
 /* Cell content formatters */
@@ -375,6 +435,12 @@
   cursor: not-allowed;
 }
 
+.actionBtn:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  box-shadow: 0 0 0 3px var(--primary-light);
+}
+
 /* Conflict alert row */
 .conflictAlert {
   padding: 8px 16px;
@@ -456,6 +522,36 @@
   gap: 8px;
 }
 
+/* Refreshing and Stale State indicators */
+.refreshingNotice {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md, 6px);
+  font-size: 0.875rem;
+  color: var(--ink);
+  margin-bottom: 14px;
+}
+
+.spinner {
+  width: 14px;
+  height: 14px;
+  border: 2px solid var(--line);
+  border-top-color: var(--primary, #0284c7);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
 @keyframes slideIn {
   from {
     transform: translateY(20px);
@@ -479,5 +575,36 @@
 
   .searchGroup {
     max-width: none;
+  }
+}
+
+/* Touch targets >= 44px on mobile & tablet per Antislop K-3 */
+@media (max-width: 768px), (pointer: coarse) {
+  .actionGroup {
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+
+  .actionBtn {
+    min-height: 44px;
+    min-width: 44px;
+    padding: 10px 16px;
+    font-size: 0.875rem;
+  }
+
+  .quickBtn {
+    min-height: 44px;
+    padding: 10px 14px;
+  }
+
+  .statusTab {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    padding: 8px 16px;
+  }
+
+  .dateInput {
+    min-height: 44px;
   }
 }

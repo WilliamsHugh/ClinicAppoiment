@@ -105,7 +105,6 @@ fix(acceptance-platform-shell): hoàn tất P0 shell/dashboard
 - [x] Kiểm tra console/runtime: không có lỗi hydration, key warning, request lặp bất thường khi chuyển route. (Prerender 13/13 static routes sạch cảnh báo)
 - [x] Kiểm tra responsive desktop → tablet → viewport hẹp cho shell và dashboard. (Mobile drawer 768px, dashboard grid collapse 960px, tableWrapper scroll ngang)
 - [x] Kiểm tra keyboard: Tab order hợp lý, focus-visible, Escape đóng modal. (Modal Escape handler, focus-visible outlines trên Button, NavItem, Input)
-
 **Lệnh xác minh**
 ```bash
 npm run lint -w @clinic/clinic-management-web
@@ -148,7 +147,6 @@ git status --short --branch
 - `npm run build -w @clinic/clinic-management-web`: exit code 0
 - `npm test -w @clinic/clinic-management-web`: exit code 0 (22/22 files passed, 208/208 tests passed)
 - `git diff --check`: exit code 0
-
 ---
 
 ## Nhánh 2 — `fix/acceptance-auth-users-profile`
@@ -185,7 +183,6 @@ git status --short --branch
 - Profile: Giữ nguyên form draft khi API PATCH lỗi 500/mạng; các mục chưa có API (đổi avatar, đổi mật khẩu, cấu hình thông báo) có huy hiệu Lộ trình phát triển và nút bị vô hiệu hóa kèm tooltip giải thích.
 - Users: Debounce 300ms tìm kiếm; phân quyền nghiêm ngặt; chặn ADMIN tự khóa tài khoản chính mình tại Table, Modal, Panel; gắn nhãn `(Bạn)` cho tài khoản hiện tại.
 - Modal: Focus trap hoàn chỉnh chặn focus rơi ra ngoài modal, khôi phục focus khi đóng, Escape đóng modal.
-
 ---
 
 ### Agent B · Notifications (Auth domain)
@@ -213,7 +210,6 @@ git status --short --branch
 - Xử lý triệt để phân biệt EmptyState vs ErrorState: lỗi fetch hiển thị ErrorState và nút Thử lại, không bao giờ nhầm sang EmptyState; dữ liệu stale khi refresh lỗi vẫn giữ nguyên trên màn hình kèm banner cảnh báo có thể thử lại mà không mất bộ lọc.
 - Thao tác đánh dấu đã đọc (đơn lẻ & tất cả) có loading indicator, chống double-submit, chỉ cập nhật trạng thái UI sau khi nhận response thành công từ API Gateway.
 - Bổ sung focus-visible, focus-within trên thẻ thông báo, liên kết hồ sơ/lịch hẹn và responsive reflow trên màn hình hẹp (< 640px).
-
 ---
 
 ## Nhánh 3 — `fix/acceptance-appointments-doctors`
@@ -229,50 +225,61 @@ git status --short --branch
 
 **P0 — Bắt buộc trước nghiệm thu**
 
-- [ ] `/appointments` giữ đúng title `"Quản lý lịch hẹn"` và mô tả tác vụ — không thay đổi khi chuyển trạng thái.
-- [ ] Đi hết luồng đầy đủ: **lọc theo ngày/trạng thái/từ khóa → xem kết quả → phân trang → thực hiện hành động hợp lệ → xác nhận thao tác consequential → kết quả / xử lý lỗi**.
-- [ ] Xử lý lỗi **409 Conflict**: thông báo rõ, không mất context (filter, dữ liệu đang xem); người dùng có thể thử lại.
-- [ ] Chỉ provider được cấp quyền theo API mới **thấy và hành động** trên dữ liệu tương ứng; xác nhận theo response thực, không suy ra quyền từ route UI.
-- [ ] Status chip lịch hẹn hiển thị rõ: `PENDING`, `CONFIRMED`, `CHECKED_IN`, `COMPLETED`, `CANCELLED`, `NO_SHOW` — kèm text label, không chỉ dựa vào màu.
-- [ ] `/doctors`: căn chỉnh nội dung với **page container chung** — không lệch trái bất thường.
-- [ ] Danh sách bác sĩ: tìm kiếm, lọc theo chuyên khoa, phân trang, thao tác được cấp quyền.
+- [x] `/appointments` giữ đúng title `"Quản lý lịch hẹn"` và mô tả tác vụ — không thay đổi khi chuyển trạng thái (đã kiểm tra và đảm bảo PageHeader hiển thị cố định, thống nhất ở mọi trạng thái: loading, empty, error, populated, permission denied và khi chuyển sang view Bảng hàng đợi).
+- [x] Đi hết luồng đầy đủ: **lọc theo ngày/trạng thái/từ khóa → xem kết quả → phân trang → thực hiện hành động hợp lệ → xác nhận thao tác consequential → kết quả / xử lý lỗi** (bộ lọc ngày/trạng thái/từ khóa, phân trang `totalCount > 20`, modal xác nhận ConfirmModal cho mọi thao tác consequential, toast và inline feedback).
+- [x] Xử lý lỗi **409 Conflict**: thông báo rõ ràng, không mất context (filter, query, bảng dữ liệu đang xem được giữ nguyên); hiển thị inline alert kèm nút đóng tại đúng dòng và cảnh báo toast; người dùng có thể thử lại ngay.
+- [x] Chỉ provider được cấp quyền theo API mới **thấy và hành động** trên dữ liệu tương ứng; xác nhận theo response thực, không suy ra quyền từ route UI (chỉ DOCTOR thấy nút Khám bệnh / Xem hồ sơ để mở `/medical-records`; STAFF/ADMIN chỉ thấy các thao tác hành chính: Xác nhận, Check-in, Hủy, Không đến).
+- [x] Status chip lịch hẹn hiển thị rõ: `PENDING`, `CONFIRMED`, `CHECKED_IN`, `COMPLETED`, `CANCELLED`, `NO_SHOW` — kèm text label tiếng Việt đầy đủ ("Chờ xác nhận", "Đã xác nhận", "Đã check-in", "Hoàn thành", "Đã hủy", "Không đến"), không chỉ dựa vào màu sắc.
+- [x] `/doctors`: căn chỉnh nội dung với **page container chung** — không lệch trái bất thường (`margin-inline: auto`, max-width 1120px token-compliant, giữ PageHeader chuẩn mực cả ở trạng thái unauthorized).
+- [x] Danh sách bác sĩ: tìm kiếm, lọc theo chuyên khoa, phân trang, thao tác được cấp quyền (ADMIN quản lý chuyên khoa, sửa/thêm/ngừng bác sĩ; DOCTOR quản lý lịch làm việc/thời gian nghỉ cá nhân; STAFF tra cứu danh mục và khung giờ khả dụng).
 
-**P1**
+**P1 — Nếu không làm chậm P0**
 
-- [ ] Kiểm tra text tiếng Việt, ngày/giờ `Asia/Ho_Chi_Minh` trong tất cả cột/filter lịch hẹn.
-- [ ] Lịch làm việc: xem theo tuần/ngày, điều hướng ngày.
+- [x] Kiểm tra text tiếng Việt, ngày/giờ `Asia/Ho_Chi_Minh` trong tất cả cột/filter lịch hẹn (`Intl.DateTimeFormat` timezone `Asia/Ho_Chi_Minh`, query boundaries `+07:00` chuẩn xác).
+- [x] Lịch làm việc: xem theo tuần/ngày, điều hướng ngày (ScheduleCalendar theo tuần + chế độ xem danh sách, bộ chọn ngày khám theo giờ Việt Nam).
 
+**Kết quả xác minh Agent A (13/11/2026):**
+- `npm test -w @clinic/clinic-management-web`: exit code 0 (23/23 files passed, 200/200 passed)
+- `npm run lint -w @clinic/clinic-management-web`: exit code 0 (0 error)
+- `npm run build -w @clinic/clinic-management-web`: exit code 0 (production build thành công, 13/13 static routes prerendered)
+- `git diff --check`: exit code 0 (không có lỗi whitespace, không conflict markers)
+- Toàn bộ luồng Appointments và Doctors hoạt động trơn tru, token-compliant, không rò rỉ dữ liệu hoặc quyền trái phép.
 ---
 
 ### Agent B · Filter, State & Error Recovery
 
 **P0**
 
-- [ ] **Giữ filter và form draft khi retry**: lỗi mạng/server không xóa bộ lọc, lựa chọn hoặc dữ liệu đang nhập của người dùng.
-- [ ] Phân biệt rõ **empty state vs error state**: danh sách rỗng (response 200 với `[]`) khác với lỗi fetch; không hiển thị "Không có lịch hẹn" khi thực chất là lỗi server.
-- [ ] Dữ liệu stale khi refresh: giữ kết quả cũ trong vùng data kèm nhãn rõ ràng trong lúc đang tải lại.
-- [ ] Các request độc lập không làm toàn trang vào lỗi — lỗi phân trang không ảnh hưởng vùng filter header; lỗi một row không ẩn toàn bộ table.
-- [ ] Mọi mutation có **loading trên control/row tương ứng**; chống double-submit; chỉ hiển thị toast/feedback thành công sau response từ Gateway.
+- [x] **Giữ filter và form draft khi retry**: lỗi mạng/server không xóa bộ lọc, lựa chọn hoặc dữ liệu đang nhập của người dùng. (Đã xác minh: Appointments giữ selectedDate, selectedStatus, searchQuery khi retry/lỗi; QueueActionDialog giữ reason, date, selected; DoctorPanel giữ drafts form chuyên khoa, bác sĩ, lịch làm việc và thời gian nghỉ khi submit lỗi).
+- [x] Phân biệt rõ **empty state vs error state**: danh sách rỗng (response 200 với `[]`) khác với lỗi fetch; không hiển thị "Không có lịch hẹn" khi thực chất là lỗi server. (Đã xác minh: AppointmentsPanel phân tách ErrorState vs EmptyState; DoctorList hiển thị ErrorState kèm nút Thử lại khi fetch lỗi thay vì EmptyState; DoctorPanel phân tách lỗi slotError kèm nút Thử lại khung giờ thay vì báo không có khung giờ).
+- [x] Dữ liệu stale khi refresh: giữ kết quả cũ trong vùng data kèm nhãn rõ ràng trong lúc đang tải lại. (Đã xác minh: AppointmentsPanel hiển thị banner refreshingNotice kèm spinner trong vùng table khi refresh và Alert cảnh báo dữ liệu cũ kèm nút Thử lại; QueueBoard giữ card cũ và hiển thị thông báo đang tải lại; DoctorList giữ danh sách cũ và nhãn đang tải lại).
+- [x] Các request độc lập không làm toàn trang vào lỗi — lỗi phân trang không ảnh hưởng vùng filter header; lỗi một row không ẩn toàn bộ table. (Đã xác minh: filter header của Appointments và Doctor nằm độc lập ngoài vùng data; Promise.allSettled cho doctor/specialty; lỗi slot/time-off độc lập không làm crash chi tiết bác sĩ; lỗi row action dùng inline conflict alert không ẩn table).
+- [x] Mọi mutation có **loading trên control/row tương ứng**; chống double-submit; chỉ hiển thị toast/feedback thành công sau response từ Gateway. (Đã xác minh: row có aria-busy và button "Đang xử lý..."; actionBusyRef / busyRef chặn double-click tức thì; ConfirmModal có loading và disabled; DoctorPanel hiển thị "Đang lưu..." trên button tương ứng; toast chỉ xuất hiện sau khi Gateway phản hồi thành công).
 
 **P1**
 
-- [ ] Rà skeleton: `aria-busy`; label trạng thái không chỉ dựa vào màu.
+- [x] Rà skeleton: `aria-busy`; label trạng thái không chỉ dựa vào màu. (Đã xác minh: SkeletonTable, SkeletonBoard, SkeletonCard, slot skeletons đều có aria-busy="true"; StatusBadge và queue statusLabels đều có text label tiếng Việt rõ ràng, không phụ thuộc màu sắc).
 
+**Kết quả xác minh Agent B (13/11/2026):**
+- `npm test -w @clinic/clinic-management-web`: exit code 0 (24/24 files passed, 207/207 passed, bao gồm 7 bài test mới chuyên biệt cho Agent B tại `test/appointments-doctors-agent-b.test.tsx`)
+- `npm run lint -w @clinic/clinic-management-web`: exit code 0 (0 error, tsc kiểm tra thành công)
+- `npm run build -w @clinic/clinic-management-web`: exit code 0 (production build thành công, 13/13 static routes prerendered)
+- `git diff --check`: exit code 0 (không có lỗi whitespace, không conflict markers)
+- Toàn bộ 5 mục P0 và 1 mục P1 của Agent B đã hoàn tất và đạt nghiệm thu.
 ---
 
 ### Agent C · Responsive & Keyboard cho Appointments
 
 **P0**
 
-- [ ] Bảng lịch hẹn trên viewport hẹp: **horizontal scroll có chủ đích** hoặc reflow sang card — không mất cột action.
-- [ ] Keyboard: Tab qua các row, focus-visible trên action button, dialog xác nhận đóng bằng Escape, focus không rơi ra sau modal.
-- [ ] Trên mobile/tablet: tap target ≥ 44px cho các nút action chính trong bảng.
-- [ ] Sidebar chuyển sang điều hướng phù hợp; nút Đăng xuất vẫn hiển thị trên mọi viewport.
+- [x] Bảng lịch hẹn trên viewport hẹp: **horizontal scroll có chủ đích** hoặc reflow sang card — không mất cột action. *(Đã xử lý: `.tableWrapper` có `overflow-x: auto`, `tabIndex={0}`, `role="region"`, `scrollbar-width: thin`; `.table` có `min-width: 820px`; cột action dùng `position: sticky; right: 0;` kèm elevation shadow và border nên không bị mất/che khuất khi cuộn ngang trên viewport hẹp).*
+- [x] Keyboard: Tab qua các row, focus-visible trên action button, dialog xác nhận đóng bằng Escape, focus không rơi ra sau modal. *(Đã xử lý: `<tr>` có `tabIndex={0}` và `:focus-visible`; các nút action có ring `:focus-visible`; `Modal` / `ConfirmModal` đóng bằng `Escape` và thiết lập trap focus đầy đủ, ngăn focus rớt ra nền).*
+- [x] Trên mobile/tablet: tap target ≥ 44px cho các nút action chính trong bảng. *(Đã xử lý: media query `@media (max-width: 768px), (pointer: coarse)` đảm bảo tap target `min-height: 44px; min-width: 44px; padding: 10px 16px` cho `.actionBtn`, `.actions button`, `.quickBtn`).*
+- [x] Sidebar chuyển sang điều hướng phù hợp; nút Đăng xuất vẫn hiển thị trên mọi viewport. *(Đã xử lý: mobile toggle đóng mở sidebar và đóng bằng `Escape`; `.sidebarFooter` có `flex-shrink: 0`, nút Đăng xuất luôn hiển thị cố định ở chân sidebar trên mọi kích thước màn hình).*
 
 **P1**
 
-- [ ] Kiểm tra bảng bác sĩ và calendar lịch làm việc trên tablet viewport.
-
+- [x] Kiểm tra bảng bác sĩ và calendar lịch làm việc trên tablet viewport. *(Đã xử lý: `calendarViewport` có `overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: thin;` và `:focus-visible`; thẻ bác sĩ và các nút điều hướng hỗ trợ tablet viewport và tap targets).*
 ---
 
 ## Nhánh 4 — `fix/acceptance-records-notifications`

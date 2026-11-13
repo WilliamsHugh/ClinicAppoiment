@@ -19,9 +19,9 @@ const columns: { status: AppointmentStatus; title: string }[] = [
 ];
 
 function SkeletonBoard() {
-  return <div className={styles.columns} role="status" aria-label="Đang tải lịch hẹn">
+  return <div className={styles.columns} role="status" aria-label="Đang tải lịch hẹn" aria-busy="true">
     {columns.map((column) => <div key={column.status} className={styles.column}>
-      <h2>{column.title}</h2>{[0, 1, 2].map((n) => <div key={n} className={styles.skeleton} />)}
+      <h2>{column.title}</h2>{[0, 1, 2].map((n) => <div key={n} className={styles.skeleton} aria-hidden="true" />)}
     </div>)}
   </div>;
 }
@@ -119,14 +119,17 @@ function AuthenticatedQueue({ session, PatientLookup, hideHeader = false }: Queu
     {notice && <p role="status" className={styles.notice}>{notice}</p>}
     {error && <div role="alert" className={styles.error}>{error} <button type="button" disabled={loading} onClick={refresh}>Thử lại</button>
       {visible.length > 0 && <p>Dữ liệu hiện có thể đã thay đổi. Tải lại thành công trước khi tiếp tục thao tác.</p>}</div>}
-    {loading ? <SkeletonBoard /> : date && (!error || visible.length > 0) && <>
+    {(loading && visible.length === 0) ? <SkeletonBoard /> : date && (!error || visible.length > 0) && <>
+      {loading && visible.length > 0 && <p className={styles.notice} role="status" aria-live="polite">
+        Đang tải lại dữ liệu hàng đợi...
+      </p>}
       {visible.some((item) => item.identityUnavailable) && <p className={styles.warning} role="status">
         Một số tên chưa tải được hoặc không nằm trong phạm vi truy cập. Tải lại để cập nhật thông tin.</p>}
       {!visible.length && !error && <section className={styles.empty}>
         <span aria-hidden="true">▤</span><h2>Chưa có lịch hẹn trong ngày</h2>
         <p>Chọn ngày khác hoặc tải lại để kiểm tra lịch mới.</p><button type="button" onClick={refresh}>Kiểm tra lại</button>
       </section>}
-      <div className={styles.columns} aria-label="Bảng hàng đợi">
+      <div className={styles.columns} aria-label="Bảng hàng đợi" aria-busy={loading ? "true" : undefined} style={{ opacity: loading ? 0.75 : 1, transition: "opacity 0.2s ease" }}>
         {columns.map((column) => {
           const rows = visible.filter((item) => item.status === column.status);
           return <section key={column.status} className={styles.column} aria-label={column.title}>

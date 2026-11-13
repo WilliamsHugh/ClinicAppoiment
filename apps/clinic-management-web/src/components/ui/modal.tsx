@@ -15,53 +15,74 @@ export interface ModalProps {
 
 export function Modal({ isOpen, onClose, title, children, footer, maxWidth }: ModalProps) {
   const contentRef = useRef<HTMLDivElement>(null);
+  const previousActiveElement = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     if (!isOpen) return;
 
-    const previousActiveElement = document.activeElement as HTMLElement | null;
-    const focusableSelector =
-      'button:not([disabled]), [href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+    previousActiveElement.current = document.activeElement as HTMLElement | null;
 
-    const focusTimer = setTimeout(() => {
-      if (contentRef.current) {
-        const focusableElements = contentRef.current.querySelectorAll<HTMLElement>(focusableSelector);
-        if (focusableElements.length > 0) {
-          focusableElements[0].focus();
-        } else {
-          contentRef.current.focus();
-        }
+    // Focus first focusable element inside modal or the container
+    const timer = setTimeout(() => {
+      if (!contentRef.current) return;
+      const focusables = Array.from(
+        contentRef.current.querySelectorAll<HTMLElement>(
+          'button:not([disabled]):not([aria-hidden="true"]), ' +
+          'a[href]:not([aria-hidden="true"]), ' +
+          'input:not([disabled]):not([type="hidden"]), ' +
+          'select:not([disabled]), ' +
+          'textarea:not([disabled]), ' +
+          '[tabindex]:not([tabindex="-1"])'
+        )
+      ).filter((el) => el.offsetParent !== null || el.getClientRects().length > 0 || el.offsetWidth > 0 || el.offsetHeight > 0);
+
+      if (focusables.length > 0) {
+        focusables[0].focus();
+      } else {
+        contentRef.current.focus();
       }
     }, 0);
 
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
+        event.stopPropagation();
         onClose();
         return;
       }
 
-      if (event.key === "Tab" && contentRef.current) {
+      if (event.key === "Tab") {
+        const container = contentRef.current;
+        if (!container) return;
+
         const focusables = Array.from(
-          contentRef.current.querySelectorAll<HTMLElement>(focusableSelector)
-        );
+          container.querySelectorAll<HTMLElement>(
+            'button:not([disabled]):not([aria-hidden="true"]), ' +
+            'a[href]:not([aria-hidden="true"]), ' +
+            'input:not([disabled]):not([type="hidden"]), ' +
+            'select:not([disabled]), ' +
+            'textarea:not([disabled]), ' +
+            '[tabindex]:not([tabindex="-1"])'
+          )
+        ).filter((el) => el.offsetParent !== null || el.getClientRects().length > 0 || el.offsetWidth > 0 || el.offsetHeight > 0);
 
         if (focusables.length === 0) {
           event.preventDefault();
+          container.focus();
           return;
         }
 
-        const firstElement = focusables[0];
-        const lastElement = focusables[focusables.length - 1];
+        const first = focusables[0];
+        const last = focusables[focusables.length - 1];
 
         if (event.shiftKey) {
-          if (document.activeElement === firstElement) {
+          if (document.activeElement === first || !container.contains(document.activeElement)) {
             event.preventDefault();
-            lastElement.focus();
+            last.focus();
           }
         } else {
-          if (document.activeElement === lastElement) {
+          if (document.activeElement === last || !container.contains(document.activeElement)) {
             event.preventDefault();
-            firstElement.focus();
+            first.focus();
           }
         }
       }
@@ -69,10 +90,10 @@ export function Modal({ isOpen, onClose, title, children, footer, maxWidth }: Mo
 
     document.addEventListener("keydown", handleKeyDown);
     return () => {
-      clearTimeout(focusTimer);
+      clearTimeout(timer);
       document.removeEventListener("keydown", handleKeyDown);
-      if (previousActiveElement && typeof previousActiveElement.focus === "function") {
-        previousActiveElement.focus();
+      if (previousActiveElement.current && typeof previousActiveElement.current.focus === "function") {
+        previousActiveElement.current.focus();
       }
     };
   }, [isOpen, onClose]);
@@ -91,6 +112,7 @@ export function Modal({ isOpen, onClose, title, children, footer, maxWidth }: Mo
     >
       <div
         ref={contentRef}
+        tabIndex={-1}
         className={styles.modalContent}
         style={maxWidth ? { maxWidth } : undefined}
       >

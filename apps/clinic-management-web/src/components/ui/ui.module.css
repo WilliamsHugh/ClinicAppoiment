@@ -234,6 +234,10 @@
   background: var(--surface-subtle);
   color: var(--ink);
 }
+.modalCloseBtn:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+}
 
 .modalBody {
   padding: 20px;
