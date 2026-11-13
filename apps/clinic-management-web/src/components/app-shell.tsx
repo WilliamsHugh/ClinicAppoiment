@@ -41,6 +41,18 @@ export function AppShell({ children, NotificationSlot }: AppShellProps) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [confirmSignOutOpen, setConfirmSignOutOpen] = useState(false);
 
+  // Close mobile sidebar on Escape key
+  React.useEffect(() => {
+    if (!mobileMenuOpen) return;
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        setMobileMenuOpen(false);
+      }
+    }
+    document.addEventListener("keydown", handleKeyDown);
+    return () => document.removeEventListener("keydown", handleKeyDown);
+  }, [mobileMenuOpen]);
+
   // The public clinic home and authentication pages use their own layouts.
   if (pathname === "/auth" || pathname === "/") {
     return <RouteGuard>{children}</RouteGuard>;

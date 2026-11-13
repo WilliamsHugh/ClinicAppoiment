@@ -20,6 +20,8 @@ export interface DoctorListProps {
   loading: boolean;
   page: number;
   onPageChange: (page: number) => void;
+  error?: string;
+  onRetry?: () => void;
 }
 
 export function DoctorList({
@@ -35,6 +37,8 @@ export function DoctorList({
   loading,
   page,
   onPageChange,
+  error,
+  onRetry,
 }: DoctorListProps) {
   return (
     <section className={styles.card} aria-label="Tìm bác sĩ">
@@ -59,7 +63,7 @@ export function DoctorList({
         </Button>
       </form>
 
-      {loading ? (
+      {loading && doctors.items.length === 0 ? (
         <div aria-label="Đang tải bác sĩ..." aria-busy="true">
           <span style={{ position: "absolute", width: 1, height: 1, padding: 0, margin: -1, overflow: "hidden", clip: "rect(0, 0, 0, 0)", border: 0 }}>
             Đang tải bác sĩ...
@@ -70,13 +74,41 @@ export function DoctorList({
             ))}
           </div>
         </div>
+      ) : error && doctors.items.length === 0 ? (
+        <div role="alert" className={styles.error} style={{ margin: "12px 0" }}>
+          <span>{error}</span>
+          {onRetry && (
+            <Button type="button" variant="secondary" size="sm" onClick={onRetry}>
+              Thử lại
+            </Button>
+          )}
+        </div>
       ) : doctors.items.length === 0 ? (
         <EmptyState
           title="Chưa có bác sĩ phù hợp"
           message="Không tìm thấy bác sĩ nào theo điều kiện tìm kiếm hoặc chuyên khoa đã chọn."
         />
       ) : (
-        <div className={styles.list}>
+        <div
+          className={styles.list}
+          aria-busy={loading ? "true" : undefined}
+          style={{ opacity: loading ? 0.75 : 1, transition: "opacity 0.2s ease" }}
+        >
+          {loading && (
+            <p className={styles.muted} role="status" aria-live="polite">
+              Đang tải lại danh sách bác sĩ...
+            </p>
+          )}
+          {error && (
+            <div role="alert" className={styles.error} style={{ marginBottom: 8 }}>
+              <span>{error} (Đang hiển thị danh sách gần nhất)</span>
+              {onRetry && (
+                <Button type="button" variant="secondary" size="sm" onClick={onRetry}>
+                  Thử lại
+                </Button>
+              )}
+            </div>
+          )}
           {doctors.items.map((item) => (
             <DoctorCard
               key={item.id}

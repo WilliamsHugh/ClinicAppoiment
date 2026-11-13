@@ -137,9 +137,9 @@ export function AppointmentsPanel({ onOpenQueue }: { onOpenQueue?: () => void } 
       setErrorRequestId(undefined);
 
       try {
-        // Create local day boundaries for from/to
-        const from = new Date(`${selectedDate}T00:00:00`).toISOString();
-        const to = new Date(`${selectedDate}T23:59:59.999`).toISOString();
+        // Create local day boundaries for from/to in Vietnam timezone (GMT+7)
+        const from = new Date(`${selectedDate}T00:00:00+07:00`).toISOString();
+        const to = new Date(`${selectedDate}T23:59:59.999+07:00`).toISOString();
 
         const res = await api.list({
           from,
@@ -229,7 +229,7 @@ export function AppointmentsPanel({ onOpenQueue }: { onOpenQueue?: () => void } 
   // Handlers for status transitions
   const handleExecuteConfirm = async () => {
     const appointment = confirmDialog.appointment;
-    if (!appointment) return;
+    if (!appointment || actionLoadingId) return;
 
     setActionLoadingId(appointment.id);
     setConfirmDialog((prev) => ({ ...prev, isOpen: false }));
@@ -262,7 +262,7 @@ export function AppointmentsPanel({ onOpenQueue }: { onOpenQueue?: () => void } 
 
   const handleExecuteCheckIn = async () => {
     const appointment = confirmDialog.appointment;
-    if (!appointment) return;
+    if (!appointment || actionLoadingId) return;
 
     setActionLoadingId(appointment.id);
     setConfirmDialog((prev) => ({ ...prev, isOpen: false }));
@@ -321,7 +321,7 @@ export function AppointmentsPanel({ onOpenQueue }: { onOpenQueue?: () => void } 
 
   const handleExecuteCancel = async () => {
     const appointment = confirmDialog.appointment;
-    if (!appointment) return;
+    if (!appointment || actionLoadingId) return;
 
     setActionLoadingId(appointment.id);
     setConfirmDialog((prev) => ({ ...prev, isOpen: false }));
@@ -354,7 +354,7 @@ export function AppointmentsPanel({ onOpenQueue }: { onOpenQueue?: () => void } 
 
   const handleExecuteNoShow = async () => {
     const appointment = confirmDialog.appointment;
-    if (!appointment) return;
+    if (!appointment || actionLoadingId) return;
 
     setActionLoadingId(appointment.id);
     setConfirmDialog((prev) => ({ ...prev, isOpen: false }));
@@ -422,14 +422,25 @@ export function AppointmentsPanel({ onOpenQueue }: { onOpenQueue?: () => void } 
     setPage(1);
   };
 
+  const handleClearConflict = (appointmentId: string) => {
+    setRowConflicts((prev) => {
+      const copy = { ...prev };
+      delete copy[appointmentId];
+      return copy;
+    });
+  };
+
   // Permission check
   if (!isAuthorized) {
     return (
-      <PermissionDeniedState
-        title="Quyền truy cập hạn chế"
-        message="Trang quản lý lịch hẹn chỉ dành cho Bác sĩ, Nhân viên phòng khám và Quản trị viên."
-        action={{ label: "Về bảng điều khiển", href: "/dashboard" }}
-      />
+      <div className={styles.panel}>
+        <PageHeader pathname="/appointments" />
+        <PermissionDeniedState
+          title="Quyền truy cập hạn chế"
+          message="Trang quản lý lịch hẹn chỉ dành cho Bác sĩ, Nhân viên phòng khám và Quản trị viên."
+          action={{ label: "Về bảng điều khiển", href: "/dashboard" }}
+        />
+      </div>
     );
   }
 
@@ -506,10 +517,29 @@ export function AppointmentsPanel({ onOpenQueue }: { onOpenQueue?: () => void } 
           aria-busy={isRefreshing ? "true" : undefined}
           style={{ opacity: isRefreshing ? 0.75 : 1, transition: "opacity 0.2s ease" }}
         >
+          {isRefreshing && (
+            <div className={styles.refreshingNotice} role="status" aria-live="polite">
+              <span className={styles.spinner} aria-hidden="true" />
+              <span>Đang tải lại dữ liệu lịch hẹn...</span>
+            </div>
+          )}
           {isStaleData && (
             <div style={{ marginBottom: 16 }}>
-              <Alert variant="warning" title="Dữ liệu chưa thể cập nhật">
-                Không thể kết nối đến máy chủ để làm mới lịch hẹn. Đang hiển thị kết quả đã lưu gần nhất.
+              <Alert variant="warning" title="Dữ liệu chưa thể cập nhật (Đang hiển thị kết quả gần nhất)">
+                <div>
+                  Không thể kết nối đến máy chủ để làm mới lịch hẹn. Đang hiển thị kết quả đã lưu gần nhất.
+                </div>
+                <div style={{ marginTop: 8 }}>
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    type="button"
+                    disabled={loading || isRefreshing}
+                    onClick={() => void fetchAppointments(true)}
+                  >
+                    Thử lại
+                  </Button>
+                </div>
               </Alert>
             </div>
           )}
@@ -521,6 +551,7 @@ export function AppointmentsPanel({ onOpenQueue }: { onOpenQueue?: () => void } 
             specialtiesMap={specialtiesMap}
             actionLoadingId={actionLoadingId}
             rowConflicts={rowConflicts}
+            onClearConflict={handleClearConflict}
             onConfirm={handleConfirm}
             onRequestCancel={handleRequestCancel}
             onCheckIn={handleCheckIn}

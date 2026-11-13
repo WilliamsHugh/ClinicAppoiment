@@ -48,4 +48,5 @@
 .summary dt { color: var(--muted); }
 .summary dd { margin: 0; overflow-wrap: anywhere; }
 @media (max-width: 600px) { .summary { grid-template-columns: 1fr; gap: 6px; } .summary dd { margin-bottom: 10px; } .toolbar label { width: 100%; } }
+@media (max-width: 768px), (pointer: coarse) { .actions button { min-height: 44px; min-width: 44px; padding: 10px 14px; font-size: 0.875rem; } }
 @media (prefers-reduced-motion: reduce) { .skeleton { animation: none; } }

@@ -19,6 +19,7 @@ export interface SchedulePanelProps {
   timeOffs: TimeOff[];
   timeOffError: string;
   busy: boolean;
+  busyAction?: string | null;
   detailLoading: boolean;
   scheduleId: string | null;
   weekday: number;
@@ -52,6 +53,7 @@ export function SchedulePanel({
   timeOffs,
   timeOffError,
   busy,
+  busyAction,
   detailLoading,
   scheduleId,
   weekday,
@@ -79,7 +81,7 @@ export function SchedulePanel({
   onResetTimeOffForm,
   onRetryTimeOff,
 }: SchedulePanelProps) {
-  const [scheduleView, setScheduleView] = useState<"calendar" | "list">("calendar");
+  const [scheduleView, setScheduleView] = useState<"calendar" | "list">("list");
   return (
     <>
       {/* Quản lý lịch làm việc tuần */}
@@ -117,7 +119,7 @@ export function SchedulePanel({
                 disabled={busy}
                 onClick={() => onToggleSchedule(item)}
               >
-                {item.isActive ? "Ngừng" : "Kích hoạt"}
+                {busy && busyAction === `schedule-toggle-${item.id}` ? "Đang xử lý..." : (item.isActive ? "Ngừng" : "Kích hoạt")}
               </Button>
             </div>
           ))}
@@ -167,7 +169,7 @@ export function SchedulePanel({
             />
           </label>
           <Button type="submit" variant="primary" disabled={busy}>
-            Lưu lịch
+            {busy && busyAction === "schedule" ? "Đang lưu..." : (scheduleId ? "Cập nhật lịch" : "Lưu lịch")}
           </Button>
           {scheduleId && (
             <Button
@@ -245,7 +247,7 @@ export function SchedulePanel({
             />
           </label>
           <Button type="submit" variant="primary" disabled={busy}>
-            Lưu thời gian nghỉ
+            {busy && busyAction === "time-off" ? "Đang lưu..." : (timeOffId ? "Cập nhật thời gian nghỉ" : "Lưu thời gian nghỉ")}
           </Button>
           {timeOffId && (
             <Button

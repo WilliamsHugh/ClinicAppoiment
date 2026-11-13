@@ -65,7 +65,7 @@ export function AppointmentActionMenu({
           className={`${styles.actionBtn} ${styles.actionBtnCancel}`}
           title="Hủy lịch hẹn này"
         >
-          Hủy
+          {inFlight ? "Đang xử lý..." : "Hủy"}
         </button>
       )}
 
@@ -78,20 +78,20 @@ export function AppointmentActionMenu({
           className={`${styles.actionBtn} ${styles.actionBtnNoShow}`}
           title="Đánh dấu bệnh nhân không đến khám"
         >
-          Không đến
+          {inFlight ? "Đang xử lý..." : "Không đến"}
         </button>
       )}
 
-      {/* DOCTOR & ADMIN: Xem hồ sơ khi status = CHECKED_IN hoặc COMPLETED */}
-      {(isDoctor || role === "ADMIN") && (status === "CHECKED_IN" || status === "COMPLETED") && (
+      {/* DOCTOR: Xem hồ sơ hoặc khám bệnh khi status = CHECKED_IN hoặc COMPLETED */}
+      {isDoctor && (status === "CHECKED_IN" || status === "COMPLETED") && (
         <button
           type="button"
           disabled={inFlight}
           onClick={() => onViewRecord(appointment)}
           className={`${styles.actionBtn} ${styles.actionBtnRecord}`}
-          title={isDoctor && status === "CHECKED_IN" ? "Tiến hành khám bệnh" : "Xem hồ sơ bệnh án"}
+          title={status === "CHECKED_IN" ? "Tiến hành khám bệnh" : "Xem hồ sơ bệnh án"}
         >
-          {isDoctor && status === "CHECKED_IN" ? "Khám bệnh" : "Xem hồ sơ"}
+          {status === "CHECKED_IN" ? "Khám bệnh" : "Xem hồ sơ"}
         </button>
       )}
     </div>
