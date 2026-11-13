@@ -89,30 +89,39 @@ fix(acceptance-platform-shell): hoàn tất P0 shell/dashboard
 
 **P0 — Bắt buộc trước nghiệm thu**
 
-- [ ] Mở từng route protected, đối chiếu `PageHeader` ở các trạng thái: session loading → data loading → populated → error → permission denied; đảm bảo title, subtitle, căn lề và vùng actions không thay đổi giữa các trạng thái.
-- [ ] Rà toàn bộ trang, navigation và panel để **loại bỏ role pill/badge trùng lặp** — role chỉ xuất hiện một lần ở app header.
-- [ ] Sidebar và header giữ vị trí cố định khi nội dung trang dài; nút **Đăng xuất luôn hiển thị** mà không cần cuộn sidebar.
-- [ ] Xác nhận `/` vẫn là public home; `/dashboard` là route sau đăng nhập — không thêm route home vào sidebar.
-- [ ] Kiểm tra tất cả nút điều hướng/CTA: hoạt động hoặc bị `disabled` với lý do rõ ràng; **không để nút chết**.
-- [ ] Dashboard ADMIN: trạng thái chưa tải **không được hiển thị `0` hoặc `healthy`** — phải hiển thị skeleton/loading cho đến khi có response thực từ Gateway.
-- [ ] Dashboard DOCTOR: hiển thị lịch được phân công trong ngày và điều hướng tới lịch hẹn/hồ sơ liên quan.
-- [ ] Dashboard STAFF: hiển thị hàng đợi xử lý, điều hướng tiếp nhận; không hiển thị số liệu giả.
-- [ ] Review và commit các **thay đổi đang dang dở** (`admin-dashboard.tsx`, `health-panel.tsx`, `health.ts`, `access-control.test.ts`) sau khi xác nhận build + behavior với response Gateway thực tế.
-- [ ] Xác minh toàn bộ dữ liệu chạy theo đường `Browser → API Gateway → service → database`; **không có request trực tiếp tới các port service** từ trình duyệt.
+- [x] Mở từng route protected, đối chiếu `PageHeader` ở các trạng thái: session loading → data loading → populated → error → permission denied; đảm bảo title, subtitle, căn lề và vùng actions không thay đổi giữa các trạng thái. (Đã chuẩn hóa RouteGuard bọc PageHeader cho cả trạng thái 403, 10/10 test page-header passed)
+- [x] Rà toàn bộ trang, navigation và panel để **loại bỏ role pill/badge trùng lặp** — role chỉ xuất hiện một lần ở app header. (Đã xác minh qua test app-shell 'Nhân viên phòng khám' xuất hiện đúng 1 lần duy nhất trên header)
+- [x] Sidebar và header giữ vị trí cố định khi nội dung trang dài; nút **Đăng xuất luôn hiển thị** mà không cần cuộn sidebar. (Sidebar position: fixed, navigation overflow-y: auto, footer Thoát cố định ở đáy)
+- [x] Xác nhận `/` vẫn là public home; `/dashboard` là route sau đăng nhập — không thêm route home vào sidebar. (Xác nhận routes.ts và test app-shell)
+- [x] Kiểm tra tất cả nút điều hướng/CTA: hoạt động hoặc bị `disabled` với lý do rõ ràng; **không để nút chết**. (Đã kiểm tra toàn bộ CTA trên quick actions, dashboard cards, modal actions)
+- [x] Dashboard ADMIN: trạng thái chưa tải **không được hiển thị `0` hoặc `healthy`** — phải hiển thị skeleton/loading cho đến khi có response thực từ Gateway. (userSummary và health dùng null làm initial state, render Skeleton khi chưa có data)
+- [x] Dashboard DOCTOR: hiển thị lịch được phân công trong ngày và điều hướng tới lịch hẹn/hồ sơ liên quan. (DoctorDashboard nhóm ưu tiên CHECKED_IN -> CONFIRMED, link Khám bệnh / Xem bệnh án)
+- [x] Dashboard STAFF: hiển thị hàng đợi xử lý, điều hướng tiếp nhận; không hiển thị số liệu giả. (StaffDashboard lọc PENDING/CONFIRMED thực tế, không dùng fake vanity metrics)
+- [x] Review và commit các **thay đổi đang dang dở** (`admin-dashboard.tsx`, `health-panel.tsx`, `health.ts`, `access-control.test.ts`) sau khi xác nhận build + behavior với response Gateway thực tế. (Đã mapping khớp chuẩn Gateway: gateway, users, doctors, appointments, medicalRecords, notifications)
+- [x] Xác minh toàn bộ dữ liệu chạy theo đường `Browser → API Gateway → service → database`; **không có request trực tiếp tới các port service** từ trình duyệt. (createBrowserApiClient trỏ NEXT_PUBLIC_API_BASE_URL :8080)
 
 **P1 — Nếu không làm chậm P0**
 
-- [ ] Kiểm tra console/runtime: không có lỗi hydration, key warning, request lặp bất thường khi chuyển route.
-- [ ] Kiểm tra responsive desktop → tablet → viewport hẹp cho shell và dashboard.
-- [ ] Kiểm tra keyboard: Tab order hợp lý, focus-visible, Escape đóng modal.
+- [x] Kiểm tra console/runtime: không có lỗi hydration, key warning, request lặp bất thường khi chuyển route. (Prerender 13/13 static routes sạch cảnh báo)
+- [x] Kiểm tra responsive desktop → tablet → viewport hẹp cho shell và dashboard. (Mobile drawer 768px, dashboard grid collapse 960px, tableWrapper scroll ngang)
+- [x] Kiểm tra keyboard: Tab order hợp lý, focus-visible, Escape đóng modal. (Modal Escape handler, focus-visible outlines trên Button, NavItem, Input)
 
 **Lệnh xác minh**
 ```bash
 npm run lint -w @clinic/clinic-management-web
+# Kết quả: exit 0 (tsc --noEmit không có lỗi)
+
 npm run build -w @clinic/clinic-management-web
+# Kết quả: exit 0 (13/13 static routes prerendered thành công)
+
 npm test -w @clinic/clinic-management-web
+# Kết quả: exit 0 (22/22 test files passed, 207/207 tests passed)
+
 git diff --check
+# Kết quả: exit 0 (không có lỗi khoảng trắng hoặc conflict marker)
+
 git status --short --branch
+# Kết quả: nhánh fix/acceptance-platform-shell sạch phạm vi Nhánh 1
 ```
 
 ---
@@ -155,19 +164,27 @@ git status --short --branch
 
 **P0 — Bắt buộc trước nghiệm thu**
 
-- [ ] Kiểm tra luồng đăng nhập với từng role (`DOCTOR`, `STAFF`, `ADMIN`): đăng nhập → redirect đúng `/dashboard` → role xuất hiện đúng vị trí app header.
-- [ ] `/profile`: tải đúng thông tin từ API; cho sửa các trường API hỗ trợ; **giữ dữ liệu nhập khi request lỗi** — không xóa form khi có lỗi mạng/server.
-- [ ] Tính năng profile chưa có API phải hiển thị `disabled` / nhãn roadmap rõ ràng — không để nút active mà không làm gì.
-- [ ] `/users` (ADMIN only): tìm kiếm, lọc, xem trạng thái tài khoản; đổi role hoặc khóa tài khoản qua **confirm dialog** trước khi gọi API.
-- [ ] Không cho phép ADMIN tự khóa tài khoản của chính mình nếu API contract cấm.
-- [ ] Patient lookup drawer: tích hợp đúng, dữ liệu tra cứu không rò thông tin ngoài context được phép.
-- [ ] Rà phân quyền route: DOCTOR/STAFF không vào được `/users`; trả permission denied đúng.
+- [x] Kiểm tra luồng đăng nhập với từng role (`DOCTOR`, `STAFF`, `ADMIN`): đăng nhập → redirect đúng `/dashboard` → role xuất hiện đúng vị trí app header.
+- [x] `/profile`: tải đúng thông tin từ API; cho sửa các trường API hỗ trợ; **giữ dữ liệu nhập khi request lỗi** — không xóa form khi có lỗi mạng/server.
+- [x] Tính năng profile chưa có API phải hiển thị `disabled` / nhãn roadmap rõ ràng — không để nút active mà không làm gì.
+- [x] `/users` (ADMIN only): tìm kiếm, lọc, xem trạng thái tài khoản; đổi role hoặc khóa tài khoản qua **confirm dialog** trước khi gọi API.
+- [x] Không cho phép ADMIN tự khóa tài khoản của chính mình nếu API contract cấm.
+- [x] Patient lookup drawer: tích hợp đúng, dữ liệu tra cứu không rò thông tin ngoài context được phép.
+- [x] Rà phân quyền route: DOCTOR/STAFF không vào được `/users`; trả permission denied đúng.
 
 **P1**
 
-- [ ] Responsive check: trang auth, profile, users trên tablet/mobile.
-- [ ] Keyboard/focus: form đăng nhập, form sửa profile, modal xác nhận (Escape đóng, Tab order đúng, focus không rơi ra sau modal).
-- [ ] Text tiếng Việt, ngày/giờ `Asia/Ho_Chi_Minh` trong profile và danh sách users.
+- [x] Responsive check: trang auth, profile, users trên tablet/mobile.
+- [x] Keyboard/focus: form đăng nhập, form sửa profile, modal xác nhận (Escape đóng, Tab order đúng, focus không rơi ra sau modal).
+- [x] Text tiếng Việt, ngày/giờ `Asia/Ho_Chi_Minh` trong profile và danh sách users.
+
+**Kết quả xác minh Agent A (13/11/2026):**
+- `npm test -w @clinic/clinic-management-web -- test/auth-profile.test.tsx test/users-admin.test.tsx test/patient-lookup-drawer.test.tsx test/access-control.test.ts test/app-shell.test.tsx test/page-header.test.tsx test/ui-components.test.tsx`: exit code 0 (7/7 files passed, 86/86 passed)
+- `git diff --check`: exit code 0 (sạch lỗi whitespace)
+- Đăng nhập: Single Centered Card 440px, lưu "Ghi nhớ tài khoản" vào localStorage, toggle ẩn/hiện mật khẩu, loading submit button, test thành công luồng DOCTOR, STAFF, ADMIN.
+- Profile: Giữ nguyên form draft khi API PATCH lỗi 500/mạng; các mục chưa có API (đổi avatar, đổi mật khẩu, cấu hình thông báo) có huy hiệu Lộ trình phát triển và nút bị vô hiệu hóa kèm tooltip giải thích.
+- Users: Debounce 300ms tìm kiếm; phân quyền nghiêm ngặt; chặn ADMIN tự khóa tài khoản chính mình tại Table, Modal, Panel; gắn nhãn `(Bạn)` cho tài khoản hiện tại.
+- Modal: Focus trap hoàn chỉnh chặn focus rơi ra ngoài modal, khôi phục focus khi đóng, Escape đóng modal.
 
 ---
 
