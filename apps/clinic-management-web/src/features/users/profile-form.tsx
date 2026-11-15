@@ -1,12 +1,9 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState, type FormEvent } from "react";
-import { User, Lock, Bell, Monitor } from "lucide-react";
+import React, { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { createBrowserApiClient } from "../../lib/api/client";
 import { useSession } from "../../lib/session/session-context";
-import { clinicRoleLabel } from "../../lib/session/session";
-import { LoadingState, ErrorState } from "../../components/states";
-import { Button, Badge, Alert, ConfirmModal, Skeleton } from "../../components/ui";
+import { Button, Input, Alert, ConfirmModal, Skeleton } from "../../components/ui";
 import { PageHeader } from "../../components/page-header";
 import styles from "./profile.module.css";
 
@@ -19,655 +16,194 @@ export interface OwnProfile {
   status: "ACTIVE" | "INACTIVE" | "LOCKED";
 }
 
-function validateFullName(val: string): string | null {
-  const trimmed = val.trim();
-  if (trimmed.length === 0) {
-    return "Họ và tên không được để trống.";
-  }
-  if (trimmed.length < 2) {
-    return "Họ và tên phải có ít nhất 2 ký tự.";
-  }
-  if (val.length > 120) {
-    return "Họ và tên không được vượt quá 120 ký tự.";
-  }
-  return null;
+function validateFullName(value: string): string | undefined {
+  if (!value.trim()) return "Họ và tên không được để trống.";
+  if (value.trim().length < 2) return "Họ và tên phải có ít nhất 2 ký tự.";
+  if (value.trim().length > 120) return "Họ và tên không được vượt quá 120 ký tự.";
 }
 
-function validatePhone(val: string): string | null {
-  const trimmed = val.trim();
-  if (!trimmed) {
-    return null;
+function validatePhone(value: string): string | undefined {
+  if (value.trim() && !/^\+?[0-9][0-9 .-]{7,19}$/.test(value.trim())) {
+    return "Số điện thoại không hợp lệ (8–20 ký tự, gồm số và mã vùng như +84).";
   }
-  const phoneRegex = /^\+?[0-9][0-9 .-]{7,19}$/;
-  if (!phoneRegex.test(trimmed)) {
-    return "Số điện thoại không hợp lệ (từ 8 đến 20 số, có thể có mã vùng +84).";
-  }
-  return null;
 }
 
-function getInitials(name?: string, role?: string): string {
-  if (name) {
-    const parts = name.trim().split(/\s+/);
-    if (parts.length >= 2) {
-      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-    }
-    if (parts.length === 1 && parts[0].length >= 2) {
-      return parts[0].substring(0, 2).toUpperCase();
-    }
-  }
-  if (role === "DOCTOR") return "BS";
-  if (role === "STAFF") return "NV";
-  if (role === "ADMIN") return "AD";
-  return "HH";
-}
-
-type TabKey = "personal" | "security" | "notifications" | "sessions";
-
-const PROFILE_TABS: { key: TabKey; label: string; icon: typeof User }[] = [
-  { key: "personal", label: "Thông tin cá nhân", icon: User },
-  { key: "security", label: "Bảo mật", icon: Lock },
-  { key: "notifications", label: "Thông báo", icon: Bell },
-  { key: "sessions", label: "Phiên đăng nhập", icon: Monitor },
-];
-
-function ProfileNavigation({
-  activeTab,
-  disabled = false,
-  onChange,
-}: {
-  activeTab: TabKey;
-  disabled?: boolean;
-  onChange?: (tab: TabKey) => void;
+function ProfileField({ id, label, loading, available, children }: {
+  id: string; label: string; loading: boolean; available: boolean; children: ReactNode;
 }) {
   return (
-    <nav className={styles.subnav} aria-label="Cài đặt hồ sơ">
-      {PROFILE_TABS.map(({ key, label, icon: Icon }) => (
-        <button
-          key={key}
-          type="button"
-          className={`${styles.subnavItem} ${activeTab === key ? styles.subnavItemActive : ""}`}
-          disabled={disabled}
-          onClick={() => onChange?.(key)}
-        >
-          <Icon size={16} aria-hidden="true" />
-          <span>{label}</span>
-        </button>
-      ))}
-    </nav>
+    <div className={styles.field}>
+      <label htmlFor={available ? id : undefined}>{label}</label>
+      {loading && !available ? <Skeleton height={44} width="100%" /> : available ? children : (
+        <p className={styles.description}>Chưa tải được thông tin.</p>
+      )}
+    </div>
   );
 }
 
 export function ProfileForm() {
   const session = useSession();
-  const client = useMemo(() => createBrowserApiClient(session), [session]);
-
+  const sessionRef = useRef(session);
+  sessionRef.current = session;
+  const client = useMemo(() => createBrowserApiClient({
+    getAccessToken: () => sessionRef.current.getAccessToken(),
+    handleUnauthorized: async () => { await sessionRef.current.handleUnauthorized?.(); },
+  }), []);
+  const request = useRef<AbortController | null>(null);
+  const accountId = session.identity?.id;
   const [profile, setProfile] = useState<OwnProfile | null>(null);
   const [fullName, setFullName] = useState("");
   const [phone, setPhone] = useState("");
-
-  const [fullNameError, setFullNameError] = useState<string | null>(null);
-  const [phoneError, setPhoneError] = useState<string | null>(null);
-  const [touched, setTouched] = useState<{ fullName?: boolean; phone?: boolean }>({});
-
-  const [isConfirmSaveOpen, setIsConfirmSaveOpen] = useState(false);
-  const [isConfirmLogoutOpen, setIsConfirmLogoutOpen] = useState(false);
-
-  const [activeTab, setActiveTab] = useState<TabKey>("personal");
-  const [notifications, setNotifications] = useState({
-    assigned: true,
-    cancelled: true,
-    checkedIn: true,
-    dailySummary: false,
-  });
-
+  const [touched, setTouched] = useState({ fullName: false, phone: false });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const [signingOut, setSigningOut] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [confirmSave, setConfirmSave] = useState(false);
+  const [confirmLogout, setConfirmLogout] = useState(false);
+  const fullNameError = touched.fullName ? validateFullName(fullName) : undefined;
+  const phoneError = touched.phone ? validatePhone(phone) : undefined;
 
   const loadProfile = useCallback(async () => {
+    request.current?.abort();
+    const controller = new AbortController();
+    request.current = controller;
     setLoading(true);
-    setError(null);
+    setLoadError(null);
     try {
-      const result = await client.get<OwnProfile>("/api/v1/users/me");
+      const result = await client.get<OwnProfile>("/api/v1/users/me", { signal: controller.signal });
+      if (controller.signal.aborted) return;
       setProfile(result.data);
       setFullName(result.data.fullName || "");
       setPhone(result.data.phone ?? "");
-    } catch (cause: unknown) {
-      setError(cause instanceof Error ? cause.message : "Không thể tải hồ sơ cá nhân.");
+    } catch (cause) {
+      if (!controller.signal.aborted) setLoadError(cause instanceof Error ? cause.message : "Không thể tải hồ sơ cá nhân.");
     } finally {
-      setLoading(false);
+      if (!controller.signal.aborted) setLoading(false);
     }
   }, [client]);
 
   useEffect(() => {
-    if (session.status === "authenticated") {
-      void loadProfile();
-    } else {
-      setLoading(false);
-    }
-  }, [loadProfile, session.status]);
+    setProfile(null);
+    setFullName("");
+    setPhone("");
+    setTouched({ fullName: false, phone: false });
+    setSaveError(null);
+    setNotice(null);
+    setConfirmSave(false);
+    setConfirmLogout(false);
+    if (session.status === "authenticated" && accountId) void loadProfile();
+    else setLoading(session.status === "loading");
+    return () => { request.current?.abort(); };
+  }, [accountId, session.status, loadProfile]);
 
   function handleSave(event: FormEvent) {
     event.preventDefault();
+    if (!profile || saving || session.recovery) return;
     setTouched({ fullName: true, phone: true });
-    const fnErr = validateFullName(fullName);
-    const phErr = validatePhone(phone);
-    setFullNameError(fnErr);
-    setPhoneError(phErr);
-
-    if (fnErr || phErr) {
-      return;
-    }
-
-    setIsConfirmSaveOpen(true);
+    if (!validateFullName(fullName) && !validatePhone(phone)) setConfirmSave(true);
   }
 
   async function executeSave() {
-    setError(null);
+    if (saving || sessionRef.current.recovery) return;
+    setSaveError(null);
     setNotice(null);
     setSaving(true);
+    const actor = accountId;
     try {
       const result = await client.patch<OwnProfile>("/api/v1/users/me", {
         body: { fullName: fullName.trim(), phone: phone.trim() || null },
       });
+      if (sessionRef.current.identity?.id !== actor) return;
       setProfile(result.data);
       setFullName(result.data.fullName);
       setPhone(result.data.phone ?? "");
       setNotice("Đã cập nhật hồ sơ cá nhân thành công.");
-      setIsConfirmSaveOpen(false);
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Không thể cập nhật hồ sơ cá nhân.");
-      setIsConfirmSaveOpen(false);
+      if (sessionRef.current.identity?.id === actor) {
+        setSaveError(cause instanceof Error ? cause.message : "Không thể cập nhật hồ sơ cá nhân. Vui lòng thử lưu lại.");
+      }
     } finally {
+      setConfirmSave(false);
       setSaving(false);
     }
   }
 
   function handleReset() {
-    if (profile) {
-      setFullName(profile.fullName || "");
-      setPhone(profile.phone ?? "");
-      setFullNameError(null);
-      setPhoneError(null);
-      setTouched({});
-      setError(null);
-      setNotice(null);
-    }
+    if (!profile) return;
+    setFullName(profile.fullName);
+    setPhone(profile.phone ?? "");
+    setTouched({ fullName: false, phone: false });
+    setSaveError(null);
+    setNotice(null);
   }
-
-  if (loading) {
-    return (
-      <div className={styles.container} aria-busy="true">
-        <PageHeader pathname="/profile" />
-        <div className={styles.layout}>
-          <ProfileNavigation activeTab={activeTab} disabled />
-          <div className={styles.mainColumn}>
-            <div className={styles.userHeaderCard}>
-              <Skeleton width={64} height={64} borderRadius="50%" />
-              <div className={styles.userHeaderInfo}>
-                <Skeleton height={20} width={180} />
-                <Skeleton height={14} width={180} />
-                <div className={styles.badgeGroup}>
-                  <Skeleton height={22} width={100} borderRadius="var(--radius-full)" />
-                </div>
-              </div>
-              <Skeleton height={36} width={150} borderRadius="var(--radius-md)" />
-            </div>
-            <div className={styles.card}>
-              <div className={styles.cardHeader}>
-                <div>
-                  <h2 className={styles.cardTitle}>Thông tin cá nhân</h2>
-                  <p className={styles.cardSubtitle}>Thông tin này hiển thị với đồng nghiệp trong phòng khám.</p>
-                </div>
-              </div>
-              <div className={styles.divider} />
-              <div className={styles.formGrid}>
-                {["Họ và tên", "Email", "Số điện thoại", "Vai trò hệ thống"].map((label) => (
-                  <div className={styles.field} key={label}>
-                    <span className={styles.fieldLabel}>{label}</span>
-                    <Skeleton height={38} width="100%" />
-                  </div>
-                ))}
-                <div className={styles.formActions}>
-                  <Skeleton height={36} width={80} borderRadius="var(--radius-md)" />
-                  <Skeleton height={36} width={140} borderRadius="var(--radius-md)" />
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (!profile) {
-    if (session.status === "unauthenticated") {
-      return (
-        <div style={{ maxWidth: 500, margin: "48px auto", textAlign: "center" }}>
-          <LoadingState message="Đang chuyển hướng đến trang đăng nhập..." />
-        </div>
-      );
-    }
-    return (
-      <div className={styles.container}>
-        <PageHeader pathname="/profile" />
-        <div className={styles.layout}>
-          <ProfileNavigation activeTab={activeTab} disabled />
-          <div className={styles.mainColumn}>
-            <ErrorState
-              message={error ?? "Không tìm thấy hồ sơ cá nhân."}
-              onRetry={() => void loadProfile()}
-            />
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  const role = profile.role;
-  const initials = getInitials(profile.fullName, role);
 
   return (
-    <div className={styles.container}>
-      {/* Page Title */}
+    <div className="page-stack">
       <PageHeader pathname="/profile" />
-
-      {notice && (
-        <Alert type="success" title="Thành công" onClose={() => setNotice(null)}>
-          {notice}
-        </Alert>
-      )}
-
-      {error && (
-        <Alert type="danger" title="Lỗi" onClose={() => setError(null)}>
-          {error}
-        </Alert>
-      )}
-
-      {/* Main Layout: Subnav + Stack */}
-      <div className={styles.layout}>
-        {/* Left Sub-Navigation */}
-        <ProfileNavigation activeTab={activeTab} onChange={setActiveTab} />
-
-        {/* Right Stack */}
-        <div className={styles.mainColumn}>
-          {/* 1. User Header Card */}
-          <div className={styles.userHeaderCard}>
-            <div className={styles.avatarCircle} aria-hidden="true">
-              {initials}
-            </div>
-            <div className={styles.userHeaderInfo}>
-              <h2 className={styles.userName}>{profile.fullName || "Chưa đặt tên"}</h2>
-              <p className={styles.userMeta}>
-                {profile.email}
-              </p>
-              <div className={styles.badgeGroup}>
-                <Badge variant="success" size="sm">
-                  {profile.status === "ACTIVE" ? "Đang hoạt động" : profile.status}
-                </Badge>
-              </div>
-            </div>
-            <Button variant="secondary" size="sm" type="button" disabled title="Tính năng sắp ra mắt">
-              Đổi ảnh đại diện (Sắp ra mắt)
+      <section className={styles.section} aria-labelledby="profile-info-title">
+        <div className={styles.sectionHeading}>
+          <h2 id="profile-info-title">Thông tin cá nhân</h2>
+          <p className={styles.description}>Cập nhật tên và số điện thoại liên hệ của bạn.</p>
+        </div>
+        {loadError && (
+          <Alert variant="danger" title="Không thể tải hồ sơ cá nhân">
+            <p>{loadError}</p>
+            <Button variant="outline" type="button" onClick={() => void loadProfile()}>Thử lại</Button>
+          </Alert>
+        )}
+        {saveError && <Alert variant="danger" title="Chưa lưu được thay đổi">{saveError}</Alert>}
+        {notice && <div role="status"><Alert variant="success">{notice}</Alert></div>}
+        <form onSubmit={handleSave} aria-label="Cập nhật hồ sơ cá nhân" className={styles.form}>
+          <div className={styles.formGrid} aria-busy={loading} aria-label={loading ? "Đang tải thông tin cá nhân" : "Thông tin liên hệ"}>
+            <ProfileField id="profile-fullname" label="Họ và tên" loading={loading} available={!!profile}>
+              <Input id="profile-fullname" value={fullName} error={fullNameError}
+                onChange={(event) => setFullName(event.target.value)}
+                onBlur={() => setTouched((value) => ({ ...value, fullName: true }))}
+                minLength={2} maxLength={120} required disabled={saving} autoComplete="name" />
+            </ProfileField>
+            <ProfileField id="profile-email" label="Email" loading={loading} available={!!profile}>
+              <Input id="profile-email" value={profile?.email ?? ""} type="email" readOnly
+                hint="Email do quản trị viên quản lý, không thể tự đổi." />
+            </ProfileField>
+            <ProfileField id="profile-phone" label="Số điện thoại" loading={loading} available={!!profile}>
+              <Input id="profile-phone" value={phone} type="tel" inputMode="tel" error={phoneError}
+                onChange={(event) => setPhone(event.target.value)}
+                onBlur={() => setTouched((value) => ({ ...value, phone: true }))}
+                maxLength={20} disabled={saving} autoComplete="tel" hint="Có thể để trống nếu chưa cung cấp." />
+            </ProfileField>
+          </div>
+          <div className={styles.actions}>
+            <Button variant="secondary" type="button" onClick={handleReset} disabled={!profile || saving}>Hủy</Button>
+            <Button variant="primary" type="submit" loading={saving} disabled={!profile || saving || !!session.recovery}>
+              Lưu thay đổi
             </Button>
           </div>
-
-          {/* 2. Personal Information Card */}
-          {activeTab === "personal" && (
-            <>
-              <div className={styles.card} id="section-personal">
-                <div className={styles.cardHeader}>
-                  <div>
-                    <h2 className={styles.cardTitle}>Thông tin cá nhân</h2>
-                    <p className={styles.cardSubtitle}>
-                      Thông tin này hiển thị với đồng nghiệp trong phòng khám.
-                    </p>
-                  </div>
-                </div>
-
-                <div className={styles.divider} />
-
-                <form onSubmit={handleSave} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-                  <div className={styles.formGrid}>
-                    <div className={styles.field}>
-                      <label className={styles.fieldLabel} htmlFor="profile-fullname">
-                        Họ và tên
-                      </label>
-                      <input
-                        id="profile-fullname"
-                        className={`${styles.fieldInput} ${fullNameError ? styles.inputError : ""}`}
-                        value={fullName}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setFullName(val);
-                          if (touched.fullName) {
-                            setFullNameError(validateFullName(val));
-                          }
-                        }}
-                        onBlur={(e) => {
-                          setTouched((prev) => ({ ...prev, fullName: true }));
-                          setFullNameError(validateFullName(e.target.value));
-                        }}
-                        aria-invalid={Boolean(fullNameError)}
-                        aria-describedby={fullNameError ? "profile-fullname-error" : undefined}
-                        minLength={2}
-                        maxLength={120}
-                        required
-                        disabled={saving}
-                      />
-                      {fullNameError && (
-                        <span id="profile-fullname-error" className={styles.fieldError} role="alert">
-                          {fullNameError}
-                        </span>
-                      )}
-                    </div>
-
-                    <div className={styles.field}>
-                      <label className={styles.fieldLabel} htmlFor="profile-email">
-                        Email
-                      </label>
-                      <div className={`${styles.fieldInput} ${styles.fieldInputReadOnly}`}>
-                        <input
-                          id="profile-email"
-                          value={profile.email}
-                          disabled
-                          style={{ border: "none", background: "transparent", width: "100%", outline: "none", color: "inherit" }}
-                        />
-                        <Lock size={15} aria-hidden="true" style={{ opacity: 0.6 }} />
-                      </div>
-                      <p className={styles.fieldDescription}>Do quản trị viên quản lý, không thể tự đổi.</p>
-                    </div>
-
-                    <div className={styles.field}>
-                      <label className={styles.fieldLabel} htmlFor="profile-phone">
-                        Số điện thoại
-                      </label>
-                      <input
-                        id="profile-phone"
-                        className={`${styles.fieldInput} ${phoneError ? styles.inputError : ""}`}
-                        value={phone}
-                        onChange={(e) => {
-                          const val = e.target.value;
-                          setPhone(val);
-                          if (touched.phone) {
-                            setPhoneError(validatePhone(val));
-                          }
-                        }}
-                        onBlur={(e) => {
-                          setTouched((prev) => ({ ...prev, phone: true }));
-                          setPhoneError(validatePhone(e.target.value));
-                        }}
-                        aria-invalid={Boolean(phoneError)}
-                        aria-describedby={phoneError ? "profile-phone-error" : undefined}
-                        inputMode="tel"
-                        maxLength={20}
-                        disabled={saving}
-                        placeholder="0901 234 567"
-                      />
-                      {phoneError && (
-                        <span id="profile-phone-error" className={styles.fieldError} role="alert">
-                          {phoneError}
-                        </span>
-                      )}
-                    </div>
-
-                    <div className={styles.field}>
-                      <label className={styles.fieldLabel} htmlFor="profile-role">
-                        Vai trò hệ thống
-                      </label>
-                      <div className={`${styles.fieldInput} ${styles.fieldInputReadOnly}`}>
-                        <input
-                          id="profile-role"
-                          value={clinicRoleLabel(role)}
-                          disabled
-                          style={{ border: "none", background: "transparent", width: "100%", outline: "none", color: "inherit" }}
-                        />
-                        <Lock size={15} aria-hidden="true" style={{ opacity: 0.6 }} />
-                      </div>
-                      <p className={styles.fieldDescription}>Quyền truy cập được cấp theo chức danh công tác.</p>
-                    </div>
-                  </div>
-
-                  <div className={styles.divider} />
-
-                  <div style={{ display: "flex", justifyContent: "flex-end", gap: 10 }}>
-                    <Button variant="secondary" type="button" onClick={handleReset} disabled={saving}>
-                      Hủy
-                    </Button>
-                    <Button
-                      variant="primary"
-                      type="submit"
-                      loading={saving}
-                      disabled={saving || Boolean(fullNameError || phoneError || fullName.trim().length < 2)}
-                    >
-                      Lưu thay đổi
-                    </Button>
-                  </div>
-                </form>
-              </div>
-
-              {/* 3. Professional Information Card */}
-              <div className={styles.card}>
-                <div className={styles.cardHeader}>
-                  <h2 className={styles.cardTitle}>Thông tin nghề nghiệp</h2>
-                  <Badge variant="neutral" size="sm">
-                    Chỉ xem
-                  </Badge>
-                </div>
-                <div className={styles.divider} />
-
-                <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                  <div className={styles.kvRow}>
-                    <span className={styles.kvLabel}>Vai trò:</span>
-                    <span className={styles.kvValue}>{clinicRoleLabel(role)}</span>
-                  </div>
-                  <div className={styles.kvRow}>
-                    <span className={styles.kvLabel}>Mã nhân sự:</span>
-                    <span className={styles.kvValue}>#{profile.id.slice(-8).toUpperCase()}</span>
-                  </div>
-                  <div className={styles.kvRow}>
-                    <span className={styles.kvLabel}>Cơ sở làm việc:</span>
-                    <span className={styles.kvValue}>Phòng khám Health&amp;Human</span>
-                  </div>
-                  <div className={styles.kvRow}>
-                    <span className={styles.kvLabel}>Trạng thái tài khoản:</span>
-                    <span className={styles.kvValue}>{profile.status === "ACTIVE" ? "Đang hoạt động" : profile.status}</span>
-                  </div>
-                </div>
-
-                <div className={styles.divider} />
-                <p className={styles.cardSubtitle}>
-                  Liên hệ quản trị viên để thay đổi vai trò hoặc thông tin phân công cơ sở.
-                </p>
-              </div>
-            </>
-          )}
-
-          {/* 4. Security Card */}
-          {activeTab === "security" && (
-            <div className={styles.card} id="section-security">
-              <div className={styles.cardHeader}>
-                <h2 className={styles.cardTitle}>Bảo mật</h2>
-              </div>
-              <div className={styles.divider} />
-
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
-                <div>
-                  <p style={{ fontWeight: 600, fontSize: "0.875rem", margin: 0, color: "var(--ink)" }}>Mật khẩu</p>
-                  <p className={styles.cardSubtitle}>
-                    Nên dùng mật khẩu an toàn, tối thiểu 12 ký tự gồm chữ hoa, số và ký tự đặc biệt.
-                  </p>
-                </div>
-                <Button variant="secondary" size="sm" type="button" disabled title="Tính năng sắp ra mắt">
-                  Đổi mật khẩu (Sắp ra mắt)
-                </Button>
-              </div>
-            </div>
-          )}
-
-          {/* 5. Notification Card */}
-          {activeTab === "notifications" && (
-            <div className={styles.card} id="section-notifications">
-              <div className={styles.cardHeader}>
-                <div>
-                  <h2 className={styles.cardTitle}>Cài đặt thông báo</h2>
-                  <p className={styles.cardSubtitle}>
-                    Tính năng tùy biến thông báo đang trong lộ trình phát triển (Roadmap). Các kênh thông báo hiện được áp dụng mặc định theo phân quyền hệ thống.
-                  </p>
-                </div>
-                <Badge variant="neutral" size="sm">
-                  Lộ trình phát triển
-                </Badge>
-              </div>
-              <div className={styles.divider} />
-
-              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                <div className={styles.switchRow}>
-                  <div className={styles.switchInfo}>
-                    <p className={styles.switchTitle}>Lịch hẹn mới được giao cho tôi</p>
-                    <p className={styles.switchDesc}>Nhận thông báo khi trợ lý xác nhận lịch hẹn mới (Mặc định: Bật)</p>
-                  </div>
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={notifications.assigned}
-                    disabled
-                    title="Tính năng tùy biến thông báo đang trong lộ trình phát triển"
-                    className={`${styles.switchButton} ${notifications.assigned ? styles.switchButtonOn : ""}`}
-                    style={{ opacity: 0.6, cursor: "not-allowed" }}
-                  >
-                    <span className={styles.switchThumb} />
-                  </button>
-                </div>
-
-                <div className={styles.divider} />
-
-                <div className={styles.switchRow}>
-                  <div className={styles.switchInfo}>
-                    <p className={styles.switchTitle}>Lịch hẹn bị hủy hoặc đổi giờ</p>
-                    <p className={styles.switchDesc}>Luôn bật để kịp thời cập nhật thay đổi trong ngày (Mặc định: Bật)</p>
-                  </div>
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={notifications.cancelled}
-                    disabled
-                    title="Tính năng tùy biến thông báo đang trong lộ trình phát triển"
-                    className={`${styles.switchButton} ${notifications.cancelled ? styles.switchButtonOn : ""}`}
-                    style={{ opacity: 0.6, cursor: "not-allowed" }}
-                  >
-                    <span className={styles.switchThumb} />
-                  </button>
-                </div>
-
-                <div className={styles.divider} />
-
-                <div className={styles.switchRow}>
-                  <div className={styles.switchInfo}>
-                    <p className={styles.switchTitle}>Bệnh nhân đã check-in</p>
-                    <p className={styles.switchDesc}>Báo khi bệnh nhân đã có mặt tại phòng chờ (Mặc định: Bật)</p>
-                  </div>
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={notifications.checkedIn}
-                    disabled
-                    title="Tính năng tùy biến thông báo đang trong lộ trình phát triển"
-                    className={`${styles.switchButton} ${notifications.checkedIn ? styles.switchButtonOn : ""}`}
-                    style={{ opacity: 0.6, cursor: "not-allowed" }}
-                  >
-                    <span className={styles.switchThumb} />
-                  </button>
-                </div>
-
-                <div className={styles.divider} />
-
-                <div className={styles.switchRow}>
-                  <div className={styles.switchInfo}>
-                    <p className={styles.switchTitle}>Email tóm tắt hằng ngày</p>
-                    <p className={styles.switchDesc}>Gửi lúc 07:00 sáng mỗi ngày làm việc (GMT+7) (Mặc định: Tắt)</p>
-                  </div>
-                  <button
-                    type="button"
-                    role="switch"
-                    aria-checked={notifications.dailySummary}
-                    disabled
-                    title="Tính năng tùy biến thông báo đang trong lộ trình phát triển"
-                    className={`${styles.switchButton} ${notifications.dailySummary ? styles.switchButtonOn : ""}`}
-                    style={{ opacity: 0.6, cursor: "not-allowed" }}
-                  >
-                    <span className={styles.switchThumb} />
-                  </button>
-                </div>
-              </div>
-            </div>
-          )}
-
-          {/* 6. Login Sessions Card */}
-          {activeTab === "sessions" && (
-            <div className={styles.card} id="section-sessions">
-              <div className={styles.cardHeader}>
-                <h2 className={styles.cardTitle}>Phiên đăng nhập</h2>
-              </div>
-              <div className={styles.divider} />
-
-              <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                  <div>
-                    <p style={{ fontWeight: 600, fontSize: "0.875rem", margin: 0, color: "var(--ink)" }}>
-                      {profile.email} · {clinicRoleLabel(role)}
-                    </p>
-                    <p className={styles.cardSubtitle}>Trình duyệt web · Đang hoạt động (Múi giờ GMT+7)</p>
-                  </div>
-                  <Badge variant="success" size="sm">
-                    Phiên hiện tại
-                  </Badge>
-                </div>
-              </div>
-
-              <div className={styles.divider} />
-
-              <div style={{ display: "flex", justifyContent: "flex-end" }}>
-                <Button
-                  variant="danger"
-                  size="sm"
-                  type="button"
-                  onClick={() => setIsConfirmLogoutOpen(true)}
-                >
-                  Đăng xuất khỏi thiết bị này
-                </Button>
-              </div>
-            </div>
-          )}
+        </form>
+      </section>
+      <section className={styles.section} aria-labelledby="profile-security-title">
+        <div className={styles.sectionHeading}>
+          <h2 id="profile-security-title">Bảo mật và phiên đăng nhập</h2>
+          <p className={styles.description}>Đăng xuất sẽ kết thúc các phiên đăng nhập của tài khoản trên tất cả thiết bị.</p>
         </div>
-      </div>
-
-      <ConfirmModal
-        isOpen={isConfirmSaveOpen}
-        onCancel={() => setIsConfirmSaveOpen(false)}
-        onConfirm={executeSave}
-        title="Xác nhận lưu thay đổi"
-        description="Bạn có chắc chắn muốn cập nhật thông tin hồ sơ cá nhân?"
-        confirmLabel="Lưu thay đổi"
-        cancelLabel="Quay lại"
-        variant="primary"
-        loading={saving}
-      />
-
-      <ConfirmModal
-        isOpen={isConfirmLogoutOpen}
-        onCancel={() => setIsConfirmLogoutOpen(false)}
-        onConfirm={() => {
-          setIsConfirmLogoutOpen(false);
-          session.signOut();
+        <div className={styles.actions}>
+          <Button variant="danger" type="button" disabled={signingOut} onClick={() => setConfirmLogout(true)}>
+            Đăng xuất tất cả thiết bị
+          </Button>
+        </div>
+      </section>
+      <ConfirmModal isOpen={confirmSave} onCancel={() => setConfirmSave(false)} onConfirm={executeSave}
+        title="Xác nhận lưu thay đổi" description="Bạn có chắc chắn muốn cập nhật thông tin hồ sơ cá nhân?"
+        confirmLabel="Lưu thay đổi" cancelLabel="Quay lại" variant="primary" loading={saving} />
+      <ConfirmModal isOpen={confirmLogout} onCancel={() => setConfirmLogout(false)}
+        onConfirm={async () => {
+          setSigningOut(true);
+          try { await session.signOut(); } finally { setSigningOut(false); setConfirmLogout(false); }
         }}
-        title="Xác nhận đăng xuất"
-        description="Bạn có chắc chắn muốn đăng xuất khỏi phiên làm việc trên thiết bị này?"
-        confirmLabel="Đăng xuất"
-        cancelLabel="Quay lại"
-        variant="danger"
-      />
+        title="Xác nhận đăng xuất" description="Đăng xuất tài khoản trên tất cả thiết bị? Những thay đổi chưa lưu sẽ bị mất."
+        confirmLabel="Đăng xuất tất cả thiết bị" cancelLabel="Quay lại" variant="danger" loading={signingOut} />
     </div>
   );
 }

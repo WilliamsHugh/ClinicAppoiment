@@ -3,7 +3,7 @@
 import React, { act } from "react";
 import { createRoot, type Root } from "react-dom/client";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import AuthPage from "../app/auth/page";
+import { AuthForm as AuthPage } from "../src/features/users/auth-form";
 import { ProfileForm } from "../src/features/users/profile-form";
 import type { ClinicRole, Session } from "../src/lib/session/session";
 
@@ -69,6 +69,7 @@ describe("Auth & Profile Pages (M3-WEB-030)", () => {
     mockPush.mockReset();
     mockSignIn.mockReset();
     mockSignOut.mockReset();
+    localStorage.clear();
   });
 
   afterEach(() => {
@@ -108,7 +109,7 @@ describe("Auth & Profile Pages (M3-WEB-030)", () => {
       expect(host.textContent).toContain("Vui lòng điền đầy đủ email và mật khẩu.");
     });
 
-    it("calls session.signIn and redirects to '/' on valid submit", async () => {
+    it("calls session.signIn and redirects to the dashboard on valid submit", async () => {
       currentSession = makeSession();
       mockSignIn.mockResolvedValueOnce(undefined);
 
@@ -161,7 +162,7 @@ describe("Auth & Profile Pages (M3-WEB-030)", () => {
       expect(toggleBtn.getAttribute("aria-label")).toBe("Hiện mật khẩu");
     });
 
-    it("pre-fills email from localStorage and saves/removes on submit with rememberMe", async () => {
+    it("remembers only the email and removes it when unchecked", async () => {
       currentSession = makeSession();
       mockSignIn.mockResolvedValue(undefined);
       localStorage.setItem("clinic_remembered_email", "saved@clinic.vn");
@@ -175,6 +176,7 @@ describe("Auth & Profile Pages (M3-WEB-030)", () => {
 
       expect(emailInput.value).toBe("saved@clinic.vn");
       expect(rememberCheckbox.checked).toBe(true);
+      expect(host.querySelector("label[for='auth-remember-me']")?.textContent).toBe("Ghi nhớ email");
 
       const passInput = host.querySelector("#auth-password") as HTMLInputElement;
       const form = host.querySelector("form")!;
@@ -273,7 +275,7 @@ describe("Auth & Profile Pages (M3-WEB-030)", () => {
 
       // Click Confirm button inside modal
       const confirmBtns = Array.from(host.querySelectorAll("button")).filter(
-        (b) => b.textContent?.trim() === "Đăng xuất"
+        (b) => b.textContent?.trim() === "Đăng xuất tất cả thiết bị"
       );
       // The last one is inside the modal footer
       const modalConfirmBtn = confirmBtns[confirmBtns.length - 1];
@@ -324,10 +326,9 @@ describe("Auth & Profile Pages (M3-WEB-030)", () => {
       });
 
       expect(host.textContent).toContain("Hồ sơ cá nhân");
-      expect(host.textContent).toContain("BS. Trần Văn Nam");
-      expect(host.textContent).toContain("doctor@clinic.local");
       const nameInput = host.querySelector("#profile-fullname") as HTMLInputElement;
       expect(nameInput.value).toBe("BS. Trần Văn Nam");
+      expect((host.querySelector("#profile-email") as HTMLInputElement).value).toBe("doctor@clinic.local");
     });
 
     it("validates full name and phone inline on blur", async () => {
@@ -455,65 +456,35 @@ describe("Auth & Profile Pages (M3-WEB-030)", () => {
       expect(phoneInput.value).toBe("0988776655");
     });
 
-    it("shows roadmap badges and disables controls for features without APIs", async () => {
+    it("keeps edits when session metadata changes during recovery", async () => {
       await act(async () => {
         root.render(<ProfileForm />);
       });
-
-      // 1. Avatar button
-      const avatarBtn = Array.from(host.querySelectorAll("button")).find(
-        (b) => b.textContent?.includes("Đổi ảnh đại diện")
-      )!;
-      expect(avatarBtn).toBeTruthy();
-      expect(avatarBtn.disabled).toBe(true);
-      expect(avatarBtn.textContent).toContain("Sắp ra mắt");
-
-      // 2. Security tab
-      const securityTabBtn = Array.from(host.querySelectorAll("button")).find(
-        (b) => b.textContent?.includes("Bảo mật")
-      )!;
+      const name = host.querySelector("#profile-fullname") as HTMLInputElement;
       await act(async () => {
-        securityTabBtn.click();
+        changeInput(name, "Tên đang sửa");
+        currentSession = { ...currentSession, recovery: { message: "Mất kết nối", pending: false, retry: vi.fn() } };
+        root.render(<ProfileForm />);
       });
-
-      const changePassBtn = Array.from(host.querySelectorAll("button")).find(
-        (b) => b.textContent?.includes("Đổi mật khẩu")
-      )!;
-      expect(changePassBtn).toBeTruthy();
-      expect(changePassBtn.disabled).toBe(true);
-      expect(changePassBtn.textContent).toContain("Sắp ra mắt");
-
-      // 3. Notifications tab
-      const notifTabBtn = Array.from(host.querySelectorAll("button")).find(
-        (b) => b.textContent?.includes("Thông báo")
-      )!;
+      expect(name.value).toBe("Tên đang sửa");
+      const save = host.querySelector("button[type='submit']") as HTMLButtonElement;
+      expect(save.disabled).toBe(true);
       await act(async () => {
-        notifTabBtn.click();
+        currentSession = { ...currentSession, recovery: undefined };
+        root.render(<ProfileForm />);
       });
-
-      expect(host.textContent).toContain("Lộ trình phát triển");
-      const switchButtons = host.querySelectorAll("button[role='switch']");
-      expect(switchButtons.length).toBeGreaterThan(0);
-      switchButtons.forEach((btn) => {
-        expect((btn as HTMLButtonElement).disabled).toBe(true);
-      });
+      expect(name.value).toBe("Tên đang sửa");
+      expect(save.disabled).toBe(false);
+      expect(vi.mocked(fetch).mock.calls.filter(([, options]) => !options?.method || options.method === "GET")).toHaveLength(1);
     });
 
-    it("switches to sessions tab and opens ConfirmModal on logout from sessions card", async () => {
+    it("confirms the provider's global logout scope before signing out", async () => {
       await act(async () => {
         root.render(<ProfileForm />);
-      });
-
-      const sessionsTabBtn = Array.from(host.querySelectorAll("button")).find(
-        (b) => b.textContent?.includes("Phiên đăng nhập")
-      )!;
-
-      await act(async () => {
-        sessionsTabBtn.click();
       });
 
       const logoutBtn = Array.from(host.querySelectorAll("button")).find(
-        (b) => b.textContent?.includes("Đăng xuất khỏi thiết bị này")
+        (b) => b.textContent?.includes("Đăng xuất tất cả thiết bị")
       )!;
 
       await act(async () => {
@@ -522,12 +493,13 @@ describe("Auth & Profile Pages (M3-WEB-030)", () => {
 
       expect(host.textContent).toContain("Xác nhận đăng xuất");
       expect(host.textContent).toContain(
-        "Bạn có chắc chắn muốn đăng xuất khỏi phiên làm việc trên thiết bị này?"
+        "Đăng xuất tài khoản trên tất cả thiết bị?"
       );
+      expect(mockSignOut).not.toHaveBeenCalled();
 
       // Confirm logout in modal
       const modalLogoutBtn = Array.from(host.querySelectorAll("button")).find(
-        (b) => b.textContent?.trim() === "Đăng xuất"
+        (b) => b.textContent?.trim() === "Đăng xuất tất cả thiết bị" && !!b.closest("[role='dialog']")
       )!;
 
       await act(async () => {

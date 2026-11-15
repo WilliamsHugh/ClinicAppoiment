@@ -1,9 +1,12 @@
 "use client";
 
-import { createContext, useContext, useEffect, useRef, useState, type ReactNode } from "react";
-import { isClinicManagementRole, unauthenticatedSession, type ClinicRole, type Session, type SessionIdentity, type SessionStatus } from "./session";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { ApiClientError } from "../api/client";
+import { isClinicManagementRole, unauthenticatedSession, type Session, type SessionIdentity, type SessionStatus } from "./session";
 
 const SESSION_STORAGE_KEY = "clinic_web_session";
+const RECOVERY_MESSAGE = "Chưa thể làm mới phiên đăng nhập. Kiểm tra kết nối và thử lại. Thông tin phiên vẫn được giữ trên trình duyệt này.";
+const TERMINAL_ACCOUNT_CODES = new Set(["ACCOUNT_LOCKED", "ACCOUNT_INACTIVE", "USER_PROFILE_NOT_FOUND"]);
 
 interface StoredSessionData {
   accessToken: string;
@@ -12,277 +15,260 @@ interface StoredSessionData {
   identity: SessionIdentity;
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object";
+}
+
+function readStoredSession(value: unknown): StoredSessionData | null {
+  if (!isRecord(value) || !isRecord(value.identity)) return null;
+  if (typeof value.accessToken !== "string" || !value.accessToken ||
+      typeof value.refreshToken !== "string" || !value.refreshToken ||
+      typeof value.expiresAt !== "string" || !Number.isFinite(Date.parse(value.expiresAt)) ||
+      typeof value.identity.id !== "string" || !value.identity.id ||
+      typeof value.identity.role !== "string" || !isClinicManagementRole(value.identity.role)) return null;
+  const identity: SessionIdentity = {
+    id: value.identity.id,
+    role: value.identity.role,
+    displayName: typeof value.identity.displayName === "string" && value.identity.displayName !== value.identity.role
+      ? value.identity.displayName : undefined,
+    email: typeof value.identity.email === "string" ? value.identity.email : undefined,
+    phone: typeof value.identity.phone === "string" ? value.identity.phone : undefined,
+  };
+  return { accessToken: value.accessToken, refreshToken: value.refreshToken, expiresAt: value.expiresAt, identity };
+}
+
+function readAuthSession(value: unknown, previousIdentity?: SessionIdentity): StoredSessionData | null {
+  if (!isRecord(value) || !isRecord(value.user) ||
+      typeof value.expiresIn !== "number" || !Number.isFinite(value.expiresIn) || value.expiresIn <= 0) return null;
+  const expiry = Date.now() + value.expiresIn * 1000;
+  if (!Number.isFinite(expiry) || expiry > 8.64e15) return null;
+  return readStoredSession({
+    accessToken: value.accessToken,
+    refreshToken: value.refreshToken,
+    expiresAt: new Date(expiry).toISOString(),
+    identity: { ...previousIdentity, id: value.user.id, role: value.user.role },
+  });
+}
+
+async function authRequest(baseUrl: string, path: string, body: unknown, accessToken?: string) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 10_000);
+  try {
+    const response = await fetch(`${baseUrl}/api/v1/auth/${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}) },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+      cache: "no-store",
+    });
+    const payload: unknown = await response.json().catch(() => null);
+    return { response, payload: isRecord(payload) ? payload : null };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 const SessionContext = createContext<Session>(unauthenticatedSession);
 
-export function SessionProvider({
-  children,
-  session: overrideSession,
-}: {
-  children: ReactNode;
-  session?: Session;
-}) {
-  if (overrideSession) {
-    return <SessionContext.Provider value={overrideSession}>{children}</SessionContext.Provider>;
-  }
-
+export function SessionProvider({ children, session: overrideSession }: { children: ReactNode; session?: Session }) {
+  if (overrideSession) return <SessionContext.Provider value={overrideSession}>{children}</SessionContext.Provider>;
   return <RealSessionProvider>{children}</RealSessionProvider>;
 }
 
 function RealSessionProvider({ children }: { children: ReactNode }) {
   const [status, setStatus] = useState<SessionStatus>("loading");
-  const [identity, setIdentity] = useState<SessionIdentity | null>(null);
-  const [tokens, setTokens] = useState<{ accessToken: string; refreshToken: string; expiresAt: Date } | null>(null);
+  const [storedSession, setStoredSession] = useState<StoredSessionData | null>(null);
+  const [recoveryMessage, setRecoveryMessage] = useState<string | null>(null);
+  const [refreshPending, setRefreshPending] = useState(false);
+  const current = useRef<StoredSessionData | null>(null);
+  const blocked = useRef(false);
   const refreshInFlight = useRef<Promise<string | null> | null>(null);
+  const generation = useRef(0);
+  const baseUrl = (process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080").replace(/\/$/, "");
 
-  const baseUrl = process.env.NEXT_PUBLIC_API_BASE_URL ?? "http://localhost:8080";
-
-  useEffect(() => {
-    try {
-      const stored = localStorage.getItem(SESSION_STORAGE_KEY);
-      if (!stored) {
-        setStatus("unauthenticated");
-        return;
-      }
-      const data: StoredSessionData = JSON.parse(stored);
-      if (!data.accessToken || !data.refreshToken || !data.identity) {
-        localStorage.removeItem(SESSION_STORAGE_KEY);
-        setStatus("unauthenticated");
-        return;
-      }
-
-      const expiresAt = new Date(data.expiresAt);
-      const restoredIdentity = data.identity.displayName === data.identity.role
-        ? { ...data.identity, displayName: undefined }
-        : data.identity;
-      setIdentity(restoredIdentity);
-      setTokens({ accessToken: data.accessToken, refreshToken: data.refreshToken, expiresAt });
-      setStatus("authenticated");
-
-      if (!restoredIdentity.displayName) {
-        void fetch(`${baseUrl}/api/v1/users/me`, {
-          headers: { Authorization: `Bearer ${data.accessToken}` },
-        })
-          .then(async (response) => {
-            if (!response.ok) return;
-            const profile = await response.json();
-            const fullName = profile.success && profile.data?.fullName;
-            if (typeof fullName !== "string" || !fullName.trim()) return;
-
-            const storedSession = localStorage.getItem(SESSION_STORAGE_KEY);
-            if (storedSession) {
-              const currentData: StoredSessionData = JSON.parse(storedSession);
-              if (currentData.identity.id === data.identity.id) {
-                const updatedIdentity = { ...currentData.identity, displayName: fullName.trim() };
-                localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify({ ...currentData, identity: updatedIdentity }));
-                setIdentity((currentIdentity) =>
-                  currentIdentity?.id === updatedIdentity.id ? updatedIdentity : currentIdentity,
-                );
-              }
-            }
-          })
-          .catch(() => undefined);
-      }
-
-      if (Date.now() >= expiresAt.getTime() - 60000) {
-        refreshSession(data.refreshToken);
-      }
-    } catch {
-      localStorage.removeItem(SESSION_STORAGE_KEY);
-      setStatus("unauthenticated");
-    }
+  const clearLocalSession = useCallback(() => {
+    generation.current += 1;
+    current.current = null;
+    blocked.current = false;
+    refreshInFlight.current = null;
+    setStoredSession(null);
+    setRecoveryMessage(null);
+    setRefreshPending(false);
+    setStatus("unauthenticated");
+    try { localStorage.removeItem(SESSION_STORAGE_KEY); } catch { /* Storage may be unavailable. */ }
   }, []);
 
-  const refreshSession = async (currentRefreshToken?: string): Promise<string | null> => {
+  const saveSession = useCallback((next: StoredSessionData) => {
+    current.current = next;
+    setStoredSession(next);
+    try { localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(next)); } catch { /* Keep the usable session in memory. */ }
+  }, []);
+
+  const refreshSession = useCallback((): Promise<string | null> => {
     if (refreshInFlight.current) return refreshInFlight.current;
-    const refToken = currentRefreshToken ?? tokens?.refreshToken;
-    if (!refToken) {
-      clearLocalSession();
-      return null;
+    const previous = current.current;
+    if (!previous) return Promise.resolve(null);
+    const requestGeneration = generation.current;
+    setRefreshPending(true);
+    if (blocked.current || Date.now() >= Date.parse(previous.expiresAt)) {
+      blocked.current = true;
+      setRecoveryMessage("Đang khôi phục phiên đăng nhập…");
     }
+
     const operation = (async () => {
       try {
-        const response = await fetch(`${baseUrl}/api/v1/auth/refresh`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ refreshToken: refToken }),
-        });
-        if (!response.ok) {
+        const { response, payload } = await authRequest(baseUrl, "refresh", { refreshToken: previous.refreshToken });
+        if (generation.current !== requestGeneration) return null;
+        const error = isRecord(payload?.error) ? payload.error : null;
+        if (response.status === 401 ||
+            (response.status === 403 && typeof error?.code === "string" && TERMINAL_ACCOUNT_CODES.has(error.code))) {
           clearLocalSession();
           return null;
         }
-        const body = await response.json();
-        if (!body.success || !body.data?.accessToken || !isClinicManagementRole(body.data.user?.role)) {
+        if (!response.ok || payload?.success !== true) throw new Error("Refresh unavailable");
+        const next = readAuthSession(payload.data, previous.identity);
+        if (!next) throw new Error("Invalid refresh response");
+        if (next.identity.id !== previous.identity.id) {
           clearLocalSession();
           return null;
         }
-        const { accessToken, refreshToken: newRefreshToken, expiresIn, user } = body.data;
-        const expiresAt = new Date(Date.now() + expiresIn * 1000);
-        const newTokens = { accessToken, refreshToken: newRefreshToken, expiresAt };
-        setTokens(newTokens);
-
-        const updatedIdentity: SessionIdentity = {
-          id: user.id,
-          role: user.role as ClinicRole,
-          displayName: identity?.displayName,
-          email: identity?.email,
-          phone: identity?.phone,
-        };
-        setIdentity(updatedIdentity);
-
-        localStorage.setItem(
-          SESSION_STORAGE_KEY,
-          JSON.stringify({
-            accessToken,
-            refreshToken: newRefreshToken,
-            expiresAt: expiresAt.toISOString(),
-            identity: updatedIdentity,
-          }),
-        );
-        return accessToken;
+        saveSession(next);
+        blocked.current = false;
+        setRecoveryMessage(null);
+        setStatus("authenticated");
+        return next.accessToken;
       } catch {
-        clearLocalSession();
+        if (generation.current === requestGeneration) {
+          blocked.current = true;
+          setRecoveryMessage(RECOVERY_MESSAGE);
+        }
         return null;
       } finally {
-        refreshInFlight.current = null;
+        if (generation.current === requestGeneration) {
+          refreshInFlight.current = null;
+          setRefreshPending(false);
+        }
       }
     })();
     refreshInFlight.current = operation;
     return operation;
-  };
+  }, [baseUrl, clearLocalSession, saveSession]);
 
-  const getAccessToken = async (): Promise<string | null> => {
-    if (!tokens) return null;
-    if (Date.now() >= tokens.expiresAt.getTime() - 30000) {
-      return refreshSession(tokens.refreshToken);
+  const getAccessToken = useCallback(async (): Promise<string | null> => {
+    const data = current.current;
+    if (!data) return null;
+    if (blocked.current || Date.now() >= Date.parse(data.expiresAt) - 30_000) {
+      const token = blocked.current ? await refreshInFlight.current : await refreshSession();
+      if (!token && blocked.current) throw new ApiClientError(RECOVERY_MESSAGE, 0, "SESSION_UNAVAILABLE");
+      return token;
     }
-    return tokens.accessToken;
-  };
+    return data.accessToken;
+  }, [refreshSession]);
+
+  useEffect(() => {
+    let active = true;
+    let data: StoredSessionData | null = null;
+    try {
+      const stored = localStorage.getItem(SESSION_STORAGE_KEY);
+      if (stored) data = readStoredSession(JSON.parse(stored));
+    } catch { /* Unreadable storage cannot restore credentials. */ }
+    if (!data) {
+      clearLocalSession();
+      return;
+    }
+    current.current = data;
+    setStoredSession(data);
+    setStatus("authenticated");
+
+    const restore = async () => {
+      const token = Date.now() >= Date.parse(data.expiresAt) - 60_000 ? await refreshSession() : data.accessToken;
+      if (!active || !token || current.current?.identity.displayName) return;
+      const restored = current.current;
+      const requestGeneration = generation.current;
+      try {
+        const response = await fetch(`${baseUrl}/api/v1/users/me`, {
+          headers: { Authorization: `Bearer ${token}` }, cache: "no-store",
+        });
+        const profile = await response.json();
+        if (!active || generation.current !== requestGeneration || !response.ok || !profile.success ||
+            typeof profile.data?.fullName !== "string" || !profile.data.fullName.trim()) return;
+        const latest = current.current;
+        if (latest && latest.identity.id === restored?.identity.id) {
+          saveSession({ ...latest, identity: { ...latest.identity, displayName: profile.data.fullName.trim() } });
+        }
+      } catch { /* Identity enrichment can be retried by the profile page. */ }
+    };
+    void restore();
+    return () => { active = false; };
+  }, [baseUrl, clearLocalSession, refreshSession, saveSession]);
+
+  useEffect(() => {
+    const recoverOnline = () => { if (blocked.current) void refreshSession(); };
+    const syncLogout = (event: StorageEvent) => {
+      if (event.key === SESSION_STORAGE_KEY && !event.newValue) clearLocalSession();
+    };
+    window.addEventListener("online", recoverOnline);
+    window.addEventListener("storage", syncLogout);
+    return () => {
+      window.removeEventListener("online", recoverOnline);
+      window.removeEventListener("storage", syncLogout);
+    };
+  }, [clearLocalSession, refreshSession]);
 
   const handleSignIn = async (email: string, password: string) => {
+    clearLocalSession();
+    const requestGeneration = generation.current;
     setStatus("loading");
     try {
-      const response = await fetch(`${baseUrl}/api/v1/auth/login`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
-      });
-      const data = await response.json();
-      if (!response.ok || !data.success) {
-        setStatus("unauthenticated");
-        const message = data.error?.message || "Đăng nhập thất bại. Vui lòng kiểm tra lại thông tin.";
-        throw new Error(message);
+      const { response, payload } = await authRequest(baseUrl, "login", { email, password });
+      if (generation.current !== requestGeneration) throw new Error("Yêu cầu đăng nhập đã kết thúc.");
+      if (!response.ok || payload?.success !== true) {
+        const error = isRecord(payload?.error) ? payload.error : null;
+        throw new Error(typeof error?.message === "string" ? error.message : "Đăng nhập thất bại. Vui lòng kiểm tra lại thông tin.");
       }
-
-      const { accessToken, refreshToken, expiresIn, user } = data.data;
-      if (!isClinicManagementRole(user.role)) {
-        await fetch(`${baseUrl}/api/v1/auth/logout`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json", Authorization: `Bearer ${accessToken}` },
-          body: JSON.stringify({ refreshToken }),
-        }).catch(() => undefined);
-        throw new Error("Clinic Management Web chỉ dành cho bác sĩ, nhân viên và quản trị viên.");
-      }
-      const expiresAt = new Date(Date.now() + expiresIn * 1000);
-
-      let displayName: string | undefined;
-      let userEmail = email;
-      let userPhone: string | undefined;
-
+      const next = readAuthSession(payload.data);
+      if (!next) throw new Error("Không thể đăng nhập. Clinic Management Web chỉ dành cho bác sĩ, nhân viên và quản trị viên.");
+      next.identity.email = email;
       try {
         const profileRes = await fetch(`${baseUrl}/api/v1/users/me`, {
-          headers: { Authorization: `Bearer ${accessToken}` },
+          headers: { Authorization: `Bearer ${next.accessToken}` }, cache: "no-store",
         });
-        if (profileRes.ok) {
-          const profileData = await profileRes.json();
-          if (profileData.success && profileData.data) {
-            displayName = profileData.data.fullName || undefined;
-            userEmail = profileData.data.email || email;
-            userPhone = profileData.data.phone;
-          }
+        const profile = await profileRes.json();
+        if (profileRes.ok && profile.success && profile.data) {
+          next.identity.displayName = typeof profile.data.fullName === "string" ? profile.data.fullName : undefined;
+          next.identity.email = typeof profile.data.email === "string" ? profile.data.email : email;
+          next.identity.phone = typeof profile.data.phone === "string" ? profile.data.phone : undefined;
         }
-      } catch {
-        // Fallback to role name
-      }
-
-      const newIdentity: SessionIdentity = {
-        id: user.id,
-        role: user.role as ClinicRole,
-        displayName,
-        email: userEmail,
-        phone: userPhone,
-      };
-
-      setTokens({ accessToken, refreshToken, expiresAt });
-      setIdentity(newIdentity);
+      } catch { /* Login remains usable when profile enrichment is unavailable. */ }
+      if (generation.current !== requestGeneration) throw new Error("Yêu cầu đăng nhập đã kết thúc.");
+      saveSession(next);
       setStatus("authenticated");
-
-      localStorage.setItem(
-        SESSION_STORAGE_KEY,
-        JSON.stringify({
-          accessToken,
-          refreshToken,
-          expiresAt: expiresAt.toISOString(),
-          identity: newIdentity,
-        }),
-      );
-    } catch (err) {
-      setStatus("unauthenticated");
-      throw err;
+    } catch (cause) {
+      if (generation.current === requestGeneration) setStatus("unauthenticated");
+      throw cause;
     }
   };
 
   const handleSignOut = async () => {
-    const accessToken = tokens?.accessToken;
-    const refreshToken = tokens?.refreshToken;
-    if (accessToken && refreshToken) {
-      try {
-        await fetch(`${baseUrl}/api/v1/auth/logout`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${accessToken}`,
-          },
-          body: JSON.stringify({ refreshToken }),
-        });
-      } catch {
-        // Ignore logout network errors
-      }
-    }
+    const data = current.current;
     clearLocalSession();
-    if (typeof window !== "undefined") {
+    if (data) {
       try {
-        window.location.href = "/";
-      } catch {
-        // Safe fallback in test environments
-      }
+        await authRequest(baseUrl, "logout", { refreshToken: data.refreshToken }, data.accessToken);
+      } catch { /* Local logout is intentional even when the server is unavailable. */ }
     }
-  };
-
-  const clearLocalSession = () => {
-    localStorage.removeItem(SESSION_STORAGE_KEY);
-    setTokens(null);
-    setIdentity(null);
-    setStatus("unauthenticated");
+    window.location.href = "/";
   };
 
   const sessionValue: Session = {
     status,
-    identity,
+    identity: storedSession?.identity ?? null,
+    recovery: recoveryMessage ? { message: recoveryMessage, pending: refreshPending, retry: async () => { await refreshSession(); } } : undefined,
     getAccessToken,
     signIn: handleSignIn,
     signOut: handleSignOut,
-    handleUnauthorized: async () => {
-      clearLocalSession();
-      if (typeof window !== "undefined") {
-        try {
-          window.location.href = "/auth";
-        } catch {
-          // Safe fallback in test environments
-        }
-      }
-    },
+    handleUnauthorized: async () => { clearLocalSession(); },
   };
-
   return <SessionContext.Provider value={sessionValue}>{children}</SessionContext.Provider>;
 }
 

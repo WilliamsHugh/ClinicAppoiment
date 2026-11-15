@@ -32,6 +32,11 @@ export interface SessionIdentity {
 export interface Session {
   status: SessionStatus;
   identity: SessionIdentity | null;
+  recovery?: {
+    message: string;
+    pending: boolean;
+    retry(): Promise<void>;
+  };
   getAccessToken(): Promise<string | null>;
   signIn(email: string, password: string): Promise<void>;
   signOut(): Promise<void>;
