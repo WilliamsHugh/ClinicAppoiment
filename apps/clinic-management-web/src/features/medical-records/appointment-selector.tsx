@@ -45,7 +45,7 @@ export function AppointmentSelector({
   return (
     <div className={styles.fieldGroup}>
       <label htmlFor="appointment-select" className={styles.fieldLabel}>
-        Lịch hẹn khám đã Check-in <span style={{ color: "var(--danger)" }}>*</span>
+        Lịch hẹn đã tiếp nhận
       </label>
       <select
         id="appointment-select"
@@ -54,6 +54,7 @@ export function AppointmentSelector({
         disabled={disabled || (visibleAppointments.length === 0)}
         aria-label="Chọn lịch hẹn đã check-in"
         aria-invalid={Boolean(error)}
+        aria-describedby={error ? "appointment-select-error" : "appointment-select-help"}
         onChange={(e) => onSelect(e.target.value)}
       >
         <option value="">-- Chọn lịch hẹn đã tiếp nhận --</option>
@@ -73,16 +74,16 @@ export function AppointmentSelector({
       </select>
 
       {error && (
-        <span className={styles.fieldError} role="alert">
+        <span id="appointment-select-error" className={styles.fieldError} role="alert">
           {error}
         </span>
       )}
 
-      {checkedInList.length === 0 && !selectedAppointmentId && (
-        <p className={styles.fieldHelp} style={{ color: "var(--warning)" }}>
+      {checkedInList.length === 0 && !selectedAppointmentId ? (
+        <p id="appointment-select-help" className={styles.fieldHelp}>
           Không có lịch hẹn nào đang ở trạng thái CHECKED_IN. Bệnh nhân cần được nhân viên lễ tân tiếp nhận (Check-in) trước khi lập bệnh án.
         </p>
-      )}
+      ) : <p id="appointment-select-help" className={styles.fieldHelp}>Chọn đúng ca trước khi nhập kết quả khám.</p>}
     </div>
   );
 }

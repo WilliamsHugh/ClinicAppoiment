@@ -191,7 +191,7 @@ describe("NotificationsPage Orchestration", () => {
       const html = renderToStaticMarkup(React.createElement(NotificationsPage));
       expect(html).toContain("Thông báo");
       expect(html).toContain("Theo dõi các sự kiện lịch hẹn");
-      expect(html).toContain("Đánh dấu tất cả đã đọc");
+      expect(html).toContain("Đánh dấu trang này đã đọc");
     }
   });
 

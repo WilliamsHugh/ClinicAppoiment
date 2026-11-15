@@ -261,6 +261,7 @@ describe("Medical Records Feature Components (M3-WEB-011)", () => {
         root.unmount();
       });
       container.remove();
+      window.history.replaceState({}, "", "/medical-records");
       vi.restoreAllMocks();
     });
 
@@ -480,6 +481,8 @@ describe("Medical Records Feature Components (M3-WEB-011)", () => {
       expect(symptomsInput.readOnly).toBe(true);
       expect(container.textContent).toContain("Hồ sơ đã được chốt hoàn tất (FINAL)");
       expect(container.textContent).toContain("FINAL · ĐÃ CHỐT HOÀN TẤT");
+      expect(container.textContent).toContain("Trạng thái hoàn thành lịch hẹn chưa được xác nhận.");
+      expect(container.textContent).not.toContain("Lịch hẹn đã hoàn thành (COMPLETED)");
       expect(container.textContent).toContain("Lập hồ sơ ca khám mới");
     });
 
@@ -573,16 +576,13 @@ describe("Medical Records Feature Components (M3-WEB-011)", () => {
 
       // Tên trang và Section headings xuất hiện ngay
       expect(container.textContent).toContain("Hồ sơ khám bệnh");
-      expect(container.textContent).toContain("Lập hồ sơ khám bệnh mới");
+      expect(container.textContent).toContain("Ca đang khám");
       expect(container.textContent).toContain("Hồ sơ bệnh án gần đây");
 
-      // Static form controls xuất hiện ngay
-      expect(container.querySelector("#symptoms-input-loading")).not.toBeNull();
-      expect(container.querySelector("#diagnosis-input-loading")).not.toBeNull();
-      expect(container.querySelector("#notes-input-loading")).not.toBeNull();
-      expect(container.querySelector("#treatment-input-loading")).not.toBeNull();
-      expect(container.textContent).toContain("Lưu nháp (DRAFT)");
-      expect(container.textContent).toContain("Chốt bệnh án (FINAL)");
+      // The picker/history frame is stable; clinical input starts after selection.
+      expect(container.textContent).toContain("Chọn ca khám");
+      expect(container.textContent).toContain("Chọn ca để bắt đầu");
+      expect(container.querySelector("textarea")).toBeNull();
 
       // Skeletons chỉ ở vùng data và có aria-busy="true"
       const busyElements = container.querySelectorAll("[aria-busy='true']");
@@ -701,6 +701,121 @@ describe("Medical Records Feature Components (M3-WEB-011)", () => {
       });
 
       expect(container.textContent).toContain("Viêm họng cấp");
+    });
+
+    it("loads a recordId deep link outside the history page and keeps FINAL read-only", async () => {
+      currentSession = makeSession("DOCTOR");
+      window.history.replaceState({}, "", "/medical-records?recordId=record-outside-page");
+      const target = { ...mockFinalRecord, id: "record-outside-page", appointmentId: "appointment-outside-page", symptoms: "Nội dung hồ sơ được liên kết" };
+      const fetchSpy = vi.fn(async (input: RequestInfo | URL) => {
+        const url = new URL(String(input), "http://gateway.test");
+        if (url.pathname === `/api/v1/medical-records/${target.id}`) return envelope(target);
+        if (url.pathname === `/api/v1/appointments/${target.appointmentId}`) return envelope({ ...mockAppointment, id: target.appointmentId });
+        if (url.pathname === "/api/v1/medical-records") return envelope({ items: [mockDraftRecord], total: 21 });
+        if (url.pathname === "/api/v1/appointments") return envelope({ items: [], total: 0 });
+        if (url.pathname.includes("/patients/")) return envelope(mockPatientProfile);
+        return failure("Not found", 404);
+      });
+      globalThis.fetch = fetchSpy;
+      await act(async () => { root.render(<MedicalRecordsPanel />); });
+      const symptoms = container.querySelector<HTMLTextAreaElement>("#symptoms-input");
+      expect(symptoms?.value).toBe(target.symptoms);
+      expect(symptoms?.readOnly).toBe(true);
+      expect(fetchSpy.mock.calls.some(([input]) => String(input).includes(`/medical-records/${target.id}`))).toBe(true);
+      expect(container.textContent).toContain("Trạng thái hoàn thành lịch hẹn chưa được xác nhận.");
+    });
+
+    it("keeps appointmentId deep links scoped when the target draft is outside the history page", async () => {
+      currentSession = makeSession("DOCTOR");
+      const target = { ...mockDraftRecord, id: "record-scoped", appointmentId: "appointment-scoped" };
+      window.history.replaceState({}, "", `/medical-records?appointmentId=${target.appointmentId}`);
+      let patchUrl = "";
+      globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = new URL(String(input), "http://gateway.test");
+        if (init?.method === "PATCH") { patchUrl = url.pathname; return envelope(target); }
+        if (url.pathname === "/api/v1/medical-records") return envelope({ items: url.searchParams.get("appointmentId") === target.appointmentId ? [target] : [], total: 1 });
+        if (url.pathname === `/api/v1/appointments/${target.appointmentId}`) return envelope({ ...mockAppointment, id: target.appointmentId });
+        if (url.pathname === "/api/v1/appointments") return envelope({ items: [] });
+        if (url.pathname.includes("/patients/")) return envelope(mockPatientProfile);
+        return failure("Not found", 404);
+      });
+      await act(async () => { root.render(<MedicalRecordsPanel />); });
+      expect(container.querySelector<HTMLTextAreaElement>("#symptoms-input")?.value).toBe(target.symptoms);
+      await act(async () => { Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("Lưu nháp"))?.click(); });
+      expect(patchUrl).toBe(`/api/v1/medical-records/${target.id}`);
+    });
+
+    it("loads more CHECKED_IN appointments beyond the first twenty before creating a record", async () => {
+      currentSession = makeSession("DOCTOR");
+      const firstPage = Array.from({ length: 20 }, (_, index) => ({ ...mockAppointment, id: `appointment-${index}` }));
+      const target = { ...mockAppointment, id: "appointment-21", patientId: "patient-21" };
+      let savedAppointment = "";
+      const queries: URLSearchParams[] = [];
+      globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = new URL(String(input), "http://gateway.test");
+        if (init?.method === "POST") { savedAppointment = JSON.parse(String(init.body)).appointmentId; return envelope({ id: "new-record", status: "DRAFT" }); }
+        if (url.pathname === "/api/v1/appointments") { queries.push(url.searchParams); return envelope({ items: url.searchParams.get("page") === "2" ? [target] : firstPage, total: 21 }); }
+        if (url.pathname === "/api/v1/medical-records") return envelope({ items: [], total: 0 });
+        if (url.pathname.includes("/patients/")) return envelope({ ...mockPatientProfile, id: target.patientId });
+        return failure("Not found", 404);
+      });
+      await act(async () => { root.render(<MedicalRecordsPanel />); });
+      await act(async () => { Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("Tải thêm ca"))?.click(); });
+      const select = container.querySelector<HTMLSelectElement>("#appointment-select")!;
+      expect(select.options.length).toBe(22);
+      await act(async () => { select.value = target.id; select.dispatchEvent(new Event("change", { bubbles: true })); });
+      await act(async () => { Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("Lưu nháp"))?.click(); });
+      expect(savedAppointment).toBe(target.id);
+      expect(queries.map((query) => [query.get("status"), query.get("page")])).toEqual([["CHECKED_IN", "1"], ["CHECKED_IN", "2"]]);
+    });
+
+    it("preserves an unsaved draft through history pagination and cancelled encounter changes", async () => {
+      currentSession = makeSession("DOCTOR");
+      const other = { ...mockDraftRecord, id: "record-page-2", appointmentId: "appointment-page-2", symptoms: "Nội dung của ca khác" };
+      globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+        const url = new URL(String(input), "http://gateway.test");
+        if (url.pathname === "/api/v1/appointments") return envelope({ items: [mockAppointment] });
+        if (url.pathname === `/api/v1/appointments/${other.appointmentId}`) return envelope({ ...mockAppointment, id: other.appointmentId });
+        if (url.pathname === "/api/v1/medical-records") return envelope({ items: url.searchParams.get("page") === "2" ? [other] : [mockDraftRecord], total: 21 });
+        if (url.pathname.includes("/patients/")) return envelope(mockPatientProfile);
+        return failure("Not found", 404);
+      });
+      await act(async () => { root.render(<MedicalRecordsPanel />); });
+      await act(async () => { Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("Tiếp tục chỉnh sửa"))?.click(); });
+      const symptoms = container.querySelector<HTMLTextAreaElement>("#symptoms-input")!;
+      await act(async () => { changeInputValue(symptoms, "Bản nháp chưa lưu của ca hiện tại"); });
+      currentSession = { ...currentSession, getAccessToken: async () => "refreshed-token" };
+      await act(async () => { root.render(<MedicalRecordsPanel />); });
+      expect(container.querySelector<HTMLTextAreaElement>("#symptoms-input")?.value).toBe("Bản nháp chưa lưu của ca hiện tại");
+      await act(async () => { container.querySelector<HTMLButtonElement>("button[aria-label='Trang sau']")?.click(); });
+      expect(symptoms.value).toBe("Bản nháp chưa lưu của ca hiện tại");
+      await act(async () => { Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("Tiếp tục chỉnh sửa"))?.click(); });
+      expect(document.body.textContent).toContain("Đổi ca khi chưa lưu?");
+      await act(async () => { Array.from(document.body.querySelectorAll("button")).find((button) => button.textContent === "Quay lại hồ sơ")?.click(); });
+      expect(symptoms.value).toBe("Bản nháp chưa lưu của ca hiện tại");
+      await act(async () => { Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("Tiếp tục chỉnh sửa"))?.click(); });
+      await act(async () => { Array.from(document.body.querySelectorAll("button")).find((button) => button.textContent === "Bỏ thay đổi và đổi ca")?.click(); });
+      expect(container.querySelector<HTMLTextAreaElement>("#symptoms-input")?.value).toBe(other.symptoms);
+    });
+
+    it.each([
+      ["PENDING", "Đang đồng bộ trạng thái lịch hẹn."],
+      ["COMPLETED", "Lịch hẹn đã hoàn thành (COMPLETED)."],
+    ] as const)("uses authoritative record completion evidence: %s", async (completion, expected) => {
+      currentSession = makeSession("DOCTOR");
+      const target = { ...mockFinalRecord, appointmentCompletion: completion };
+      globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.includes("/appointments")) return envelope({ items: [mockAppointment] });
+        if (url.includes("/medical-records")) return envelope({ items: [target] });
+        if (url.includes("/patients/")) return envelope(mockPatientProfile);
+        return failure("Not found", 404);
+      });
+      await act(async () => { root.render(<MedicalRecordsPanel />); });
+      await act(async () => { Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("Xem hồ sơ (Chỉ đọc)"))?.click(); });
+      expect(container.textContent).toContain(expected);
+      expect(container.querySelector<HTMLTextAreaElement>("#diagnosis-input")?.readOnly).toBe(true);
+      if (completion === "PENDING") expect(container.textContent).not.toContain("Lịch hẹn đã hoàn thành (COMPLETED).");
     });
   });
 });

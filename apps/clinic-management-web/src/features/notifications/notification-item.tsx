@@ -3,6 +3,7 @@
 import React from "react";
 import Link from "next/link";
 import { Badge, Button } from "../../components/ui";
+import { formatVietnamDateTime } from "../../lib/formatting/date-time";
 import styles from "./notifications-panel.module.css";
 
 export interface Notification {
@@ -20,6 +21,7 @@ export interface NotificationItemProps {
   onMarkRead?: (id: string) => Promise<void> | void;
   isMarkingRead?: boolean;
   userRole?: string;
+  disabled?: boolean;
 }
 
 /**
@@ -117,19 +119,7 @@ export function notificationTarget(
 }
 
 export function formatNotificationTime(iso: string): string {
-  try {
-    const d = new Date(iso);
-    return new Intl.DateTimeFormat("vi-VN", {
-      timeZone: "Asia/Ho_Chi_Minh",
-      hour: "2-digit",
-      minute: "2-digit",
-      day: "2-digit",
-      month: "2-digit",
-      year: "numeric",
-    }).format(d);
-  } catch {
-    return iso;
-  }
+  return formatVietnamDateTime(iso);
 }
 
 export function NotificationItem({
@@ -137,6 +127,7 @@ export function NotificationItem({
   onMarkRead,
   isMarkingRead = false,
   userRole,
+  disabled = false,
 }: NotificationItemProps) {
   const isUnread = notification.status === "UNREAD";
   const badgeConfig = getNotificationBadgeConfig(notification.type);
@@ -152,13 +143,10 @@ export function NotificationItem({
     >
       <div className={styles.notificationContent}>
         <div className={styles.notificationHeader}>
-          {isUnread && <span className={styles.unreadDot} aria-hidden="true" title="Chưa đọc" />}
           <Badge variant={badgeConfig.variant} size="sm">
             {badgeConfig.label}
           </Badge>
-          <Badge variant={isUnread ? "warning" : "neutral"} size="sm">
-            {isUnread ? "Chưa đọc" : "Đã đọc"}
-          </Badge>
+          <span className={styles.readStatus}>{isUnread ? "Chưa đọc" : notification.status === "FAILED" ? "Gửi thất bại" : "Đã đọc"}</span>
           <h2
             className={`${styles.notificationTitle} ${
               isUnread ? styles.notificationTitleUnread : ""
@@ -182,8 +170,6 @@ export function NotificationItem({
           <time dateTime={notification.createdAt}>
             {formatNotificationTime(notification.createdAt)}
           </time>
-          <span aria-hidden="true">•</span>
-          <span>Mã sự kiện: {notification.type}</span>
         </div>
       </div>
 
@@ -194,7 +180,7 @@ export function NotificationItem({
             size="sm"
             onClick={() => onMarkRead(notification.id)}
             loading={isMarkingRead}
-            disabled={isMarkingRead}
+            disabled={disabled || isMarkingRead}
             aria-label={`Đánh dấu đã đọc thông báo: ${notification.title}`}
           >
             Đánh dấu đã đọc

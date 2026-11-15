@@ -349,4 +349,59 @@ describe("NotificationsPanel State & Mutation Transitions (Nhánh 2 Agent B)", (
     expect(retryBtn).toBeDefined();
     expect(retryBtn?.getAttribute("disabled")).toBeNull();
   });
+  it("marks only unread items on this page, retains partial failures and decrements the global count only for successes", async () => {
+    const patches: string[] = [];
+    let failSecond = true;
+    let panelLoads = 0;
+    function UnreadProbe() {
+      const { unreadCount } = useNotifications();
+      return <output aria-label="Số chưa đọc toàn tập">{unreadCount}</output>;
+    }
+    vi.stubGlobal("fetch", vi.fn(async (input: string, init?: RequestInit) => {
+      const url = new URL(String(input));
+      if (init?.method === "PATCH") {
+        patches.push(url.pathname);
+        if (url.pathname.includes("notif-2") && failSecond) return errorResponse(503, "Chưa cập nhật được");
+        return envelope({ status: "READ" });
+      }
+      if (url.searchParams.get("limit") === "1") return envelope({ items: [], total: 31 });
+      panelLoads++;
+      return envelope({ items: sampleNotifications, total: 31 });
+    }));
+    await act(async () => {
+      root.render(<NotificationProvider><UnreadProbe /><NotificationsPanel /></NotificationProvider>);
+    });
+    const bulkButton = Array.from(host.querySelectorAll("button")).find((button) => button.textContent === "Đánh dấu trang này đã đọc")!;
+    await act(async () => { bulkButton.click(); });
+    expect(host.textContent).toContain("Một số thông báo không thể đánh dấu đã đọc");
+    expect(host.querySelector("output")?.textContent).toBe("30");
+    expect(host.querySelector("button[aria-label='Đánh dấu đã đọc thông báo: Lịch hẹn đã xác nhận']")).toBeNull();
+    expect(host.querySelector("button[aria-label='Đánh dấu đã đọc thông báo: Hồ sơ bệnh án mới']")).not.toBeNull();
+    failSecond = false;
+    await act(async () => { bulkButton.click(); });
+    expect(host.querySelector("output")?.textContent).toBe("29");
+    expect(patches).toEqual(["/api/v1/notifications/notif-1/read", "/api/v1/notifications/notif-2/read", "/api/v1/notifications/notif-2/read"]);
+    expect(panelLoads).toBe(1);
+    expect(bulkButton.disabled).toBe(true);
+  });
+
+  it("ignores a late response for the previous filter", async () => {
+    let resolveAll!: (response: Response) => void;
+    const allResponse = new Promise<Response>((resolve) => { resolveAll = resolve; });
+    vi.stubGlobal("fetch", vi.fn(async (input: string) => {
+      const url = new URL(String(input));
+      if (url.searchParams.get("limit") === "1") return envelope({ items: [], total: 1 });
+      if (url.searchParams.get("status") === "UNREAD") return envelope({ items: [sampleNotifications[1]], total: 1 });
+      return allResponse;
+    }));
+    await act(async () => { root.render(<NotificationProvider><NotificationsPanel /></NotificationProvider>); });
+    const unreadFilter = Array.from(host.querySelectorAll("button")).find((button) => button.textContent?.startsWith("Chưa đọc"))!;
+    await act(async () => { unreadFilter.click(); });
+    expect(host.textContent).toContain("Hồ sơ bệnh án mới");
+    await act(async () => { resolveAll(envelope({ items: [sampleNotifications[0]], total: 1 })); });
+    expect(host.textContent).toContain("Hồ sơ bệnh án mới");
+    expect(host.textContent).not.toContain("Lịch hẹn đã xác nhận");
+    expect(unreadFilter.getAttribute("aria-pressed")).toBe("true");
+  });
+
 });

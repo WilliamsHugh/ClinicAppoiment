@@ -1,244 +1,28 @@
-/* Notifications Module Stylesheet — Health&Human Design Contract */
+.headerActions { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.filterBar { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; border-bottom: 1px solid var(--line); padding-bottom: 16px; }
+.tabGroup { display: flex; flex-wrap: wrap; gap: 8px; }
+.filterCount, .readStatus { font-size: 0.8125rem; color: var(--muted); font-weight: 500; }
+.listContainer { display: grid; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg); }
+.notificationCard { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; padding: 16px 20px; border-bottom: 1px solid var(--line); min-width: 0; }
+.notificationCard:last-child { border-bottom: 0; }
+.notificationCardUnread { background: var(--primary-light); }
+.notificationCardRead { background: var(--surface); }
+.notificationContent { display: grid; gap: 8px; flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.notificationHeader { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.notificationTitle { font-size: 0.9375rem; font-weight: 500; line-height: 1.5; color: var(--ink); margin: 0; flex-basis: 100%; }
+.notificationTitleUnread { font-weight: 600; }
+.notificationMessage { font-size: 0.875rem; color: var(--ink); line-height: 1.5; margin: 0; }
+.notificationMeta { font-size: 0.8125rem; color: var(--muted); font-variant-numeric: tabular-nums; }
+.targetLink { display: inline-flex; align-items: center; min-height: 44px; font-size: 0.875rem; color: var(--primary); font-weight: 600; text-decoration: underline; text-underline-offset: 4px; }
+.targetLink:hover { color: var(--primary-hover); }
+.targetLink:focus-visible { outline: 2px solid var(--brand); outline-offset: 2px; border-radius: var(--radius-sm); }
+.actionButtons { display: flex; align-items: center; flex-shrink: 0; }
+.staleNotice { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 12px 16px; background: var(--warning-light); border-radius: var(--radius-md); }
+.staleText { font-size: 0.8125rem; color: var(--ink); line-height: 1.5; }
+.skeletonCard { padding: 16px 20px; border-bottom: 1px solid var(--line); display: grid; gap: 12px; }
 
-.container {
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
-  max-width: 1000px;
-  margin: 0 auto;
-  padding-bottom: 32px;
-}
-
-/* Page Header */
-.header {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-lg);
-  padding: 20px 24px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 16px;
-  box-shadow: var(--shadow-sm);
-}
-
-.headerText h1 {
-  font-size: 1.375rem;
-  font-weight: 700;
-  margin: 0 0 4px 0;
-  color: var(--ink);
-  letter-spacing: -0.01em;
-}
-
-.headerText p {
-  margin: 0;
-  color: var(--muted);
-  font-size: 0.875rem;
-}
-
-.headerActions {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-/* Filter Controls Bar */
-.filterBar {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 12px;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  padding: 10px 16px;
-  box-shadow: var(--shadow-sm);
-}
-
-.tabGroup {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.filterCount {
-  font-size: 0.8125rem;
-  color: var(--muted);
-  font-weight: 500;
-}
-
-/* Notification List */
-.listContainer {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-/* Notification Card */
-.notificationCard {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  padding: 16px 20px;
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-  gap: 16px;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease, background-color 0.15s ease;
-}
-
-.notificationCard:hover {
-  border-color: var(--primary);
-  box-shadow: var(--shadow-sm);
-}
-
-.notificationCard:focus-within {
-  border-color: var(--primary);
-  box-shadow: var(--shadow-sm);
-}
-
-.notificationCardUnread {
-  border-left: 4px solid var(--primary);
-  background: var(--surface);
-  box-shadow: var(--shadow-sm);
-}
-
-.notificationCardRead {
-  border-left: 4px solid transparent;
-  background: var(--surface-subtle);
-  opacity: 0.92;
-}
-
-.notificationContent {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  flex: 1;
-}
-
-.notificationHeader {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.unreadDot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--primary);
-  display: inline-block;
-  flex-shrink: 0;
-}
-
-.notificationTitle {
-  font-size: 0.9375rem;
-  font-weight: 600;
-  color: var(--ink);
-  margin: 0;
-}
-
-.notificationTitleUnread {
-  font-weight: 700;
-}
-
-.notificationMessage {
-  font-size: 0.875rem;
-  color: var(--ink);
-  line-height: 1.5;
-  margin: 0;
-}
-
-.notificationMeta {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  font-size: 0.8125rem;
-  color: var(--muted);
-  margin-top: 4px;
-  flex-wrap: wrap;
-}
-
-.targetLink {
-  font-size: 0.875rem;
-  color: var(--primary);
-  font-weight: 600;
-  text-decoration: none;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.targetLink:hover {
-  text-decoration: underline;
-}
-
-.targetLink:focus-visible {
-  outline: 2px solid var(--primary);
-  outline-offset: 2px;
-  border-radius: var(--radius-sm);
-}
-
-.actionButtons {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  flex-shrink: 0;
-}
-
-/* Stale data indicator */
-.staleNotice {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 14px;
-  background: var(--warning-light, rgba(245, 158, 11, 0.1));
-  border: 1px solid var(--warning, #f59e0b);
-  border-radius: var(--radius-md, 6px);
-  margin-bottom: 8px;
-}
-
-.staleText {
-  font-size: 0.8125rem;
-  color: var(--ink);
-  line-height: 1.4;
-}
-
-/* Skeleton Loading State */
-.skeletonCard {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--radius-md);
-  padding: 16px 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-/* Responsive collapse */
 @media (max-width: 640px) {
-  .notificationCard {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .actionButtons {
-    align-self: flex-start;
-    margin-top: 8px;
-    width: 100%;
-    justify-content: flex-start;
-  }
-
-  .filterBar {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .tabGroup {
-    width: 100%;
-    overflow-x: auto;
-  }
+  .notificationCard { flex-direction: column; padding: 16px; }
+  .actionButtons { align-self: flex-start; }
+  .filterBar { align-items: flex-start; }
 }

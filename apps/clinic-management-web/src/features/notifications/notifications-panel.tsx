@@ -1,11 +1,12 @@
 "use client";
 
-import React, { useCallback, useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Alert, Badge, Button, Skeleton } from "../../components/ui";
 import { EmptyState, ErrorState } from "../../components/states";
 import { Pagination } from "../../components/pagination";
 import { ApiClientError, createBrowserApiClient } from "../../lib/api/client";
 import { useSession } from "../../lib/session/session-context";
+import type { Session } from "../../lib/session/session";
 import { Notification, NotificationItem } from "./notification-item";
 import { useNotifications } from "./notification-context";
 import { PageHeader } from "../../components/page-header";
@@ -15,7 +16,16 @@ export type NotificationFilter = "ALL" | "UNREAD" | "READ";
 
 export function NotificationsPanel() {
   const session = useSession();
-  const client = useMemo(() => createBrowserApiClient(session), [session]);
+  return <NotificationsPanelWorkspace key={`${session.status}:${session.identity?.id ?? ""}:${session.identity?.role ?? ""}`} session={session} />;
+}
+
+function NotificationsPanelWorkspace({ session }: { session: Session }) {
+  const currentSession = useRef(session);
+  currentSession.current = session;
+  const client = useMemo(() => createBrowserApiClient({
+    getAccessToken: () => currentSession.current.getAccessToken(),
+    handleUnauthorized: () => currentSession.current.handleUnauthorized?.(),
+  }), []);
   const {
     unreadCount,
     setUnreadCount,
@@ -33,10 +43,14 @@ export function NotificationsPanel() {
   const [markingIds, setMarkingIds] = useState<Set<string>>(new Set());
   const [markingAll, setMarkingAll] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const requestVersion = useRef(0);
+  const mutationInFlight = useRef(false);
+  const [mutationError, setMutationError] = useState<string | null>(null);
 
   const loadNotifications = useCallback(async (isRefresh = false) => {
     if (session.status !== "authenticated") return;
-    if (isRefresh && items.length > 0) {
+    const version = ++requestVersion.current;
+    if (isRefresh) {
       setIsRefreshing(true);
     } else {
       setLoading(true);
@@ -57,17 +71,19 @@ export function NotificationsPanel() {
         { query }
       );
 
+      if (version !== requestVersion.current) return;
       const fetchedItems = res.data?.items ?? [];
       setItems(fetchedItems);
       const totalCount = typeof res.data?.total === "number" ? res.data.total : fetchedItems.length;
       setTotal(totalCount);
 
-      if (filter === "UNREAD") {
+      if (filter === "UNREAD" && typeof res.data?.total === "number") {
         setUnreadCount(totalCount);
       } else if (isRefresh && refreshUnreadCount) {
         void refreshUnreadCount();
       }
     } catch (caught) {
+      if (version !== requestVersion.current) return;
       setError(
         caught instanceof ApiClientError
           ? caught.message
@@ -76,20 +92,27 @@ export function NotificationsPanel() {
           : "Không thể tải danh sách thông báo."
       );
     } finally {
-      setLoading(false);
-      setIsRefreshing(false);
+      if (version === requestVersion.current) {
+        setLoading(false);
+        setIsRefreshing(false);
+      }
     }
-  }, [client, session.status, page, limit, filter, items.length, setUnreadCount, refreshUnreadCount]);
+  }, [client, session.status, page, limit, filter, setUnreadCount, refreshUnreadCount]);
 
   useEffect(() => {
     if (session.status === "authenticated") {
       void loadNotifications();
     }
+    return () => { requestVersion.current += 1; };
   }, [session.status, loadNotifications]);
 
   // Đổi bộ lọc -> reset về page 1 và xóa lỗi tạm thời
   const handleFilterChange = (newFilter: NotificationFilter) => {
-    if (newFilter !== filter) {
+    if (newFilter !== filter && !mutationInFlight.current) {
+      requestVersion.current += 1;
+      setItems([]);
+      setLoading(true);
+      setMutationError(null);
       setFilter(newFilter);
       setPage(1);
       setError(null);
@@ -103,9 +126,10 @@ export function NotificationsPanel() {
 
   // Đánh dấu 1 thông báo đã đọc
   const handleMarkRead = async (id: string) => {
-    if (markingIds.has(id)) return;
+    if (mutationInFlight.current || loading || isRefreshing) return;
+    mutationInFlight.current = true;
     setMarkingIds((prev) => new Set(prev).add(id));
-    setError(null);
+    setMutationError(null);
     try {
       await client.patch(`/api/v1/notifications/${encodeURIComponent(id)}/read`, {
         body: {},
@@ -113,19 +137,20 @@ export function NotificationsPanel() {
 
       // Cập nhật trạng thái trực quan chỉ sau khi API thành công
       setItems((prev) =>
-        prev.map((item) => (item.id === id ? { ...item, status: "READ" } : item))
+        filter === "UNREAD" ? prev.filter((item) => item.id !== id) : prev.map((item) => (item.id === id ? { ...item, status: "READ" } : item))
       );
       decrementUnreadCount(1);
       if (filter === "UNREAD") {
         setTotal((prev) => Math.max(0, prev - 1));
       }
     } catch (caught) {
-      setError(
+      setMutationError(
         caught instanceof ApiClientError
           ? caught.message
           : "Không thể đánh dấu thông báo đã đọc."
       );
     } finally {
+      mutationInFlight.current = false;
       setMarkingIds((prev) => {
         const next = new Set(prev);
         next.delete(id);
@@ -140,9 +165,10 @@ export function NotificationsPanel() {
   }, [items]);
 
   const handleMarkAllRead = async () => {
-    if (markingAll || unreadOnPage.length === 0) return;
+    if (mutationInFlight.current || loading || isRefreshing || unreadOnPage.length === 0) return;
+    mutationInFlight.current = true;
     setMarkingAll(true);
-    setError(null);
+    setMutationError(null);
     try {
       const results = await Promise.allSettled(
         unreadOnPage.map((item) =>
@@ -164,7 +190,7 @@ export function NotificationsPanel() {
 
       if (successfulIds.size > 0) {
         setItems((prev) =>
-          prev.map((item) =>
+          filter === "UNREAD" ? prev.filter((item) => !successfulIds.has(item.id)) : prev.map((item) =>
             successfulIds.has(item.id) ? { ...item, status: "READ" } : item
           )
         );
@@ -175,28 +201,29 @@ export function NotificationsPanel() {
       }
 
       if (hasError) {
-        setError("Một số thông báo không thể đánh dấu đã đọc. Vui lòng thử lại.");
+        setMutationError("Một số thông báo không thể đánh dấu đã đọc. Vui lòng thử lại.");
       }
     } catch (caught) {
-      setError(
+      setMutationError(
         caught instanceof ApiClientError
           ? caught.message
-          : "Không thể đánh dấu tất cả thông báo đã đọc."
+          : "Không thể đánh dấu thông báo trên trang này đã đọc."
       );
     } finally {
+      mutationInFlight.current = false;
       setMarkingAll(false);
     }
   };
 
   if (session.status === "loading") {
     return (
-      <div className={styles.container} aria-busy="true">
+      <div className="page-stack" aria-busy="true">
         <PageHeader
           pathname="/notifications"
           actions={
             <div className={styles.headerActions}>
               <Button variant="secondary" size="sm" disabled>
-                Đánh dấu tất cả đã đọc
+                Đánh dấu trang này đã đọc
               </Button>
               <Button variant="ghost" size="sm" disabled>
                 Làm mới
@@ -206,7 +233,7 @@ export function NotificationsPanel() {
         />
 
         <section className={styles.filterBar} aria-label="Bộ lọc thông báo">
-          <div className={styles.tabGroup} role="tablist">
+          <div className={styles.tabGroup} role="group" aria-label="Lọc theo trạng thái đọc">
             <Button variant="primary" size="sm" disabled>Tất cả</Button>
             <Button variant="secondary" size="sm" disabled>Chưa đọc</Button>
             <Button variant="secondary" size="sm" disabled>Đã đọc</Button>
@@ -237,7 +264,7 @@ export function NotificationsPanel() {
   }
 
   return (
-    <div className={styles.container}>
+    <div className="page-stack">
       {/* Header */}
       <PageHeader
         pathname="/notifications"
@@ -248,15 +275,15 @@ export function NotificationsPanel() {
               size="sm"
               onClick={handleMarkAllRead}
               loading={markingAll}
-              disabled={loading || markingAll || unreadOnPage.length === 0}
+              disabled={loading || isRefreshing || markingAll || markingIds.size > 0 || unreadOnPage.length === 0}
             >
-              Đánh dấu tất cả đã đọc
+              Đánh dấu trang này đã đọc
             </Button>
             <Button
               variant="ghost"
               size="sm"
               onClick={() => void loadNotifications(true)}
-              disabled={loading || isRefreshing}
+              disabled={loading || isRefreshing || markingAll || markingIds.size > 0}
               loading={isRefreshing}
             >
               Làm mới
@@ -267,13 +294,13 @@ export function NotificationsPanel() {
 
       {/* Filter Tabs & Quick Summary */}
       <section className={styles.filterBar} aria-label="Bộ lọc thông báo">
-        <div className={styles.tabGroup} role="tablist">
+        <div className={styles.tabGroup} role="group" aria-label="Lọc theo trạng thái đọc">
           <Button
             variant={filter === "ALL" ? "primary" : "secondary"}
             size="sm"
             onClick={() => handleFilterChange("ALL")}
-            role="tab"
-            aria-selected={filter === "ALL"}
+            disabled={markingAll || markingIds.size > 0}
+            aria-pressed={filter === "ALL"}
           >
             Tất cả
           </Button>
@@ -281,8 +308,8 @@ export function NotificationsPanel() {
             variant={filter === "UNREAD" ? "primary" : "secondary"}
             size="sm"
             onClick={() => handleFilterChange("UNREAD")}
-            role="tab"
-            aria-selected={filter === "UNREAD"}
+            disabled={markingAll || markingIds.size > 0}
+            aria-pressed={filter === "UNREAD"}
           >
             Chưa đọc{typeof unreadCount === "number" && unreadCount > 0 ? ` (${unreadCount})` : ""}
           </Button>
@@ -290,8 +317,8 @@ export function NotificationsPanel() {
             variant={filter === "READ" ? "primary" : "secondary"}
             size="sm"
             onClick={() => handleFilterChange("READ")}
-            role="tab"
-            aria-selected={filter === "READ"}
+            disabled={markingAll || markingIds.size > 0}
+            aria-pressed={filter === "READ"}
           >
             Đã đọc
           </Button>
@@ -302,10 +329,7 @@ export function NotificationsPanel() {
         </span>
       </section>
 
-      {/* Error state khi chưa có dữ liệu */}
-      {error && items.length === 0 && (
-        <ErrorState message={error} onRetry={() => void loadNotifications(false)} />
-      )}
+      {mutationError && <Alert variant="danger" title="Chưa cập nhật được trạng thái đọc">{mutationError} Các thông báo chưa cập nhật vẫn được giữ để thử lại.</Alert>}
 
       {/* Main Content / Notification List */}
       <section aria-label="Danh sách thông báo" className={styles.listContainer}>
@@ -362,11 +386,11 @@ export function NotificationsPanel() {
           /* Empty state: only rendered after successful response returning 0 items */
           filter === "UNREAD" ? (
             <EmptyState
-              title="Không có thông báo chưa đọc"
-              message="Bạn đã đọc hết tất cả các thông báo trong hàng đợi."
+              title={total > 0 ? "Trang này không còn thông báo chưa đọc" : "Không có thông báo chưa đọc"}
+              message={total > 0 ? "Tải lại danh sách để xem các thông báo chưa đọc còn lại." : "Các thông báo chưa đọc sẽ xuất hiện tại đây."}
               action={{
-                label: "Xem tất cả thông báo",
-                onClick: () => handleFilterChange("ALL"),
+                label: total > 0 ? "Tải lại thông báo chưa đọc" : "Xem tất cả thông báo",
+                onClick: () => total > 0 ? void loadNotifications() : handleFilterChange("ALL"),
               }}
             />
           ) : filter === "READ" ? (
@@ -383,7 +407,7 @@ export function NotificationsPanel() {
               title="Chưa có thông báo nào"
               message={
                 session.identity?.role === "DOCTOR"
-                  ? "Thông báo lâm sàng (kết quả khám, xét nghiệm) và lịch khám được phân công cho bác sĩ sẽ xuất hiện tại đây."
+                  ? "Thông báo về lịch khám được phân công và hồ sơ khám sẽ xuất hiện tại đây."
                   : session.identity?.role === "STAFF"
                   ? "Thông báo tiếp đón bệnh nhân và hàng đợi điều hành phòng khám sẽ xuất hiện tại đây."
                   : "Thông báo điều hành và cập nhật hệ thống dành cho tài khoản của bạn sẽ hiển thị tại đây."
@@ -402,6 +426,7 @@ export function NotificationsPanel() {
               notification={notification}
               onMarkRead={handleMarkRead}
               isMarkingRead={markingIds.has(notification.id)}
+              disabled={markingAll || markingIds.size > 0 || isRefreshing}
               userRole={session.identity?.role}
             />
           ))
@@ -414,8 +439,8 @@ export function NotificationsPanel() {
           page={page}
           limit={limit}
           total={total}
-          disabled={loading}
-          onPageChange={(nextPage) => setPage(nextPage)}
+          disabled={loading || isRefreshing || markingAll || markingIds.size > 0}
+          onPageChange={(nextPage) => { requestVersion.current += 1; setItems([]); setLoading(true); setMutationError(null); setPage(nextPage); }}
         />
       )}
     </div>

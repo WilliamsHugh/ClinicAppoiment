@@ -1,4 +1,5 @@
 import React from "react";
+import { TextInput } from "../../components/ui/input";
 import { Button } from "../../components/ui/button";
 import styles from "./medical-records-panel.module.css";
 
@@ -97,7 +98,7 @@ export function PrescriptionForm({
       </div>
 
       {readOnly && filledItems.length === 0 ? (
-        <p style={{ margin: "8px 0", color: "var(--muted)", fontStyle: "italic", fontSize: "0.875rem" }}>
+        <p className={styles.fieldHelp}>
           Không có đơn thuốc chỉ định cho ca khám này.
         </p>
       ) : (
@@ -108,10 +109,12 @@ export function PrescriptionForm({
               <div key={idx} className={styles.prescriptionRow}>
                 <div
                   className={styles.prescriptionInputs}
-                  style={readOnly ? { gridTemplateColumns: "2fr 1.2fr 1.5fr 1.2fr" } : undefined}
                 >
                   <div>
-                    <input
+                    <TextInput
+                      id={`prescription-medicineName-${idx}`}
+                      label="Tên thuốc"
+                      error={readOnly ? undefined : rowErrors.medicineName}
                       type="text"
                       className={`${styles.prescriptionInput} ${
                         rowErrors.medicineName ? styles.inputError : ""
@@ -126,15 +129,14 @@ export function PrescriptionForm({
                         handleItemChange(idx, "medicineName", e.target.value)
                       }
                     />
-                    {rowErrors.medicineName && !readOnly && (
-                      <span className={styles.fieldError} role="alert">
-                        {rowErrors.medicineName}
-                      </span>
-                    )}
+
                   </div>
 
                   <div>
-                    <input
+                    <TextInput
+                      id={`prescription-dosage-${idx}`}
+                      label="Liều lượng"
+                      error={readOnly ? undefined : rowErrors.dosage}
                       type="text"
                       className={`${styles.prescriptionInput} ${
                         rowErrors.dosage ? styles.inputError : ""
@@ -149,15 +151,14 @@ export function PrescriptionForm({
                         handleItemChange(idx, "dosage", e.target.value)
                       }
                     />
-                    {rowErrors.dosage && !readOnly && (
-                      <span className={styles.fieldError} role="alert">
-                        {rowErrors.dosage}
-                      </span>
-                    )}
+
                   </div>
 
                   <div>
-                    <input
+                    <TextInput
+                      id={`prescription-frequency-${idx}`}
+                      label="Tần suất"
+                      error={readOnly ? undefined : rowErrors.frequency}
                       type="text"
                       className={`${styles.prescriptionInput} ${
                         rowErrors.frequency ? styles.inputError : ""
@@ -172,15 +173,14 @@ export function PrescriptionForm({
                         handleItemChange(idx, "frequency", e.target.value)
                       }
                     />
-                    {rowErrors.frequency && !readOnly && (
-                      <span className={styles.fieldError} role="alert">
-                        {rowErrors.frequency}
-                      </span>
-                    )}
+
                   </div>
 
                   <div>
-                    <input
+                    <TextInput
+                      id={`prescription-duration-${idx}`}
+                      label="Thời gian"
+                      error={readOnly ? undefined : rowErrors.duration}
                       type="text"
                       className={`${styles.prescriptionInput} ${
                         rowErrors.duration ? styles.inputError : ""
@@ -195,11 +195,7 @@ export function PrescriptionForm({
                         handleItemChange(idx, "duration", e.target.value)
                       }
                     />
-                    {rowErrors.duration && !readOnly && (
-                      <span className={styles.fieldError} role="alert">
-                        {rowErrors.duration}
-                      </span>
-                    )}
+
                   </div>
 
                   {!readOnly && (
