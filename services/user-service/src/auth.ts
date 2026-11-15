@@ -572,22 +572,39 @@ export function createAuthRouter(
 
   // Password endpoints (Section 10.3)
   router.post("/password/forgot", (_req, res) => {
-    return res.json(ok({ accepted: true }));
+    return fail(
+      res,
+      503,
+      "AUTH_PASSWORD_RECOVERY_NOT_CONFIGURED",
+      "Chức năng khôi phục mật khẩu qua email chưa được cấu hình nhà cung cấp SMTP",
+    );
   });
 
   router.post("/password/recovery/exchange", (_req, res) => {
-    return res.json(ok({
-      recoveryContextId: randomUUID(),
-      expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
-    }));
+    return fail(
+      res,
+      503,
+      "AUTH_PASSWORD_RECOVERY_NOT_CONFIGURED",
+      "Dịch vụ khôi phục mật khẩu chưa sẵn sàng",
+    );
   });
 
   router.post("/password/reset", (_req, res) => {
-    return res.json(ok(null));
+    return fail(
+      res,
+      503,
+      "AUTH_PASSWORD_RECOVERY_NOT_CONFIGURED",
+      "Dịch vụ đặt lại mật khẩu chưa sẵn sàng",
+    );
   });
 
   router.post("/password/change", (_req, res) => {
-    return res.json(ok(null));
+    return fail(
+      res,
+      503,
+      "AUTH_PASSWORD_RECOVERY_NOT_CONFIGURED",
+      "Dịch vụ đổi mật khẩu chưa sẵn sàng",
+    );
   });
 
   return router;

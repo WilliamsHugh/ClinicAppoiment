@@ -1,6 +1,24 @@
 # Báo cáo bàn giao M2-INTEGRATION-005
 Ngày: 15/11/2026
 
+> **Trạng thái đã đối chiếu source/Git:** Đã hoàn thành bước tích hợp code trên nhánh local và có unit/mock/contract harness; **chưa hoàn tất nghiệm thu kỹ thuật, chưa chạy live database/E2E, chưa sẵn sàng merge main**. Báo cáo này phân biệt code đã tích hợp với kiểm chứng còn thiếu. Số liệu build/test bên dưới là số được ghi nhận từ lần chạy trước, chưa được chạy lại trong lần rà soát này.
+
+## Vị trí trong kế hoạch và trạng thái hiện tại
+
+Theo checklist ở `docs/backend-api-v2-implementation-tasks.md`, task M2-INTEGRATION-005 đang ở **bước tích hợp và kiểm chứng trước live staging**:
+
+| Giai đoạn | Trạng thái | Bằng chứng / phần còn thiếu |
+|---|---|---|
+| Triển khai theo domain | Đã có code trên bốn provider commits | Các commit được cherry-pick vào nhánh tích hợp; điều này chưa đồng nghĩa được review/accepted. |
+| Tích hợp nhánh backend | Đã hoàn thành local | Nhánh `test/m2-integration-005-api-v2-clinic-workflow`, HEAD hiện tại `530a520`; chưa push/merge. |
+| Build, lint, unit và OpenAPI | Chưa xác nhận lại trên HEAD hiện tại | Các số liệu cũ được ghi ở dưới; legacy OpenAPI suite có lỗi theo báo cáo trước. Cần chạy lại sau khi xử lý lỗi. |
+| PostgreSQL migrations và integration | Chưa nghiệm thu | 24 test DB/HTTP được ghi là skipped; chưa có live database evidence. |
+| E2E thật qua Gateway và sáu service | Chưa nghiệm thu | Harness hiện dùng mock/in-memory; smoke guide mới là hướng dẫn, không phải kết quả chạy. |
+| Review bảo mật/contract và quyết định nghiệp vụ | Còn blocker | Password recovery chưa triển khai thật; Appointment chưa xác minh grant; các quyết định mở bên dưới chưa được chốt. |
+| Merge/acceptance | Chưa đạt | Chỉ xem xét sau khi blocker và test evidence được xử lý, review bởi domain owners. |
+
+**Việc cần làm tiếp theo:** hoàn thiện blocker và review code → chạy build/lint/unit/OpenAPI → chạy migration và PostgreSQL/HTTP integration trên môi trường test dùng một lần → chạy E2E/smoke qua Gateway → cập nhật evidence và review → mới quyết định merge.
+
 ## Member / task ID
 - **Task ID:** M2-INTEGRATION-005 (Tích hợp toàn diện API v2 & Quy trình Lâm sàng End-to-End)
 - **Role / Reporter:** `int-report` (Tổng hợp và bàn giao tích hợp)
@@ -26,7 +44,7 @@ Ngày: 15/11/2026
 ## Base SHA → Final SHA
 - **Base Branch:** `test/m2-integration-002-openapi-contract-tests`
 - **Base SHA:** `dad4f96` (`merge: standardize backend service logging`)
-- **Final SHA:** `513b699` (`feat(gateway,contract): implement API v2 cache refactor, routing safety, contract tests, and integration harness (M2-INTEGRATION-004)`)
+- **Final SHA tại thời điểm cập nhật báo cáo:** `530a520` (`docs(integration): publish M2-INTEGRATION-005 handoff report, upgraded harness, and live smoke guide`). `513b699` là commit tích hợp TV1, không phải HEAD cuối.
 
 ---
 
@@ -63,7 +81,7 @@ Toàn bộ mã nguồn SQL migration của TV2 và TV4 đã được thẩm đ�
 
 ### 1. TV2 User Service Migrations
 - **File UP:** `services/user-service/migrations/20261115_session_mfa_schema.up.sql`
-  - **Trạng thái:** **PASS**
+  - **Trạng thái:** **ĐÃ REVIEW TĨNH, CHƯA CHẠY TRÊN DB TEST**
   - **Tính chất:** Hoàn toàn additive (không có lệnh `DROP TABLE` hoặc `DROP COLUMN`).
   - **Idempotency:** 100% lệnh `CREATE SCHEMA` và `CREATE TABLE` sử dụng `IF NOT EXISTS` cho các bảng: `user_service.sessions`, `mfa_factors`, `mfa_challenges`, `mfa_proofs`.
   - **Quan hệ khóa ngoại:** Tham chiếu hợp lệ đến `user_service.users(id)` (bảng tồn tại trong base schema). Ràng buộc `ON DELETE CASCADE` cho user/factor/challenge và `ON DELETE SET NULL` cho session_id trong mfa_challenges.
@@ -71,12 +89,12 @@ Toàn bộ mã nguồn SQL migration của TV2 và TV4 đã được thẩm đ�
   - **Bảo mật:** Chỉ lưu trữ `refresh_token_hash` và `secret_encrypted`. Không bao giờ lưu raw token hay plain secret.
 - **File DOWN:** `services/user-service/migrations/20261115_session_mfa_schema.down.sql`
   - **Trạng thái:** **PASS**
-  - **Rollback an toàn:** Chứa đầy đủ lệnh `DROP TABLE IF EXISTS` theo thứ tự đảo ngược quan hệ khóa ngoại (con xóa trước cha: `mfa_proofs` -> `mfa_challenges` -> `mfa_factors` -> `sessions`).
+  - **Rollback phá hủy dữ liệu migration:** có `DROP TABLE IF EXISTS` theo thứ tự phụ thuộc. Chỉ dùng trên DB test/disposable sau khi xác nhận target; không mô tả là rollback an toàn cho dữ liệu production.
   - **Bảo vệ dữ liệu gốc:** Không xóa bảng `users` hoặc `patient_profiles`.
 
 ### 2. TV4 Medical Record Service Migrations
 - **File:** `services/medical-record-service/migrations/002_m2_clinical_grants_and_finalization.sql`
-  - **Trạng thái:** **PASS**
+  - **Trạng thái:** **ĐÃ REVIEW TĨNH, CHƯA CHẠY TRÊN DB TEST**
   - **Idempotency:** Sử dụng `IF NOT EXISTS` cho các cột mới (`version`, `appointment_completion` trên bảng `medical_records`) và các bảng mới (`clinical_grants`, `finalization_contexts`, `consumed_proofs`).
   - **Ràng buộc:** Kiểm tra `appointment_completion_check` an toàn qua PL/pgSQL block `DO $$`.
   - **Kiểm soát thời hạn (TTL):** Có cột `expires_at TIMESTAMPTZ NOT NULL` trên cả `clinical_grants` và `finalization_contexts`.
@@ -90,7 +108,7 @@ Toàn bộ mã nguồn SQL migration của TV2 và TV4 đã được thẩm đ�
 ### 4. Thứ tự thực thi (Migration Ordering)
 - **Medical Record Service:** Chạy tuần tự `001_m2_record_completion_outbox` -> `002_m2_clinical_grants_and_finalization` thông qua `migrate.ts`, bảo vệ bằng `pg_advisory_xact_lock` và theo dõi SHA-256 checksum trong bảng `medical_record_service.schema_migrations`.
 - **User Service:** Đặt tên migration `20261115_session_mfa_schema` nối tiếp sau `20260928_ensure_patient_profile_for_role.sql`.
-- **Đánh giá chung:** **SAFE TO RUN** trên cơ sở dữ liệu test và production.
+- **Đánh giá chung:** Chưa có đủ bằng chứng để kết luận an toàn chạy production. Cần chạy migration trên DB test sạch và thử đường nâng cấp từ schema hiện hành; rollback chỉ theo quy trình khôi phục đã được xác nhận.
 
 ---
 
@@ -226,13 +244,28 @@ Trước khi đưa hệ thống lên môi trường Production, các bên liên 
 ---
 
 ## Recommendation
-### **READY FOR LIVE INTEGRATION**
+### **CHƯA ĐỦ ĐIỀU KIỆN NGHIỆM THU — SẴN SÀNG TIẾP TỤC KIỂM CHỨNG CÓ KIỂM SOÁT**
 
-Hệ thống đã đạt đầy đủ các tiêu chuẩn nghiệm thu kỹ thuật của M2:
-1. Bản build thành công 100% trên cả 8 workspaces, lint/typecheck sạch hoàn toàn.
-2. 100% test nghiệp vụ của toàn bộ 7 microservices vượt qua thành công (370/370 pass).
-3. Bộ Contract Spec v2 (80/80 pass) và E2E Integration Harness (6/6 pass) xác nhận toàn bộ luồng nghiệp vụ hoạt động chính xác.
-4. Schema migrations của TV2 và TV4 được thẩm định an toàn, có tính lũy tiến (additive), hỗ trợ rollback hoàn chỉnh và không vi phạm kiến trúc độc lập database.
-5. Biên giới mạng và cơ chế cô lập route nội bộ được bảo vệ chặt chẽ tại API Gateway.
+Các tuyên bố nghiệm thu ở phiên bản trước đã bị hạ mức vì chưa có chứng cứ tương ứng. Đặc biệt, mock harness không phải E2E; test bị skip không phải test pass; 6 lỗi legacy OpenAPI vẫn là lỗi cần xử lý; static migration review không chứng minh migration chạy được trên PostgreSQL thật.
 
-Khuyến nghị chuyển giao sang giai đoạn **Live Staging & Live Database Testing** theo quy trình tại `packages/openapi-contract-tests/LIVE-SMOKE-GUIDE.md`.
+#### Blocker và hướng giải quyết
+
+1. **Xác minh Clinical Grant tại Appointment:** code hiện chỉ kiểm tra header có giá trị. Thêm xác minh server-to-server với Medical Record Service, ràng buộc grant với doctor/session/appointment/patient và test thiếu, giả, hết hạn, sai phạm vi grant. Owner: Member 3 + Member 4; phối hợp Member 1 cho caller trust.
+2. **Password recovery/change:** các handler hiện trả response thành công giả lập. Triển khai token một lần có hash, hết hạn, email provider/configuration, chống account enumeration, thu hồi phiên sau reset; nếu SMTP/provider chưa sẵn sàng thì trả trạng thái rõ ràng và không giả vờ hoàn tất. Owner: Member 2.
+3. **OpenAPI contract suite:** cập nhật route inventory/schema v2 có kiểm tra đầy đủ sáu service; phân biệt test legacy tương thích v1 với v2 contract tests. Không chấp nhận 6 lỗi chỉ bằng cách ghi chú là “legacy”. Owner: Member 1 + service owners.
+4. **Migration evidence:** chạy UP trên DB test mới và upgrade path từ schema hiện tại cho User và Medical Record; xác minh version/checksum, FK/indexes và dữ liệu mẫu. DOWN có thể xóa dữ liệu nên chỉ thử trên DB disposable đã xác định rõ. Chưa chạy production.
+5. **PostgreSQL/HTTP integration:** cấu hình DB test riêng cho từng service, chạy các test hiện đang skip; báo pass/fail/skip riêng. Không trỏ test vào Supabase/project chứa dữ liệu người dùng.
+6. **E2E thật qua Gateway:** thay mock-only evidence bằng smoke/integration chạy các process service thật, đi theo đường Client → Gateway → owning service → DB; kiểm tra auth, role, internal route isolation, cache invalidation, TOTP/grant/finalization, outbox/notification, timeout và retry.
+7. **Rà soát security và decisions:** chốt các policy còn mở trong API contract; rà caller authentication ở các internal routes, dữ liệu trả về và log redaction. Không ghi “0 vi phạm” nếu chưa có lệnh/quy trình quét và kết quả đính kèm.
+8. **Re-run và acceptance:** sau các sửa đổi, chạy build/lint/typecheck, unit, OpenAPI, PostgreSQL integration, HTTP integration và smoke. Lưu command, commit SHA, kết quả từng suite và môi trường đã dùng; review bởi owner từng service. Chỉ đánh dấu `ACCEPTED` khi có đủ evidence.
+
+#### Tiêu chí để chuyển bước
+
+- Không còn lỗi contract/OpenAPI chưa giải thích hoặc test nghiệp vụ đỏ.
+- Clinical grant được xác minh ở service có thẩm quyền; password routes không trả thành công giả.
+- Migrations chạy đạt trên DB test sạch và upgrade path đã kiểm tra; destructive DOWN được ghi rõ giới hạn.
+- Các test DB/HTTP bỏ skip đã chạy hoặc blocker môi trường được ghi cụ thể, không tính là đạt.
+- E2E qua Gateway dùng service và DB thật đạt các luồng PATIENT, DOCTOR, STAFF, ADMIN liên quan.
+- Báo cáo cập nhật đúng HEAD và working tree; domain owners review; sau đó mới đề nghị push/merge theo quy trình nhánh.
+
+**Khuyến nghị hiện tại:** tiếp tục ở bước sửa blocker và chuẩn bị live staging/test database. Chưa tuyên bố đạt nghiệm thu hoặc merge-ready. Tham khảo `packages/openapi-contract-tests/LIVE-SMOKE-GUIDE.md` như kế hoạch thao tác; ghi lại kết quả thực tế sau khi chạy.
