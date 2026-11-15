@@ -1,5 +1,5 @@
 import React from "react";
-import { Calendar } from "lucide-react";
+import { Calendar, Search } from "lucide-react";
 import type { AppointmentStatus } from "@clinic/shared-types";
 import { getVietnamTodayISO } from "../../lib/formatting/date-time";
 import styles from "./appointments-panel.module.css";
@@ -73,22 +73,23 @@ export function AppointmentFilterBar({
 
         {/* Search input */}
         <div className={styles.searchGroup}>
-          <label htmlFor="appointment-search" className={styles.dateLabel}>Tìm trong trang hiện tại</label>
+          <label htmlFor="appointment-search" className={styles.srOnly}>
+            Tìm theo tên bệnh nhân, bác sĩ hoặc lý do
+          </label>
+          <Search size={16} className={styles.searchIcon} aria-hidden="true" />
           <input
             id="appointment-search"
             type="search"
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
-            placeholder="Tên bệnh nhân, bác sĩ hoặc lý do"
+            placeholder="Tìm theo tên bệnh nhân, bác sĩ hoặc lý do..."
             className={styles.searchInput}
-            aria-label="Tìm kiếm lịch hẹn"
-            aria-describedby="appointment-search-hint"
+            aria-label="Tìm kiếm lịch hẹn theo tên bệnh nhân, bác sĩ hoặc lý do"
           />
-          <small id="appointment-search-hint" className={styles.searchHint}>Chỉ lọc các lịch hẹn trên trang đang xem.</small>
         </div>
 
         {/* Action buttons */}
-        <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+        <div className={styles.filterActions}>
           {isFiltered && (
             <Button
               type="button"

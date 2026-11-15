@@ -118,4 +118,18 @@ describe("AppointmentsPage View Switching & Header Alignment", () => {
     );
     expect(switchedBackBtn, "Expected 'Bảng hàng đợi' button after switching back").toBeDefined();
   });
+
+  it("renders clean full-width search bar without cluttered instruction hints", async () => {
+    await act(async () => {
+      root.render(<AppointmentsPage />);
+    });
+
+    const searchInput = host.querySelector<HTMLInputElement>('input[type="search"]');
+    expect(searchInput, "Expected search input to be present").not.toBeNull();
+    expect(searchInput?.getAttribute("placeholder")).toBe("Tìm theo tên bệnh nhân, bác sĩ hoặc lý do...");
+
+    // Must NOT contain the removed cluttered instructional labels or hints
+    expect(host.textContent).not.toContain("Tìm trong trang hiện tại");
+    expect(host.textContent).not.toContain("Chỉ lọc các lịch hẹn trên trang đang xem.");
+  });
 });

@@ -91,6 +91,18 @@ h1 { font-size: clamp(1.5rem, 2.5vw, 1.85rem); font-weight: 600; letter-spacing:
 .pagination { align-items: center; display: flex; flex-wrap: wrap; gap: 12px; justify-content: center; }
 .pagination span { color: var(--muted); font-size: .92rem; }
 
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
+}
+
 @media (max-width: 760px) {
   .topbar { align-items: center; flex-wrap: wrap; gap: 12px; }
   .mobile-menu-toggle { display: inline-block !important; }

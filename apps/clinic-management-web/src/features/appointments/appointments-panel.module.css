@@ -120,19 +120,25 @@
 }
 
 .searchGroup {
-  flex: 1;
-  min-width: 240px;
-  max-width: 380px;
-  display: grid;
-  gap: 8px;
+  flex: 1 1 280px;
+  min-width: 220px;
+  position: relative;
+  display: flex;
+  align-items: center;
 }
 
-.searchHint { color: var(--muted); font-size: .75rem; }
+.searchIcon {
+  position: absolute;
+  left: 14px;
+  color: var(--muted);
+  pointer-events: none;
+  flex-shrink: 0;
+}
 
 .searchInput {
   min-height: 44px;
   width: 100%;
-  padding: 8px 14px;
+  padding: 8px 14px 8px 38px;
   border: 1px solid var(--line);
   border-radius: var(--radius-md, 6px);
   font-size: 0.875rem;
@@ -146,6 +152,29 @@
 .searchInput:focus {
   border-color: var(--primary);
   box-shadow: 0 0 0 2px var(--primary-light);
+}
+
+.searchInput::placeholder {
+  color: var(--muted);
+}
+
+.filterActions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+.srOnly {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border-width: 0;
 }
 
 /* Status Filter Tabs */
@@ -591,6 +620,13 @@
   .searchGroup {
     max-width: none;
     min-width: 0;
+    width: 100%;
+  }
+
+  .filterActions {
+    display: flex;
+    justify-content: flex-end;
+    width: 100%;
   }
 
   .tableWrapper { overflow: visible; }
