@@ -92,6 +92,11 @@ export class DoctorRepository {
     const result = await this.pool.query("SELECT * FROM doctor_service.doctors WHERE id = $1", [id]);
     return result.rows[0] ? doctor(result.rows[0]) : null;
   }
+  async findDoctorsByIds(ids: string[]): Promise<Doctor[]> {
+    if (!ids.length) return [];
+    const result = await this.pool.query("SELECT * FROM doctor_service.doctors WHERE id = ANY($1)", [ids]);
+    return result.rows.map(doctor);
+  }
   async findDoctorByUser(userId: string) {
     const result = await this.pool.query("SELECT * FROM doctor_service.doctors WHERE user_id = $1", [userId]);
     return result.rows[0] ? doctor(result.rows[0]) : null;

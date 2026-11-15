@@ -28,8 +28,11 @@ export const appointmentOpenApi = {
     "/api/v1/appointments": {
       get: { summary: "List appointments scoped to the authenticated actor", "x-roles": ["PATIENT", "DOCTOR", "STAFF", "ADMIN"],
         parameters: [...pagination, parameter("patientId", "query", false, uuid), parameter("doctorId", "query", false, uuid),
-          parameter("status", "query", false, { type: "string", enum: ["PENDING", "CONFIRMED", "CHECKED_IN", "COMPLETED", "CANCELLED", "NO_SHOW"] }),
-          parameter("from", "query", false, dateTime), parameter("to", "query", false, dateTime)],
+          parameter("status", "query", false, { type: "string" }),
+          parameter("from", "query", false, dateTime), parameter("to", "query", false, dateTime),
+          parameter("q", "query", false, { type: "string" }), parameter("include", "query", false, { type: "string", enum: ["names"] }),
+          parameter("view", "query", false, { type: "string", enum: ["summary", "detail"], default: "summary" }),
+          parameter("sort", "query", false, { type: "string" })],
         responses: { "200": response(ref("AppointmentPage")), ...errors } },
       post: { summary: "Create a booking with durable idempotency", "x-roles": ["PATIENT", "STAFF", "ADMIN"],
         parameters: [parameter("Idempotency-Key", "header", true, { type: "string", minLength: 1, maxLength: 255 })],
@@ -37,8 +40,15 @@ export const appointmentOpenApi = {
         responses: { "201": response(ref("Appointment"), "Created"),
           "200": response(ref("Appointment"), "Exact idempotency replay"), ...errors } }
     },
+    "/api/v1/appointments/summary": {
+      get: { summary: "Aggregate appointment metrics and status counts", "x-roles": ["DOCTOR", "STAFF", "ADMIN"],
+        parameters: [parameter("from", "query", true, dateTime), parameter("to", "query", true, dateTime),
+          parameter("doctorId", "query", false, uuid), parameter("status", "query", false, { type: "string" })],
+        responses: { "200": response(ref("AppointmentMetrics")), ...errors } }
+    },
     "/api/v1/appointments/{id}": { get: { summary: "Get an appointment visible to the authenticated actor",
-      "x-roles": ["PATIENT", "DOCTOR", "STAFF", "ADMIN"], parameters: [id],
+      "x-roles": ["PATIENT", "DOCTOR", "STAFF", "ADMIN"], parameters: [id, parameter("view", "query", false, { type: "string", enum: ["summary", "detail"] }),
+        parameter("include", "query", false, { type: "string", enum: ["names"] })],
       responses: { "200": response(ref("Appointment")), ...errors } } },
     "/api/v1/appointments/{id}/reschedule": { patch: { summary: "Reschedule a future PENDING or CONFIRMED booking",
       "x-roles": ["PATIENT", "STAFF", "ADMIN"], parameters: [id],
@@ -46,9 +56,17 @@ export const appointmentOpenApi = {
     "/api/v1/appointments/{id}/cancel": { patch: transition("Cancel a PENDING or CONFIRMED booking", ["PATIENT", "STAFF", "ADMIN"]) },
     "/api/v1/appointments/{id}/confirm": { patch: transition("Confirm a PENDING booking", ["STAFF", "ADMIN"]) },
     "/api/v1/appointments/{id}/check-in": { patch: transition("Check in a CONFIRMED booking", ["STAFF", "ADMIN"]) },
-    "/api/v1/appointments/{id}/complete": { patch: { summary: "Deprecated: completion requires a final Medical Record", deprecated: true,
-      "x-roles": ["DOCTOR"], parameters: [id], responses: { "409": failure, "401": failure, "403": failure } } },
+    "/api/v1/appointments/{id}/complete": {
+      patch: { summary: "Deprecated: completion requires a final Medical Record", deprecated: true,
+        "x-roles": ["DOCTOR"], parameters: [id], responses: { "409": failure, "401": failure, "403": failure } },
+      get: { summary: "Deprecated: completion requires a final Medical Record", deprecated: true,
+        "x-roles": ["DOCTOR"], parameters: [id], responses: { "409": failure, "401": failure, "403": failure } }
+    },
     "/api/v1/appointments/{id}/no-show": { patch: transition("Mark a CONFIRMED booking as no-show", ["STAFF", "ADMIN"]) },
+    "/internal/v1/appointments/{id}/check-eligibility": { post: {
+      summary: "Check appointment eligibility for clinical record creation", security: [{ internalToken: [] }],
+      parameters: [id], responses: { "200": response({ type: "object", required: ["eligible", "status", "doctorId", "patientId"],
+        properties: { eligible: { type: "boolean" }, status: { type: "string" }, doctorId: uuid, patientId: uuid } }), ...errors } } },
     "/internal/v1/appointments/occupied-slots": { get: { summary: "List active occupied doctor slots",
       security: [{ internalToken: [] }], parameters: [parameter("doctorId", "query", true, uuid), parameter("from", "query", true, dateTime),
         parameter("to", "query", false, dateTime)],
@@ -104,7 +122,10 @@ export const appointmentOpenApi = {
         properties: { id: uuid, patientId: uuid, doctorId: uuid,
           status: { type: "string", enum: ["PENDING", "CONFIRMED", "CHECKED_IN", "COMPLETED", "CANCELLED", "NO_SHOW"] } } },
       ReminderContext: { type: "object", required: ["id", "patientId", "status", "scheduledStartAt"],
-        properties: { id: uuid, patientId: uuid, status: { type: "string" }, scheduledStartAt: dateTime } }
+        properties: { id: uuid, patientId: uuid, status: { type: "string" }, scheduledStartAt: dateTime } },
+      AppointmentMetrics: { type: "object", required: ["from", "to", "timezone", "total", "countsByStatus", "daily"],
+        properties: { from: dateTime, to: dateTime, timezone: { type: "string" }, total: { type: "integer" },
+          countsByStatus: { type: "object" }, daily: { type: "array", items: { type: "object", properties: { date: { type: "string" }, total: { type: "integer" } } } } } }
     }
   }
 };

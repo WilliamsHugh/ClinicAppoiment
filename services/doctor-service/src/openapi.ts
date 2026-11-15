@@ -45,6 +45,9 @@ export const doctorOpenApi = {
       get: operation("List active doctors; ADMIN may filter isActive", list(ref("Doctor")), { parameters: [...pageParameters, parameter("q", "query", false), parameter("specialtyId", "query", false), parameter("isActive", "query", false)] }),
       post: { ...operation("Link an active doctor account (ADMIN)", response(ref("Doctor")), { requestBody: body(ref("DoctorCreate")) }), responses: { "201": response(ref("Doctor")), ...errors } }
     },
+    "/api/v1/doctors/me": {
+      get: operation("Get current doctor profile for authenticated doctor", response(ref("Doctor")))
+    },
     "/api/v1/doctors/{id}": {
       get: operation("Get doctor", response(ref("Doctor")), { parameters: [parameter("id", "path")] }),
       patch: operation("Update doctor (ADMIN)", response(ref("Doctor")), { parameters: [parameter("id", "path")], requestBody: body(ref("DoctorUpdate")) })
@@ -71,6 +74,14 @@ export const doctorOpenApi = {
       } }), { parameters: [parameter("userId", "path")], internal: true }), security: [{ internalToken: [] }],
       "x-internal-callers": ["Appointment Service", "Medical Record Service", "User Service"],
       "x-token-envs": ["DOCTOR_INTERNAL_API_TOKEN", "DOCTOR_USER_INTERNAL_API_TOKEN"] } },
+    "/internal/v1/doctors/lookup": { post: { ...operation("Batch lookup doctor summaries for internal callers",
+      response({ type: "object", required: ["items"], properties: {
+        items: { type: "array", items: { type: "object", required: ["id", "displayName", "specialtyId", "isActive"], properties: {
+          id: { type: "string", format: "uuid" }, displayName: { type: "string" }, specialtyId: { type: "string", format: "uuid" }, isActive: { type: "boolean" }
+        } } }
+      } }), { requestBody: body({ type: "object", required: ["doctorIds"], properties: {
+        doctorIds: { type: "array", items: { type: "string", format: "uuid" } }
+      } }), internal: true }), security: [{ internalToken: [] }] } },
     "/internal/v1/doctors/verify-slot": { post: { ...operation("Verify active doctor and exact schedule slot",
       response({ type: "object", required: ["valid"], properties: { valid: { type: "boolean" }, reason: { type: "string" } } }),
       { requestBody: body(ref("VerifySlot")), internal: true }), security: [{ internalToken: [] }] } }

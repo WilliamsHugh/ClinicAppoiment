@@ -14,8 +14,16 @@ export type BookingFingerprint = {
 };
 export type BookingInput = BookingFingerprint & { createdBy: string };
 export type AppointmentFilters = {
-  patientId?: string; doctorId?: string; status?: AppointmentStatus;
-  from?: string; to?: string;
+  patientId?: string;
+  doctorId?: string;
+  status?: AppointmentStatus | AppointmentStatus[];
+  from?: string;
+  to?: string;
+  q?: string;
+  sort?: string;
+  allowedReasonSearch?: boolean;
+  matchedPatientIds?: string[];
+  matchedDoctorIds?: string[];
 };
 export type OutboxEvent = { id: string; eventType: string; aggregateId: string;
   payload: { appointmentId?: string; patientId?: string; doctorId?: string; scheduledStartAt?: string };
@@ -118,17 +126,134 @@ export class PostgresAppointmentRepository {
     };
     add("patient_id", filters.patientId);
     add("doctor_id", filters.doctorId);
-    add("status", filters.status);
+    if (filters.status) {
+      if (Array.isArray(filters.status)) {
+        values.push(filters.status);
+        where.push(`status = ANY($${values.length})`);
+      } else {
+        values.push(filters.status);
+        where.push(`status = $${values.length}`);
+      }
+    }
     add("scheduled_start_at", filters.from, ">=");
     add("scheduled_start_at", filters.to, "<");
+
+    if (filters.q) {
+      const qConds: string[] = [];
+      if (filters.allowedReasonSearch) {
+        values.push(`%${filters.q}%`);
+        qConds.push(`reason ILIKE $${values.length}`);
+      }
+      if (filters.matchedPatientIds?.length) {
+        values.push(filters.matchedPatientIds);
+        qConds.push(`patient_id = ANY($${values.length}::uuid[])`);
+      }
+      if (filters.matchedDoctorIds?.length) {
+        values.push(filters.matchedDoctorIds);
+        qConds.push(`doctor_id = ANY($${values.length}::uuid[])`);
+      }
+      if (qConds.length) {
+        where.push(`(${qConds.join(" OR ")})`);
+      } else {
+        where.push("false");
+      }
+    }
+
+    let orderBy = "scheduled_start_at ASC, id ASC";
+    if (filters.sort === "created_at" || filters.sort === "createdAt:asc") {
+      orderBy = "created_at ASC, id ASC";
+    } else if (filters.sort === "created_at:desc" || filters.sort === "createdAt:desc") {
+      orderBy = "created_at DESC, id DESC";
+    } else if (filters.sort === "scheduled_at:desc" || filters.sort === "scheduledStartAt:desc") {
+      orderBy = "scheduled_start_at DESC, id DESC";
+    }
+
     const condition = where.join(" AND ") || "true";
     const count = await this.pool.query<{ total: string }>(
       `SELECT count(*) AS total FROM appointment_service.appointments WHERE ${condition}`, values);
     const result = await this.pool.query(
       `SELECT ${columns} FROM appointment_service.appointments a WHERE ${condition}
-       ORDER BY scheduled_start_at ASC, id ASC LIMIT $${values.length + 1} OFFSET $${values.length + 2}`,
+       ORDER BY ${orderBy} LIMIT $${values.length + 1} OFFSET $${values.length + 2}`,
       [...values, limit, (page - 1) * limit]);
     return { items: result.rows.map(appointment), page, limit, total: Number(count.rows[0].total) };
+  }
+
+  async summary(filters: AppointmentFilters, from: string, to: string) {
+    const values: unknown[] = [];
+    const where: string[] = [];
+    if (filters.doctorId) {
+      values.push(filters.doctorId);
+      where.push(`doctor_id = $${values.length}`);
+    }
+    if (filters.patientId) {
+      values.push(filters.patientId);
+      where.push(`patient_id = $${values.length}`);
+    }
+    if (filters.status) {
+      if (Array.isArray(filters.status)) {
+        values.push(filters.status);
+        where.push(`status = ANY($${values.length})`);
+      } else {
+        values.push(filters.status);
+        where.push(`status = $${values.length}`);
+      }
+    }
+    values.push(from);
+    where.push(`scheduled_start_at >= $${values.length}`);
+    values.push(to);
+    where.push(`scheduled_start_at < $${values.length}`);
+    const condition = where.join(" AND ") || "true";
+
+    const rows = await this.pool.query<{ status: string; scheduledStartAt: Date }>(
+      `SELECT status, scheduled_start_at AS "scheduledStartAt"
+       FROM appointment_service.appointments
+       WHERE ${condition}`, values);
+
+    const countsByStatus: Record<AppointmentStatus, number> = {
+      PENDING: 0, CONFIRMED: 0, CHECKED_IN: 0,
+      COMPLETED: 0, CANCELLED: 0, NO_SHOW: 0
+    };
+    for (const row of rows.rows) {
+      if (row.status in countsByStatus) {
+        countsByStatus[row.status as AppointmentStatus]++;
+      }
+    }
+
+    const dailyMap = new Map<string, number>();
+    const startMs = Date.parse(from);
+    const endMs = Date.parse(to) - 1;
+    const toLocalDate = (ms: number) => new Date(ms + 7 * 3600_000).toISOString().slice(0, 10);
+
+    let currentMs = startMs;
+    const endDateStr = toLocalDate(Math.max(startMs, endMs));
+    while (true) {
+      const dStr = toLocalDate(currentMs);
+      dailyMap.set(dStr, 0);
+      if (dStr >= endDateStr) break;
+      currentMs += 24 * 3600_000;
+    }
+
+    for (const row of rows.rows) {
+      const dStr = toLocalDate(row.scheduledStartAt.getTime());
+      if (dailyMap.has(dStr)) {
+        dailyMap.set(dStr, (dailyMap.get(dStr) ?? 0) + 1);
+      } else {
+        dailyMap.set(dStr, 1);
+      }
+    }
+
+    const daily = Array.from(dailyMap.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, total]) => ({ date, total }));
+
+    return {
+      from,
+      to,
+      timezone: "Asia/Ho_Chi_Minh",
+      total: rows.rowCount,
+      countsByStatus,
+      daily
+    };
   }
 
   async occupiedSlots(doctorId: string, from: string, to?: string) {

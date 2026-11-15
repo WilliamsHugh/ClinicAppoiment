@@ -5,7 +5,7 @@ import swaggerUi from "swagger-ui-express";
 import { z } from "zod";
 import type { AppointmentStatus } from "@clinic/shared-types";
 import { createRequestLoggingMiddleware, logServiceEvent } from "@clinic/request-logging";
-import { AppointmentRepository } from "./repository.js";
+import { AppointmentRepository, type Appointment } from "./repository.js";
 import { createAppointmentPool, PostgresAppointmentRepository, SlotConflictError,
   IdempotencyMismatchError, RescheduleStateError, ConcurrentChangeError, InvalidTransitionError,
   type BookingFingerprint } from "./postgres-repository.js";
@@ -32,18 +32,53 @@ const createAppointmentSchema = z.object({
   scheduledEndAt: z.string().datetime(),
   reason: z.string().optional()
 });
+const statusEnum = z.enum(["PENDING", "CONFIRMED", "CHECKED_IN", "COMPLETED", "CANCELLED", "NO_SHOW"]);
+const statusQuery = z.preprocess((val) => {
+  if (!val) return undefined;
+  const rawList = Array.isArray(val) ? val : [val];
+  const items: string[] = [];
+  for (const raw of rawList) {
+    if (typeof raw !== "string") return "__INVALID__";
+    for (const part of raw.split(",").map((s) => s.trim()).filter(Boolean)) {
+      items.push(part);
+    }
+  }
+  return items.length === 1 ? items[0] : items;
+}, z.union([statusEnum, z.array(statusEnum)]).optional());
+
 const listQuerySchema = z.object({
   page: z.coerce.number().int().min(1).max(1_000_000).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),
-  patientId: z.string().uuid().optional(), doctorId: z.string().uuid().optional(),
-  status: z.enum(["PENDING", "CONFIRMED", "CHECKED_IN", "COMPLETED", "CANCELLED", "NO_SHOW"]).optional(),
-  from: z.string().datetime().optional(), to: z.string().datetime().optional()
+  patientId: z.string().uuid().optional(),
+  doctorId: z.string().uuid().optional(),
+  status: statusQuery,
+  from: z.string().datetime().optional(),
+  to: z.string().datetime().optional(),
+  q: z.string().trim().min(1).max(100).optional(),
+  include: z.enum(["names"]).optional(),
+  view: z.enum(["summary", "detail"]).default("summary"),
+  sort: z.string().trim().optional()
+});
+const summaryQuerySchema = z.object({
+  from: z.string().datetime(),
+  to: z.string().datetime(),
+  doctorId: z.string().uuid().optional(),
+  status: statusQuery
 });
 const rescheduleSchema = z.object({ scheduledStartAt: z.string().datetime(),
   scheduledEndAt: z.string().datetime(), reason: z.string().trim().max(500).optional() }).strict();
 const transitionBodySchema = z.object({ reason: z.string().trim().max(500).optional() }).strict();
 const appointmentIdSchema = z.string().uuid();
-const completionSchema = z.object({ recordId: z.string().uuid() }).strict();
+const completionSchema = z.object({
+  record_id: z.string().uuid().optional(),
+  recordId: z.string().uuid().optional(),
+  doctor_id: z.string().uuid().optional(),
+  doctorId: z.string().uuid().optional(),
+  proof_token: z.string().optional(),
+  proofToken: z.string().optional()
+}).refine((data) => Boolean(data.record_id || data.recordId), {
+  message: "record_id is required"
+});
 
 function validInterval(start: string, end: string) { return Date.parse(start) < Date.parse(end); }
 function normalized(value: string) { return new Date(value).toISOString(); }
@@ -237,6 +272,163 @@ function transition(toStatus: AppointmentStatus) {
   };
 }
 
+type PatientSummary = { id: string; fullName: string };
+type DoctorSummary = { id: string; displayName: string; specialtyId?: string; specialtyName?: string | null };
+
+async function lookupPatients(patientIds: string[], requestId?: string): Promise<Map<string, PatientSummary>> {
+  const result = new Map<string, PatientSummary>();
+  if (!patientIds.length) return result;
+  const token = process.env.USER_APPOINTMENT_INTERNAL_API_TOKEN;
+  if (!token || Buffer.byteLength(token, "utf8") < 32) {
+    throw new UpstreamUnavailableError("User internal credential is unavailable");
+  }
+  const forwardedRequestId = requestId && /^[a-zA-Z0-9-]{1,80}$/.test(requestId) ? requestId : undefined;
+
+  try {
+    const response = await fetch(`${userServiceUrl}/internal/v1/patients/lookup`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Internal-Token": token,
+        ...(forwardedRequestId ? { "X-Request-Id": forwardedRequestId } : {})
+      },
+      body: JSON.stringify({ patientIds }),
+      redirect: "error",
+      signal: AbortSignal.timeout(3000)
+    });
+    if (response.ok) {
+      const body = await response.json() as { success?: boolean; data?: { items?: Array<{ id: string; fullName: string }> } };
+      if (body.success && Array.isArray(body.data?.items)) {
+        for (const p of body.data.items) {
+          result.set(p.id, { id: p.id, fullName: p.fullName });
+        }
+        return result;
+      }
+    } else if (response.status !== 404) {
+      throw new UpstreamUnavailableError("User Service lookup failed");
+    }
+  } catch (err) {
+    if (err instanceof UpstreamUnavailableError) throw err;
+    throw new UpstreamUnavailableError("User Service unavailable");
+  }
+
+  for (const pid of patientIds) {
+    try {
+      const response = await fetch(`${userServiceUrl}/internal/v1/patients/${encodeURIComponent(pid)}`, {
+        headers: {
+          "X-Internal-Token": token,
+          ...(forwardedRequestId ? { "X-Request-Id": forwardedRequestId } : {})
+        },
+        redirect: "error",
+        signal: AbortSignal.timeout(3000)
+      });
+      if (response.ok) {
+        const body = await response.json() as { success?: boolean; data?: { id?: string; fullName?: string } };
+        if (body.success && body.data?.id) {
+          result.set(pid, { id: pid, fullName: body.data.fullName ?? "Patient" });
+        }
+      } else if (response.status !== 404) {
+        throw new UpstreamUnavailableError("User Service lookup failed");
+      }
+    } catch (err) {
+      if (err instanceof UpstreamUnavailableError) throw err;
+      throw new UpstreamUnavailableError("User Service unavailable");
+    }
+  }
+  return result;
+}
+
+async function lookupDoctors(doctorIds: string[], requestId?: string): Promise<Map<string, DoctorSummary>> {
+  const result = new Map<string, DoctorSummary>();
+  if (!doctorIds.length) return result;
+  const token = process.env.DOCTOR_INTERNAL_API_TOKEN;
+  if (!token || Buffer.byteLength(token, "utf8") < 32) {
+    throw new UpstreamUnavailableError("Doctor internal credential is unavailable");
+  }
+  const forwardedRequestId = requestId && /^[a-zA-Z0-9-]{1,80}$/.test(requestId) ? requestId : undefined;
+
+  try {
+    const response = await fetch(`${doctorServiceUrl}/internal/v1/doctors/lookup`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Internal-Token": token,
+        ...(forwardedRequestId ? { "X-Request-Id": forwardedRequestId } : {})
+      },
+      body: JSON.stringify({ doctorIds }),
+      redirect: "error",
+      signal: AbortSignal.timeout(3000)
+    });
+    if (!response.ok) {
+      throw new UpstreamUnavailableError("Doctor Service lookup failed");
+    }
+    const body = await response.json() as {
+      success?: boolean;
+      data?: { items?: Array<{ id: string; displayName: string; specialtyId?: string; specialtyName?: string }> }
+    };
+    if (body.success && Array.isArray(body.data?.items)) {
+      for (const d of body.data.items) {
+        result.set(d.id, {
+          id: d.id,
+          displayName: d.displayName,
+          specialtyId: d.specialtyId,
+          specialtyName: d.specialtyName ?? null
+        });
+      }
+      return result;
+    }
+    throw new UpstreamUnavailableError("Invalid Doctor Service response");
+  } catch (err) {
+    if (err instanceof UpstreamUnavailableError) throw err;
+    throw new UpstreamUnavailableError("Doctor Service unavailable");
+  }
+}
+
+function toSummaryView(appointment: Appointment, namesMap?: { patients: Map<string, PatientSummary>; doctors: Map<string, DoctorSummary> }) {
+  const item: Record<string, unknown> = {
+    id: appointment.id,
+    patientId: appointment.patientId,
+    doctorId: appointment.doctorId,
+    specialtyId: appointment.specialtyId ?? null,
+    scheduledStartAt: appointment.scheduledStartAt,
+    scheduledEndAt: appointment.scheduledEndAt,
+    status: appointment.status
+  };
+  if (namesMap) {
+    const p = namesMap.patients.get(appointment.patientId);
+    item.patientSummary = p ? { id: p.id, fullName: p.fullName } : null;
+    const d = namesMap.doctors.get(appointment.doctorId);
+    item.doctorSummary = d ? { id: d.id, displayName: d.displayName } : null;
+    item.specialtySummary = d?.specialtyId ? { id: d.specialtyId, name: d.specialtyName ?? null } : null;
+  }
+  return item;
+}
+
+function toDetailView(appointment: Appointment, namesMap?: { patients: Map<string, PatientSummary>; doctors: Map<string, DoctorSummary> }) {
+  const item: Record<string, unknown> = {
+    id: appointment.id,
+    patientId: appointment.patientId,
+    doctorId: appointment.doctorId,
+    specialtyId: appointment.specialtyId ?? null,
+    scheduledStartAt: appointment.scheduledStartAt,
+    scheduledEndAt: appointment.scheduledEndAt,
+    reason: appointment.reason ?? null,
+    status: appointment.status,
+    createdBy: appointment.createdBy,
+    updatedBy: appointment.updatedBy ?? null,
+    createdAt: appointment.createdAt,
+    updatedAt: appointment.updatedAt
+  };
+  if (namesMap) {
+    const p = namesMap.patients.get(appointment.patientId);
+    item.patientSummary = p ? { id: p.id, fullName: p.fullName } : null;
+    const d = namesMap.doctors.get(appointment.doctorId);
+    item.doctorSummary = d ? { id: d.id, displayName: d.displayName } : null;
+    item.specialtySummary = d?.specialtyId ? { id: d.specialtyId, name: d.specialtyName ?? null } : null;
+  }
+  return item;
+}
+
 app.get("/health", async (_req, res) => {
   try {
     if (store instanceof PostgresAppointmentRepository) {
@@ -250,23 +442,108 @@ app.get("/api/v1/appointments", requireRoles("PATIENT", "DOCTOR", "STAFF", "ADMI
   const parsed = listQuerySchema.safeParse(req.query);
   if (!parsed.success || (parsed.data.from && parsed.data.to && !validInterval(parsed.data.from, parsed.data.to)))
     return res.status(400).json(error("VALIDATION_ERROR", "Invalid list query", parsed.success ? [] : parsed.error.issues));
-  const ownPatientId = currentRole(req) === "PATIENT"
+  const role = currentRole(req);
+  const ownPatientId = role === "PATIENT"
     ? await patientIdForUser(currentUserId(req))
     : undefined;
-  const ownDoctorId = currentRole(req) === "DOCTOR"
+  const ownDoctorId = role === "DOCTOR"
     ? await doctorIdForUser(currentUserId(req), req.header("X-Request-Id") ?? undefined)
     : undefined;
-  if (currentRole(req) === "PATIENT" && !ownPatientId) {
+  if (role === "PATIENT" && !ownPatientId) {
     return res.status(403).json(error("PATIENT_PROFILE_NOT_FOUND", "Patient profile not found"));
   }
-  if (currentRole(req) === "DOCTOR" && !ownDoctorId)
+  if (role === "DOCTOR" && !ownDoctorId) {
     return res.status(403).json(error("DOCTOR_PROFILE_NOT_FOUND", "Doctor profile not found"));
+  }
+
+  const { page, limit, view, include, q, sort, ...filters } = parsed.data;
+
+  // Detail view access checks for DOCTOR
+  if (view === "detail" && role === "DOCTOR") {
+    if (!filters.patientId) {
+      return res.status(400).json(error("VALIDATION_ERROR", "patientId is required for doctor detail view"));
+    }
+    const grant = req.header("X-Clinical-Grant");
+    if (!grant) {
+      return res.status(403).json(error("CLINICAL_VERIFICATION_REQUIRED", "Clinical access grant is required for detail view"));
+    }
+  }
+
+  const allowedReasonSearch = role !== "DOCTOR" || Boolean(req.header("X-Clinical-Grant"));
+
   try {
-    const { page, limit, ...filters } = parsed.data;
-    return res.json(success(await store.list({ ...filters,
+    const listResult = await store.list({
+      ...filters,
       patientId: ownPatientId ?? filters.patientId,
-      doctorId: ownDoctorId ?? filters.doctorId }, page, limit)));
-  } catch (caught) { return bookingError(res, caught); }
+      doctorId: ownDoctorId ?? filters.doctorId,
+      q,
+      sort,
+      allowedReasonSearch
+    }, page, limit);
+
+    if (view === "detail" && role === "DOCTOR") {
+      for (const item of listResult.items) {
+        if (item.status === "CANCELLED" || item.status === "NO_SHOW") {
+          return res.status(403).json(error("CLINICAL_ACCESS_DENIED", "Cancelled or no-show appointments do not grant clinical access"));
+        }
+      }
+    }
+
+    let namesMap: { patients: Map<string, PatientSummary>; doctors: Map<string, DoctorSummary> } | undefined;
+    if (include === "names") {
+      const patientIds = Array.from(new Set(listResult.items.map((i) => i.patientId)));
+      const doctorIds = Array.from(new Set(listResult.items.map((i) => i.doctorId)));
+      const [patients, doctors] = await Promise.all([
+        lookupPatients(patientIds, req.header("X-Request-Id") ?? undefined),
+        lookupDoctors(doctorIds, req.header("X-Request-Id") ?? undefined)
+      ]);
+      namesMap = { patients, doctors };
+    }
+
+    const items = listResult.items.map((item) =>
+      view === "detail" ? toDetailView(item, namesMap) : toSummaryView(item, namesMap)
+    );
+
+    return res.json(success({
+      items,
+      page: listResult.page,
+      limit: listResult.limit,
+      total: listResult.total
+    }));
+  } catch (caught) {
+    if (caught instanceof UpstreamUnavailableError) {
+      return res.status(503).json(error("DEPENDENCY_UNAVAILABLE", caught.message));
+    }
+    return bookingError(res, caught);
+  }
+});
+
+app.get("/api/v1/appointments/summary", requireRoles("DOCTOR", "STAFF", "ADMIN"), async (req, res) => {
+  const parsed = summaryQuerySchema.safeParse(req.query);
+  if (!parsed.success || !validInterval(parsed.data.from, parsed.data.to)) {
+    return res.status(400).json(error("VALIDATION_ERROR", "Invalid summary query", parsed.success ? [] : parsed.error.issues));
+  }
+  const role = currentRole(req);
+  const ownDoctorId = role === "DOCTOR"
+    ? await doctorIdForUser(currentUserId(req), req.header("X-Request-Id") ?? undefined)
+    : undefined;
+  if (role === "DOCTOR" && !ownDoctorId) {
+    return res.status(403).json(error("DOCTOR_PROFILE_NOT_FOUND", "Doctor profile not found"));
+  }
+
+  try {
+    const summaryData = await store.summary({
+      doctorId: ownDoctorId ?? parsed.data.doctorId,
+      status: parsed.data.status
+    }, parsed.data.from, parsed.data.to);
+
+    return res.json(success(summaryData));
+  } catch (caught) {
+    if (caught instanceof UpstreamUnavailableError) {
+      return res.status(503).json(error("DEPENDENCY_UNAVAILABLE", caught.message));
+    }
+    return bookingError(res, caught);
+  }
 });
 app.post("/api/v1/appointments", requireRoles("PATIENT", "STAFF", "ADMIN"), async (req, res) => {
   const parsed = createAppointmentSchema.safeParse(req.body);
@@ -321,7 +598,39 @@ app.get("/api/v1/appointments/:id", requireRoles("PATIENT", "DOCTOR", "STAFF", "
   if (!(await canAccessAppointment(req, appointment))) {
     return res.status(403).json(error("ACCESS_DENIED", "Appointment access denied"));
   }
-  return res.json(success(appointment));
+
+  const role = currentRole(req);
+  const view = req.query.view === "detail" ? "detail" : "summary";
+  const include = req.query.include;
+
+  if (view === "detail" && role === "DOCTOR") {
+    if (appointment.status === "CANCELLED" || appointment.status === "NO_SHOW") {
+      return res.status(403).json(error("CLINICAL_ACCESS_DENIED", "Cancelled or no-show appointments do not grant clinical access"));
+    }
+    const grant = req.header("X-Clinical-Grant");
+    if (!grant) {
+      return res.status(403).json(error("CLINICAL_VERIFICATION_REQUIRED", "Clinical access grant is required for detail view"));
+    }
+  }
+
+  let namesMap: { patients: Map<string, PatientSummary>; doctors: Map<string, DoctorSummary> } | undefined;
+  if (include === "names") {
+    try {
+      const [patients, doctors] = await Promise.all([
+        lookupPatients([appointment.patientId], req.header("X-Request-Id") ?? undefined),
+        lookupDoctors([appointment.doctorId], req.header("X-Request-Id") ?? undefined)
+      ]);
+      namesMap = { patients, doctors };
+    } catch (caught) {
+      if (caught instanceof UpstreamUnavailableError) {
+        return res.status(503).json(error("DEPENDENCY_UNAVAILABLE", caught.message));
+      }
+      throw caught;
+    }
+  }
+
+  const result = view === "detail" ? toDetailView(appointment, namesMap) : toSummaryView(appointment, namesMap);
+  return res.json(success(result));
 });
 app.patch("/api/v1/appointments/:id/reschedule", requireRoles("PATIENT", "STAFF", "ADMIN"), async (req, res) => {
   const id = String(req.params.id);
@@ -357,6 +666,8 @@ app.patch("/api/v1/appointments/:id/confirm", requireRoles("STAFF", "ADMIN"), tr
 app.patch("/api/v1/appointments/:id/check-in", requireRoles("STAFF", "ADMIN"), transition("CHECKED_IN"));
 // Completion is reserved for the authenticated Medical Record callback below.
 app.patch("/api/v1/appointments/:id/complete", requireRoles("DOCTOR"), (_req, res) =>
+  res.status(409).json(error("MEDICAL_RECORD_REQUIRED", "Complete a final medical record first")));
+app.get("/api/v1/appointments/:id/complete", requireRoles("DOCTOR"), (_req, res) =>
   res.status(409).json(error("MEDICAL_RECORD_REQUIRED", "Complete a final medical record first")));
 app.patch("/api/v1/appointments/:id/no-show", requireRoles("STAFF", "ADMIN"), transition("NO_SHOW"));
 app.get("/internal/v1/appointments/occupied-slots", requireInternalToken("DOCTOR_INTERNAL_API_TOKEN"), async (req, res) => {
@@ -405,13 +716,37 @@ app.get("/internal/v1/appointments/:id/reminder-context",
       status: item.status, scheduledStartAt: item.scheduledStartAt }));
   });
 
+app.post("/internal/v1/appointments/:id/check-eligibility",
+  requireInternalToken("APPOINTMENT_RECORD_INTERNAL_API_TOKEN"), async (req, res) => {
+    const id = String(req.params.id);
+    if (!appointmentIdSchema.safeParse(id).success)
+      return res.status(400).json(error("VALIDATION_ERROR", "Invalid appointment ID"));
+    const appointment = await store.findById(id);
+    if (!appointment) return res.status(404).json(error("APPOINTMENT_NOT_FOUND", "Appointment not found"));
+    let eligible = appointment.status === "CHECKED_IN";
+    const body = (typeof req.body === "object" && req.body !== null) ? req.body as Record<string, unknown> : {};
+    if (typeof body.doctorId === "string" && body.doctorId !== appointment.doctorId) {
+      eligible = false;
+    }
+    if (typeof body.patientId === "string" && body.patientId !== appointment.patientId) {
+      eligible = false;
+    }
+    return res.json(success({
+      eligible,
+      status: appointment.status,
+      doctorId: appointment.doctorId,
+      patientId: appointment.patientId
+    }));
+  });
+
 app.post("/internal/v1/appointments/:id/complete-from-record",
   requireInternalToken("APPOINTMENT_RECORD_INTERNAL_API_TOKEN"), async (req, res) => {
     const id = String(req.params.id);
     const parsed = completionSchema.safeParse(req.body);
     if (!appointmentIdSchema.safeParse(id).success || !parsed.success)
       return res.status(400).json(error("VALIDATION_ERROR", "Invalid completion request"));
-    const recordId = parsed.data.recordId;
+    const recordId = (parsed.data.record_id ?? parsed.data.recordId)!;
+    const providedDoctorId = parsed.data.doctor_id ?? parsed.data.doctorId;
     const existing = await store.findCompletion(id);
     if (existing?.recordId === recordId) return res.json(success({ id, status: "COMPLETED", recordId }));
     if (existing) return res.status(409).json(error("APPOINTMENT_INVALID_STATUS_TRANSITION", "Appointment already completed"));
@@ -419,6 +754,8 @@ app.post("/internal/v1/appointments/:id/complete-from-record",
     if (!item) return res.status(404).json(error("APPOINTMENT_NOT_FOUND", "Appointment not found"));
     if (item.status !== "CHECKED_IN")
       return res.status(409).json(error("APPOINTMENT_INVALID_STATUS_TRANSITION", "Appointment must be checked in"));
+    if (providedDoctorId && providedDoctorId !== item.doctorId)
+      return res.status(422).json(error("RECORD_CONTEXT_MISMATCH", "Record doctor does not match appointment"));
     let record: { id?: string; appointmentId?: string; patientId?: string; doctorId?: string;
       status?: string; createdBy?: string; updatedBy?: string };
     try {

@@ -41,6 +41,7 @@ const timeOffFields = z.object({ startAt: z.string().datetime(), endAt: z.string
 const timeOffCreate = timeOffFields;
 const timeOffUpdate = timeOffFields.partial();
 const verifyBody = z.object({ doctorId: uuid, startAt: z.string().datetime(), endAt: z.string().datetime() }).strict();
+const doctorLookupBody = z.object({ doctorIds: z.array(uuid).max(100) }).strict();
 
 function parse<T>(schema: z.ZodType<T>, value: unknown): T {
   const parsed = schema.safeParse(value);
@@ -89,7 +90,11 @@ function ok(res: Response, data: unknown, status = 200) {
   res.status(status).json({ success: true, data, requestId: res.getHeader("X-Request-Id") });
 }
 function fail(res: Response, status: number, code: string, message: string, details: unknown[] = []) {
-  res.status(status).json({ success: false, error: { code, message, details }, requestId: res.getHeader("X-Request-Id") });
+  const extra: Record<string, unknown> = {};
+  if (details.length > 0 && typeof details[0] === "object" && details[0] !== null && "conflictingAppointmentCount" in details[0]) {
+    extra.conflictingAppointmentCount = (details[0] as Record<string, unknown>).conflictingAppointmentCount;
+  }
+  res.status(status).json({ success: false, error: { code, message, details, ...extra }, requestId: res.getHeader("X-Request-Id") });
 }
 
 export function createDoctorApp(repository: DoctorRepository, users: UserDirectory,
@@ -154,7 +159,7 @@ export function createDoctorApp(repository: DoctorRepository, users: UserDirecto
     const booked = await occupied(doctorId, now.toISOString(), undefined, requestId);
     const invalid = booked.filter((slot) => !validExactSlot(slot.startAt, slot.endAt, schedules, timeOffs, now));
     if (invalid.length) throw new ApiError(409, "SCHEDULE_CONFLICT_WITH_APPOINTMENTS",
-      "Schedule change would invalidate existing appointments", [{ count: invalid.length }]);
+      "Schedule change would invalidate existing appointments", [{ count: invalid.length, conflictingAppointmentCount: invalid.length, affectedAppointmentsCount: invalid.length }]);
   }
 
   app.get("/health", wrap(async (_req, res) => {
@@ -189,6 +194,18 @@ export function createDoctorApp(repository: DoctorRepository, users: UserDirecto
     const user = actor(req), query = parse(doctorQuery, req.query);
     ok(res, await repository.listDoctors({ ...query, isActive: user.role === "ADMIN" ? query.isActive : true }));
   }));
+  app.get("/api/v1/doctors/me", wrap(async (req, res) => {
+    const user = actor(req);
+    requireRole(user, "DOCTOR");
+    if (!uuid.safeParse(user.id).success) {
+      throw new ApiError(400, "VALIDATION_ERROR", "Invalid user ID");
+    }
+    const item = await repository.findDoctorByUser(user.id);
+    if (!item || !item.isActive) {
+      throw new ApiError(404, "DOCTOR_NOT_FOUND", "Doctor profile not found");
+    }
+    ok(res, item);
+  }));
   app.post("/api/v1/doctors", wrap(async (req, res) => {
     requireRole(actor(req), "ADMIN");
     const input = parse(doctorCreate, req.body);
@@ -218,7 +235,7 @@ export function createDoctorApp(repository: DoctorRepository, users: UserDirecto
     if (input.isActive === false && current.isActive) {
       const booked = await occupied(id, new Date().toISOString(), undefined, String(res.getHeader("X-Request-Id")));
       if (booked.length) throw new ApiError(409, "SCHEDULE_CONFLICT_WITH_APPOINTMENTS",
-        "Doctor has upcoming appointments", [{ count: booked.length }]);
+        "Doctor has upcoming appointments", [{ count: booked.length, conflictingAppointmentCount: booked.length, affectedAppointmentsCount: booked.length }]);
     }
     ok(res, await repository.updateDoctor(id, input));
   }));
@@ -270,7 +287,7 @@ export function createDoctorApp(repository: DoctorRepository, users: UserDirecto
     const booked = await occupied(doctorId, input.startAt, input.endAt, String(res.getHeader("X-Request-Id")));
     const conflicts = booked.filter((slot) => overlaps(slot, proposed));
     if (conflicts.length) throw new ApiError(409, "SCHEDULE_CONFLICT_WITH_APPOINTMENTS",
-      "Time off overlaps existing appointments", [{ count: conflicts.length }]);
+      "Time off overlaps existing appointments", [{ count: conflicts.length, conflictingAppointmentCount: conflicts.length, affectedAppointmentsCount: conflicts.length }]);
     ok(res, await repository.createTimeOff({ doctorId, ...input, reason: input.reason ?? undefined }), 201);
   }));
   app.patch("/api/v1/doctors/:doctorId/time-offs/:timeOffId", wrap(async (req, res) => {
@@ -286,7 +303,7 @@ export function createDoctorApp(repository: DoctorRepository, users: UserDirecto
     const booked = await occupied(current.doctorId, proposed.startAt, proposed.endAt, String(res.getHeader("X-Request-Id")));
     const conflicts = booked.filter((slot) => overlaps(slot, proposed));
     if (conflicts.length) throw new ApiError(409, "SCHEDULE_CONFLICT_WITH_APPOINTMENTS",
-      "Time off overlaps existing appointments", [{ count: conflicts.length }]);
+      "Time off overlaps existing appointments", [{ count: conflicts.length, conflictingAppointmentCount: conflicts.length, affectedAppointmentsCount: conflicts.length }]);
     ok(res, await repository.updateTimeOff(timeOffId, proposed));
   }));
 
@@ -321,6 +338,20 @@ export function createDoctorApp(repository: DoctorRepository, users: UserDirecto
     const doctor = await repository.findDoctorByUser(userId);
     if (!doctor) throw new ApiError(404, "DOCTOR_NOT_FOUND", "Doctor profile not found");
     ok(res, { id: doctor.id, userId: doctor.userId, isActive: doctor.isActive });
+  }));
+
+  app.post("/internal/v1/doctors/lookup", wrap(async (req, res) => {
+    requireInternalCaller(req);
+    const input = parse(doctorLookupBody, req.body);
+    const doctors = await repository.findDoctorsByIds(input.doctorIds);
+    ok(res, {
+      items: doctors.map((d) => ({
+        id: d.id,
+        displayName: d.displayName,
+        specialtyId: d.specialtyId,
+        isActive: d.isActive
+      }))
+    });
   }));
 
   app.use((_req, res) => fail(res, 404, "ROUTE_NOT_FOUND", "Route not found"));

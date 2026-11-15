@@ -25,6 +25,7 @@ function fixture() {
   const repository = {
     health: vi.fn().mockResolvedValue(undefined),
     findDoctor: vi.fn().mockResolvedValue(doctor),
+    findDoctorsByIds: vi.fn().mockResolvedValue([doctor]),
     findDoctorByUser: vi.fn().mockResolvedValue(doctor),
     findSpecialty: vi.fn().mockResolvedValue({ id: specialtyId, isActive: true }),
     createDoctor: vi.fn().mockResolvedValue(doctor),
@@ -302,5 +303,75 @@ describe("Doctor API authorization and slot contract", () => {
     expect(response.status).toBe(400);
     expect(response.body.requestId).toBe("doctor-test-123");
     expect(response.headers["x-request-id"]).toBe("doctor-test-123");
+  });
+
+  describe("GET /api/v1/doctors/me", () => {
+    it("returns doctor profile for authenticated DOCTOR", async () => {
+      const { app } = fixture();
+      const response = await request(app).get("/api/v1/doctors/me")
+        .set("X-User-Id", userId).set("X-Role", "DOCTOR");
+      expect(response.status).toBe(200);
+      expect(response.body.data.id).toBe(doctorId);
+      expect(response.body.data.userId).toBe(userId);
+    });
+
+    it("returns 404 DOCTOR_NOT_FOUND when doctor profile is missing", async () => {
+      const { app, repository } = fixture();
+      vi.mocked(repository.findDoctorByUser).mockResolvedValueOnce(null);
+      const response = await request(app).get("/api/v1/doctors/me")
+        .set("X-User-Id", userId).set("X-Role", "DOCTOR");
+      expect(response.status).toBe(404);
+      expect(response.body.error.code).toBe("DOCTOR_NOT_FOUND");
+    });
+
+    it("returns 403 when non-DOCTOR calls /doctors/me", async () => {
+      const { app } = fixture();
+      const patientRes = await request(app).get("/api/v1/doctors/me")
+        .set("X-User-Id", userId).set("X-Role", "PATIENT");
+      expect(patientRes.status).toBe(403);
+
+      const staffRes = await request(app).get("/api/v1/doctors/me")
+        .set("X-User-Id", userId).set("X-Role", "STAFF");
+      expect(staffRes.status).toBe(403);
+    });
+
+    it("returns 401 when unauthenticated calls /doctors/me", async () => {
+      const { app } = fixture();
+      const response = await request(app).get("/api/v1/doctors/me");
+      expect(response.status).toBe(401);
+    });
+  });
+
+  describe("POST /internal/v1/doctors/lookup", () => {
+    it("requires internal token", async () => {
+      const { app } = fixture();
+      const response = await request(app).post("/internal/v1/doctors/lookup")
+        .send({ doctorIds: [doctorId] });
+      expect(response.status).toBe(401);
+    });
+
+    it("returns batch doctor summaries", async () => {
+      const { app } = fixture();
+      const response = await request(app).post("/internal/v1/doctors/lookup")
+        .set("X-Internal-Token", internalToken)
+        .send({ doctorIds: [doctorId] });
+      expect(response.status).toBe(200);
+      expect(response.body.data.items).toHaveLength(1);
+      expect(response.body.data.items[0].id).toBe(doctorId);
+      expect(response.body.data.items[0].displayName).toBe("Dr A");
+    });
+  });
+
+  describe("Time-off conflict body", () => {
+    it("includes conflictingAppointmentCount in 409 conflict body", async () => {
+      const { app } = fixture();
+      const response = await request(app).post(`/api/v1/doctors/${doctorId}/time-offs`)
+        .set("X-User-Id", userId).set("X-Role", "DOCTOR")
+        .send({ startAt: "2030-01-07T01:15:00.000Z", endAt: "2030-01-07T02:00:00.000Z" });
+      expect(response.status).toBe(409);
+      expect(response.body.error.code).toBe("SCHEDULE_CONFLICT_WITH_APPOINTMENTS");
+      expect(response.body.error.conflictingAppointmentCount).toBe(1);
+      expect(response.body.error.details[0].conflictingAppointmentCount).toBe(1);
+    });
   });
 });

@@ -44,21 +44,110 @@ export class AppointmentRepository {
     this.completions.clear();
   }
 
-  findAll(filters: { patientId?: string; doctorId?: string; status?: AppointmentStatus }) {
+  findAll(filters: AppointmentFilters) {
     return this.appointments.filter((appointment) => {
       if (filters.patientId && appointment.patientId !== filters.patientId) return false;
       if (filters.doctorId && appointment.doctorId !== filters.doctorId) return false;
-      if (filters.status && appointment.status !== filters.status) return false;
+      if (filters.status) {
+        const statuses = Array.isArray(filters.status) ? filters.status : [filters.status];
+        if (!statuses.includes(appointment.status)) return false;
+      }
       return true;
     });
   }
 
   list(filters: AppointmentFilters, page: number, limit: number) {
-    const matches = this.findAll(filters).filter((item) =>
+    let matches = this.findAll(filters).filter((item) =>
       (!filters.from || Date.parse(item.scheduledStartAt) >= Date.parse(filters.from)) &&
       (!filters.to || Date.parse(item.scheduledStartAt) < Date.parse(filters.to)));
-    matches.sort((a, b) => a.scheduledStartAt.localeCompare(b.scheduledStartAt) || a.id.localeCompare(b.id));
+
+    if (filters.q) {
+      const qLower = filters.q.toLowerCase();
+      matches = matches.filter((item) => {
+        if (filters.allowedReasonSearch && item.reason && item.reason.toLowerCase().includes(qLower)) {
+          return true;
+        }
+        if (filters.matchedPatientIds && filters.matchedPatientIds.includes(item.patientId)) {
+          return true;
+        }
+        if (filters.matchedDoctorIds && filters.matchedDoctorIds.includes(item.doctorId)) {
+          return true;
+        }
+        return false;
+      });
+    }
+
+    const sort = filters.sort ?? "scheduledStartAt:asc";
+    matches.sort((a, b) => {
+      if (sort === "created_at" || sort === "createdAt:asc") {
+        return (a.createdAt ?? "").localeCompare(b.createdAt ?? "") || a.id.localeCompare(b.id);
+      }
+      if (sort === "created_at:desc" || sort === "createdAt:desc") {
+        return (b.createdAt ?? "").localeCompare(a.createdAt ?? "") || b.id.localeCompare(a.id);
+      }
+      if (sort === "scheduled_at:desc" || sort === "scheduledStartAt:desc") {
+        return b.scheduledStartAt.localeCompare(a.scheduledStartAt) || b.id.localeCompare(a.id);
+      }
+      return a.scheduledStartAt.localeCompare(b.scheduledStartAt) || a.id.localeCompare(b.id);
+    });
+
     return { items: matches.slice((page - 1) * limit, page * limit), page, limit, total: matches.length };
+  }
+
+  summary(filters: AppointmentFilters, from: string, to: string) {
+    const matches = this.findAll(filters).filter((item) =>
+      Date.parse(item.scheduledStartAt) >= Date.parse(from) &&
+      Date.parse(item.scheduledStartAt) < Date.parse(to));
+
+    const countsByStatus: Record<AppointmentStatus, number> = {
+      PENDING: 0,
+      CONFIRMED: 0,
+      CHECKED_IN: 0,
+      COMPLETED: 0,
+      CANCELLED: 0,
+      NO_SHOW: 0
+    };
+    for (const item of matches) {
+      if (item.status in countsByStatus) {
+        countsByStatus[item.status]++;
+      }
+    }
+
+    const dailyMap = new Map<string, number>();
+    const startMs = Date.parse(from);
+    const endMs = Date.parse(to) - 1;
+    const toLocalDate = (ms: number) => new Date(ms + 7 * 3600_000).toISOString().slice(0, 10);
+
+    let currentMs = startMs;
+    const endDateStr = toLocalDate(Math.max(startMs, endMs));
+    while (true) {
+      const dStr = toLocalDate(currentMs);
+      dailyMap.set(dStr, 0);
+      if (dStr >= endDateStr) break;
+      currentMs += 24 * 3600_000;
+    }
+
+    for (const item of matches) {
+      const dStr = toLocalDate(Date.parse(item.scheduledStartAt));
+      if (dailyMap.has(dStr)) {
+        dailyMap.set(dStr, (dailyMap.get(dStr) ?? 0) + 1);
+      } else {
+        dailyMap.set(dStr, 1);
+      }
+    }
+
+    const daily = Array.from(dailyMap.entries())
+      .sort(([a], [b]) => a.localeCompare(b))
+      .map(([date, total]) => ({ date, total }));
+
+    return {
+      from,
+      to,
+      timezone: "Asia/Ho_Chi_Minh",
+      total: matches.length,
+      countsByStatus,
+      daily
+    };
   }
 
   occupiedSlots(doctorId: string, from: string, to?: string) {
