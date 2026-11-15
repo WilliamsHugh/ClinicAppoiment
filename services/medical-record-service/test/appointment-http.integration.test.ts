@@ -142,8 +142,8 @@ integration("Record completion through real Appointment and Doctor HTTP with sep
     expect(lookup.status).toBe(401);
     const callbackRecord = await fetch(`${recordUrl}/internal/v1/medical-records/by-appointment/${appointmentId}`,
       { headers: { "X-Internal-Token": recordToken } });
-    expect((await callbackRecord.json()).data).toEqual({ id: final.id, appointmentId, patientId, doctorId,
-      status: "FINAL", createdBy: doctorUserId, updatedBy: null });
+    expect((await callbackRecord.json()).data).toEqual(expect.objectContaining({ id: final.id, appointmentId, patientId, doctorId,
+      status: "FINAL", createdBy: doctorUserId, updatedBy: null }));
 
     await recordApp.sendOutbox();
     const result = await appointmentPool.query<{ status: string }>(

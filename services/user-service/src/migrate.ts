@@ -38,6 +38,12 @@ const client = await pool.connect();
 try {
   await client.query("BEGIN");
   await client.query("SELECT pg_advisory_xact_lock(hashtext('user_service_migrations'))");
+  await client.query("CREATE SCHEMA IF NOT EXISTS auth");
+  await client.query(`CREATE TABLE IF NOT EXISTS auth.users (
+    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    email TEXT,
+    raw_user_meta_data JSONB DEFAULT '{}'::jsonb
+  )`);
   await client.query("CREATE SCHEMA IF NOT EXISTS user_service");
   await client.query(`CREATE TABLE IF NOT EXISTS user_service.schema_migrations (
     version TEXT PRIMARY KEY,

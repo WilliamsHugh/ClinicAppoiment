@@ -1,7 +1,7 @@
 import cors from "cors";
 import express from "express";
 import { readFileSync } from "node:fs";
-import { Pool } from "pg";
+import { Pool, types } from "pg";
 import swaggerUi from "swagger-ui-express";
 import { z } from "zod";
 import { createRequestLoggingMiddleware, logServiceEvent } from "@clinic/request-logging";
@@ -16,6 +16,8 @@ import { MfaService } from "./mfa-service.js";
 import type { InvalidationPayload } from "./types/invalidation-payload.js";
 import type { MfaPurpose } from "./types/internal-proof-verify.js";
 import { swaggerDocument } from "./openapi.js";
+
+types.setTypeParser(1082, (val: string) => val);
 
 const databaseUrl = process.env.DATABASE_URL;
 if (!databaseUrl) throw new Error("DATABASE_URL is required by User Service");
@@ -62,7 +64,10 @@ const updateOwnUserSchema = z.object({
 }).strict();
 
 const updatePatientSchema = z.object({
-  dateOfBirth: z.string().date().nullable().optional(),
+  dateOfBirth: z.preprocess(
+    (val) => (typeof val === "string" && val.includes("T") ? val.split("T")[0] : val),
+    z.string().date().nullable().optional(),
+  ),
   gender: z.enum(["MALE", "FEMALE", "OTHER"]).nullable().optional(),
   address: optionalText(500),
   emergencyContact: optionalText(120),
