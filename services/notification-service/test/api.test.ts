@@ -4,12 +4,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const userId = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb";
 const appointmentId = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa";
 const mocks = vi.hoisted(() => ({
-  findAll: vi.fn(), findById: vi.fn(), hasProcessedEvent: vi.fn(), markRead: vi.fn(), createEvent: vi.fn(), applyEvent: vi.fn(),
+  findAll: vi.fn(), findById: vi.fn(), countUnread: vi.fn(), markAllRead: vi.fn(), hasProcessedEvent: vi.fn(), markRead: vi.fn(), createEvent: vi.fn(), applyEvent: vi.fn(),
   scheduleReminder: vi.fn(), cancelReminder: vi.fn(), retryDelivery: vi.fn(), claimDueReminders: vi.fn(), deliverClaimedReminder: vi.fn(), markReminderSent: vi.fn(), deferReminder: vi.fn(), reminderStatusCounts: vi.fn()
 }));
 vi.mock("pg", () => ({ Pool: class { query = vi.fn() } }));
 vi.mock("../src/repository.js", () => ({ NotificationRepository: class {
-  findAll = mocks.findAll; findById = mocks.findById; hasProcessedEvent = mocks.hasProcessedEvent;
+  findAll = mocks.findAll; findById = mocks.findById; countUnread = mocks.countUnread; markAllRead = mocks.markAllRead; hasProcessedEvent = mocks.hasProcessedEvent;
   markRead = mocks.markRead; createEvent = mocks.createEvent; applyEvent = mocks.applyEvent;
   scheduleReminder = mocks.scheduleReminder; cancelReminder = mocks.cancelReminder; retryDelivery = mocks.retryDelivery;
   claimDueReminders = mocks.claimDueReminders; deliverClaimedReminder = mocks.deliverClaimedReminder;
@@ -41,6 +41,59 @@ describe("Notification API", () => {
     const response = await request(app).get("/api/v1/notifications").set("X-User-Id", userId);
     expect(response.status).toBe(200);
     expect(mocks.findAll).toHaveBeenCalledWith(userId, 1, 20, undefined);
+  });
+
+  it("returns unread count for current recipient", async () => {
+    expect((await request(app).get("/api/v1/notifications/unread-count")).status).toBe(401);
+    mocks.countUnread.mockResolvedValue(5);
+    const response = await request(app).get("/api/v1/notifications/unread-count").set("X-User-Id", userId);
+    expect(response.status).toBe(200);
+    expect(response.body).toEqual({ success: true, data: { unreadCount: 5 } });
+    expect(mocks.countUnread).toHaveBeenCalledWith(userId);
+  });
+
+  it("returns 503 on database error when counting unread instead of fake 0", async () => {
+    mocks.countUnread.mockRejectedValue(new Error("DB pool exhausted"));
+    const response = await request(app).get("/api/v1/notifications/unread-count").set("X-User-Id", userId);
+    expect(response.status).toBe(503);
+    expect(response.body.success).toBe(false);
+  });
+
+  it("marks all notifications as read before cutoff atomically", async () => {
+    expect((await request(app).patch("/api/v1/notifications/read-all")).status).toBe(401);
+
+    // Reject future timestamp
+    const future = new Date(Date.now() + 86400000).toISOString();
+    const futureRes = await request(app).patch("/api/v1/notifications/read-all")
+      .set("X-User-Id", userId).send({ readBefore: future });
+    expect(futureRes.status).toBe(400);
+
+    // Valid call with readBefore
+    const past = new Date(Date.now() - 60000).toISOString();
+    mocks.markAllRead.mockResolvedValue({
+      updatedCount: 3,
+      unreadCount: 1,
+      readBefore: past,
+      readAt: new Date().toISOString()
+    });
+    const response = await request(app).patch("/api/v1/notifications/read-all")
+      .set("X-User-Id", userId).send({ readBefore: past });
+    expect(response.status).toBe(200);
+    expect(response.body.success).toBe(true);
+    expect(response.body.data.updatedCount).toBe(3);
+    expect(response.body.data.unreadCount).toBe(1);
+    expect(mocks.markAllRead).toHaveBeenCalledWith(userId, new Date(past), expect.any(Date));
+
+    // Call without body (defaults to serverNow)
+    await request(app).patch("/api/v1/notifications/read-all").set("X-User-Id", userId).send({});
+    expect(mocks.markAllRead).toHaveBeenCalledWith(userId, expect.any(Date), expect.any(Date));
+  });
+
+  it("returns 503 when read-all encounters database failure", async () => {
+    mocks.markAllRead.mockRejectedValue(new Error("Connection error"));
+    const response = await request(app).patch("/api/v1/notifications/read-all")
+      .set("X-User-Id", userId).send({});
+    expect(response.status).toBe(503);
   });
 
   it("denies another user's notification", async () => {

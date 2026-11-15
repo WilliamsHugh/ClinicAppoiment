@@ -11,13 +11,18 @@ const ids = {
 };
 const mocks = vi.hoisted(() => ({
   findById: vi.fn(), findAll: vi.fn(), create: vi.fn(), update: vi.fn(), findByAppointmentId: vi.fn(),
-  claimOutbox: vi.fn(), markOutboxSent: vi.fn(), deferOutbox: vi.fn(), outboxStatusCounts: vi.fn()
+  claimOutbox: vi.fn(), markOutboxSent: vi.fn(), deferOutbox: vi.fn(), outboxStatusCounts: vi.fn(),
+  createGrant: vi.fn(), findGrantById: vi.fn(), createFinalizationContext: vi.fn(),
+  findFinalizationContext: vi.fn(), finalizeRecord: vi.fn(), markAppointmentCompletion: vi.fn()
 }));
 vi.mock("pg", () => ({ Pool: class { query = vi.fn() } }));
 vi.mock("../src/repository.js", () => ({ MedicalRecordRepository: class {
   findById = mocks.findById; findAll = mocks.findAll; create = mocks.create; update = mocks.update;
   findByAppointmentId = mocks.findByAppointmentId; claimOutbox = mocks.claimOutbox;
   markOutboxSent = mocks.markOutboxSent; deferOutbox = mocks.deferOutbox; outboxStatusCounts = mocks.outboxStatusCounts;
+  createGrant = mocks.createGrant; findGrantById = mocks.findGrantById;
+  createFinalizationContext = mocks.createFinalizationContext; findFinalizationContext = mocks.findFinalizationContext;
+  finalizeRecord = mocks.finalizeRecord; markAppointmentCompletion = mocks.markAppointmentCompletion;
 } }));
 
 vi.stubEnv("DATABASE_URL", "postgresql://fixture:fixture@localhost:5432/fixture");
@@ -29,15 +34,20 @@ vi.stubEnv("APPOINTMENT_RECORD_INTERNAL_API_TOKEN", internalToken);
 vi.stubEnv("NOTIFICATION_INTERNAL_API_TOKEN", notificationToken);
 vi.stubEnv("DOCTOR_INTERNAL_API_TOKEN", doctorToken);
 vi.stubEnv("USER_RECORD_INTERNAL_API_TOKEN", userRecordToken);
-const { app, sendOutbox } = await import("../src/index.js");
+const { app, sendOutbox, computeContentDigest } = await import("../src/index.js");
 
-function lookup(doctorId = ids.doctor, bookingValid = true) {
+function lookup(doctorId = ids.doctor, bookingValid = true, proofValid = true) {
   const fetcher = vi.fn(async (input: string, _init?: RequestInit) => {
     let data: unknown;
-    if (input.includes("verify-for-medical-record")) data = { valid: bookingValid, appointment: { id: ids.appointment, patientId: ids.patient, doctorId: ids.doctor, status: "CHECKED_IN" } };
-    else if (input.includes("doctors/by-user")) data = { id: doctorId, userId: "doctor-user", isActive: true };
-    else if (input.includes("patients/by-user")) data = { id: ids.patient, userId: "patient-user" };
-    else if (input.includes("patients/")) data = { id: ids.patient, userId: "patient-user" };
+    if (input.includes("verify-for-medical-record") || input.includes("check-eligibility")) {
+      data = { valid: bookingValid, eligible: bookingValid, appointment: { id: ids.appointment, patientId: ids.patient, doctorId: ids.doctor, status: "CHECKED_IN" } };
+    } else if (input.includes("doctors/by-user")) {
+      data = { id: doctorId, userId: "doctor-user", isActive: true };
+    } else if (input.includes("patients/by-user") || input.includes("patients/")) {
+      data = { id: ids.patient, userId: "patient-user" };
+    } else if (input.includes("auth/mfa/proofs/verify")) {
+      data = { valid: proofValid, proofId: "proof-123", purpose: "OPEN_CLINICAL_RECORDS" };
+    }
     return new Response(JSON.stringify({ success: true, data }), { status: 200, headers: { "Content-Type": "application/json" } });
   });
   vi.stubGlobal("fetch", fetcher);
@@ -61,6 +71,52 @@ describe("Medical Record API authorization", () => {
     mocks.findById.mockResolvedValue({ id: ids.record, patientId: ids.patient, doctorId: ids.doctor, status: "DRAFT" });
     const response = await request(app).get(`/api/v1/medical-records/${ids.record}`).set("X-User-Id", "patient-user").set("X-Role", "PATIENT");
     expect(response.status).toBe(404);
+  });
+
+  it("denies clinical read access to STAFF and ADMIN roles", async () => {
+    expect((await request(app).get("/api/v1/medical-records").set("X-User-Id", "staff-1").set("X-Role", "STAFF")).status).toBe(403);
+    expect((await request(app).get("/api/v1/medical-records").set("X-User-Id", "admin-1").set("X-Role", "ADMIN")).status).toBe(403);
+    expect((await request(app).get(`/api/v1/medical-records/${ids.record}`).set("X-User-Id", "staff-1").set("X-Role", "STAFF")).status).toBe(403);
+    expect((await request(app).get(`/api/v1/medical-records/${ids.record}`).set("X-User-Id", "admin-1").set("X-Role", "ADMIN")).status).toBe(403);
+  });
+
+  it("requires CURRENT_ENCOUNTER grant for DOCTOR to view patient-history detail across doctors", async () => {
+    // Without grant header
+    const noGrantRes = await request(app).get("/api/v1/medical-records")
+      .set("X-User-Id", "doctor-user").set("X-Role", "DOCTOR")
+      .query({ scope: "patient-history", view: "detail", patientId: ids.patient });
+    expect(noGrantRes.status).toBe(403);
+
+    // With invalid/expired grant
+    mocks.findGrantById.mockResolvedValue(null);
+    const badGrantRes = await request(app).get("/api/v1/medical-records")
+      .set("X-User-Id", "doctor-user").set("X-Role", "DOCTOR")
+      .set("X-Clinical-Grant", "grant-bad")
+      .query({ scope: "patient-history", view: "detail", patientId: ids.patient });
+    expect(badGrantRes.status).toBe(403);
+
+    // With valid grant
+    mocks.findGrantById.mockResolvedValue({
+      id: "grant-good",
+      doctorId: ids.doctor,
+      patientId: ids.patient,
+      accessMode: "CURRENT_ENCOUNTER",
+      expiresAt: new Date(Date.now() + 60000).toISOString()
+    });
+    mocks.findAll.mockResolvedValue({ items: [], page: 1, limit: 20, total: 0 });
+    const goodGrantRes = await request(app).get("/api/v1/medical-records")
+      .set("X-User-Id", "doctor-user").set("X-Role", "DOCTOR")
+      .set("X-Clinical-Grant", "grant-good")
+      .query({ scope: "patient-history", view: "detail", patientId: ids.patient });
+    expect(goodGrantRes.status).toBe(200);
+    expect(mocks.findAll).toHaveBeenCalledWith(
+      expect.objectContaining({
+        patientId: ids.patient,
+        includeOtherDoctorsFinalForPatient: true,
+        currentDoctorId: ids.doctor
+      }),
+      1, 20, "detail"
+    );
   });
 
   it("rejects an invalid appointment", async () => {
@@ -188,5 +244,224 @@ describe("Medical Record internal lookup", () => {
     expect(response.status).toBe(200);
     expect(response.body.data).toEqual({ id: ids.record, appointmentId: ids.appointment,
       patientId: ids.patient, doctorId: ids.doctor, status: "FINAL", createdBy: ids.doctor });
+  });
+});
+
+describe("Clinical Grants and Finalization", () => {
+  it("issues a 15-minute clinical access grant when TOTP proof and appointment are verified", async () => {
+    const fetcher = lookup();
+    mocks.createGrant.mockResolvedValue({
+      id: "grant-1",
+      sessionId: "session-1",
+      doctorId: ids.doctor,
+      patientId: ids.patient,
+      appointmentId: ids.appointment,
+      accessMode: "CURRENT_ENCOUNTER",
+      issuedAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString()
+    });
+
+    const response = await request(app).post("/api/v1/medical-records/access-grants")
+      .set("X-User-Id", "doctor-user").set("X-Role", "DOCTOR").set("X-Session-Id", "session-1")
+      .send({
+        verificationProofId: "proof-totp-123",
+        accessMode: "CURRENT_ENCOUNTER",
+        appointmentId: ids.appointment,
+        patientId: ids.patient
+      });
+
+    expect(response.status).toBe(201);
+    expect(response.body.data.accessMode).toBe("CURRENT_ENCOUNTER");
+    expect(mocks.createGrant).toHaveBeenCalledWith(expect.objectContaining({
+      doctorId: ids.doctor,
+      patientId: ids.patient,
+      accessMode: "CURRENT_ENCOUNTER"
+    }));
+    const proofCall = fetcher.mock.calls.find(([url]) => url.includes("/auth/mfa/proofs/verify"));
+    expect(proofCall).toBeDefined();
+    expect(JSON.parse(proofCall![1]?.body as string).purpose).toBe("OPEN_CLINICAL_RECORDS");
+  });
+
+  it("verifies internal clinical grant endpoint", async () => {
+    mocks.findGrantById.mockResolvedValue({
+      id: "grant-1",
+      patientId: ids.patient,
+      appointmentId: ids.appointment,
+      accessMode: "CURRENT_ENCOUNTER",
+      expiresAt: new Date(Date.now() + 60000).toISOString()
+    });
+
+    const response = await request(app).post("/internal/v1/medical-records/access-grants/verify")
+      .set("X-Internal-Token", internalToken)
+      .send({ grantId: "grant-1", patientId: ids.patient, appointmentId: ids.appointment });
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.valid).toBe(true);
+    expect(response.body.data.accessMode).toBe("CURRENT_ENCOUNTER");
+  });
+
+  it("creates a finalization context with canonical content digest and 5m expiry", async () => {
+    mocks.findById.mockResolvedValue({
+      id: ids.record,
+      doctorId: ids.doctor,
+      status: "DRAFT",
+      version: 1
+    });
+    mocks.createFinalizationContext.mockResolvedValue({
+      id: "context-1",
+      appointmentId: ids.appointment,
+      recordId: ids.record,
+      expectedVersion: 1,
+      contentDigest: "sample-digest",
+      expiresAt: new Date(Date.now() + 5 * 60 * 1000).toISOString(),
+      createdAt: new Date().toISOString()
+    });
+
+    const recordPayload = {
+      symptoms: "Fever",
+      diagnosis: "Common Cold",
+      notes: "Rest",
+      prescription: [{ medicineName: "Paracetamol", dosage: "500mg", frequency: "2x", duration: "3d" }]
+    };
+
+    const response = await request(app).post("/api/v1/medical-records/finalization-contexts")
+      .set("X-User-Id", "doctor-user").set("X-Role", "DOCTOR")
+      .send({
+        appointmentId: ids.appointment,
+        recordId: ids.record,
+        expectedVersion: 1,
+        record: recordPayload
+      });
+
+    expect(response.status).toBe(201);
+    expect(response.body.data.expectedVersion).toBe(1);
+    expect(mocks.createFinalizationContext).toHaveBeenCalledWith(expect.objectContaining({
+      doctorId: ids.doctor,
+      expectedVersion: 1,
+      contentDigest: expect.any(String)
+    }));
+  });
+
+  it("finalizes record from DRAFT to FINAL with proof consumption and outbox emission", async () => {
+    lookup();
+    const digest = computeContentDigest({
+      diagnosis: "Flu",
+      prescription: [{ medicineName: "Tamiflu", dosage: "75mg", frequency: "1x", duration: "5d" }]
+    });
+
+    mocks.findById.mockResolvedValue({
+      id: ids.record,
+      appointmentId: ids.appointment,
+      patientId: ids.patient,
+      doctorId: ids.doctor,
+      status: "DRAFT",
+      version: 2,
+      diagnosis: "Flu",
+      prescription: [{ medicineName: "Tamiflu", dosage: "75mg", frequency: "1x", duration: "5d" }]
+    });
+    mocks.findFinalizationContext.mockResolvedValue({
+      id: "context-valid",
+      appointmentId: ids.appointment,
+      recordId: ids.record,
+      doctorId: ids.doctor,
+      expectedVersion: 2,
+      contentDigest: digest,
+      expiresAt: new Date(Date.now() + 60000).toISOString()
+    });
+    mocks.finalizeRecord.mockResolvedValue({
+      success: true,
+      record: {
+        id: ids.record,
+        status: "FINAL",
+        version: 3,
+        appointmentCompletion: "PENDING"
+      }
+    });
+
+    const response = await request(app).post(`/api/v1/medical-records/${ids.record}/finalize`)
+      .set("X-User-Id", "doctor-user").set("X-Role", "DOCTOR")
+      .send({
+        contextId: "context-valid",
+        verificationProofId: "proof-final-123",
+        expectedVersion: 2
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.status).toBe("FINAL");
+    expect(response.body.data.version).toBe(3);
+    expect(response.body.data.appointmentCompletion).toBe("PENDING");
+  });
+
+  it("rejects finalization if prescription/content changed after context was issued", async () => {
+    mocks.findById.mockResolvedValue({
+      id: ids.record,
+      appointmentId: ids.appointment,
+      patientId: ids.patient,
+      doctorId: ids.doctor,
+      status: "DRAFT",
+      version: 1
+    });
+    mocks.findFinalizationContext.mockResolvedValue({
+      id: "context-mismatch",
+      appointmentId: ids.appointment,
+      recordId: ids.record,
+      doctorId: ids.doctor,
+      expectedVersion: 1,
+      contentDigest: "old-digest-before-medicine-edited",
+      expiresAt: new Date(Date.now() + 60000).toISOString()
+    });
+
+    const response = await request(app).post(`/api/v1/medical-records/${ids.record}/finalize`)
+      .set("X-User-Id", "doctor-user").set("X-Role", "DOCTOR")
+      .send({
+        contextId: "context-mismatch",
+        verificationProofId: "proof-final-123",
+        expectedVersion: 1,
+        record: {
+          prescription: [{ medicineName: "ChangedDrug", dosage: "100mg", frequency: "3x", duration: "7d" }]
+        }
+      });
+
+    expect(response.status).toBe(409);
+    expect(response.body.error.code).toBe("FINALIZATION_CONTEXT_CHANGED");
+  });
+
+  it("rejects finalization if expectedVersion does not match current record", async () => {
+    mocks.findById.mockResolvedValue({
+      id: ids.record,
+      appointmentId: ids.appointment,
+      patientId: ids.patient,
+      doctorId: ids.doctor,
+      status: "DRAFT",
+      version: 5
+    });
+
+    const response = await request(app).post(`/api/v1/medical-records/${ids.record}/finalize`)
+      .set("X-User-Id", "doctor-user").set("X-Role", "DOCTOR")
+      .send({
+        contextId: "any-context",
+        verificationProofId: "proof-123",
+        expectedVersion: 4 // Stale version
+      });
+
+    expect(response.status).toBe(409);
+    expect(response.body.error.code).toBe("RECORD_VERSION_CONFLICT");
+  });
+
+  it("marks appointmentCompletion as COMPLETED when outbox delivery succeeds", async () => {
+    const event = {
+      id: "event-comp",
+      eventType: "appointment.complete",
+      payload: { appointmentId: ids.appointment, recordId: ids.record },
+      retryCount: 0
+    };
+    mocks.claimOutbox.mockResolvedValue([event]);
+    const fetcher = vi.fn(async () => new Response("{}", { status: 200 }));
+    vi.stubGlobal("fetch", fetcher);
+
+    await sendOutbox();
+
+    expect(mocks.markAppointmentCompletion).toHaveBeenCalledWith(ids.record, "COMPLETED");
+    expect(mocks.markOutboxSent).toHaveBeenCalledWith("event-comp");
   });
 });

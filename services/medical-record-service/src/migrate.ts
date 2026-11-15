@@ -15,9 +15,11 @@ const pool = new Pool({ connectionString: databaseUrl,
   ssl: databaseSsl
     ? { rejectUnauthorized, ...(databaseCaPath ? { ca: readFileSync(databaseCaPath, "utf8") } : {}) }
     : undefined });
-const sql = await readFile(new URL("../../../infrastructure/supabase/medical-record-service/schema.sql", import.meta.url), "utf8");
-const version = "001_m2_record_completion_outbox";
-const checksum = createHash("sha256").update(sql).digest("hex");
+const migrations = [
+  { version: "001_m2_record_completion_outbox", file: "../../../infrastructure/supabase/medical-record-service/schema.sql" },
+  { version: "002_m2_clinical_grants_and_finalization", file: "../migrations/002_m2_clinical_grants_and_finalization.sql" }
+];
+
 const client = await pool.connect();
 try {
   await client.query("BEGIN");
@@ -25,18 +27,23 @@ try {
   await client.query("CREATE SCHEMA IF NOT EXISTS medical_record_service");
   await client.query(`CREATE TABLE IF NOT EXISTS medical_record_service.schema_migrations (
     version TEXT PRIMARY KEY, checksum TEXT NOT NULL, applied_at TIMESTAMPTZ NOT NULL DEFAULT now())`);
-  const existing = await client.query<{ checksum: string }>(
-    "SELECT checksum FROM medical_record_service.schema_migrations WHERE version = $1", [version]);
-  if (existing.rows[0] && existing.rows[0].checksum !== checksum) throw new Error(`Migration ${version} checksum changed`);
-  if (!existing.rows[0]) {
-    await client.query(sql);
-    await client.query("INSERT INTO medical_record_service.schema_migrations (version, checksum) VALUES ($1,$2)", [version, checksum]);
+
+  for (const migration of migrations) {
+    const sql = await readFile(new URL(migration.file, import.meta.url), "utf8");
+    const checksum = createHash("sha256").update(sql).digest("hex");
+    const existing = await client.query<{ checksum: string }>(
+      "SELECT checksum FROM medical_record_service.schema_migrations WHERE version = $1", [migration.version]);
+    if (existing.rows[0] && existing.rows[0].checksum !== checksum) throw new Error(`Migration ${migration.version} checksum changed`);
+    if (!existing.rows[0]) {
+      await client.query(sql);
+      await client.query("INSERT INTO medical_record_service.schema_migrations (version, checksum) VALUES ($1,$2)", [migration.version, checksum]);
+    }
+    logServiceEvent("medical-record-service", "info", "migration.applied", {
+      version: migration.version,
+      state: existing.rows[0] ? "already-applied" : "applied"
+    });
   }
   await client.query("COMMIT");
-  logServiceEvent("medical-record-service", "info", "migration.applied", {
-    version,
-    state: existing.rows[0] ? "already-applied" : "applied"
-  });
 } catch (error) {
   await client.query("ROLLBACK");
   throw error;

@@ -27,6 +27,14 @@ export class NotificationRepository {
     return { items: rows.rows, page, limit, total: Number(total.rows[0].count) };
   }
 
+  async countUnread(recipientUserId: string): Promise<number> {
+    const result = await this.pool.query<{ count: string }>(
+      "SELECT count(*) FROM notification_service.notifications WHERE recipient_user_id = $1 AND status = 'UNREAD'",
+      [recipientUserId]
+    );
+    return Number(result.rows[0].count);
+  }
+
   async findById(id: string) {
     const result = await this.pool.query<Notification>(`SELECT ${select} FROM notification_service.notifications WHERE id = $1`, [id]);
     return result.rows[0] ?? null;
@@ -109,6 +117,45 @@ export class NotificationRepository {
        WHERE id = $1 AND recipient_user_id = $2 RETURNING ${select}`, [id, actorId]
     );
     return result.rows[0] ?? null;
+  }
+
+  async markAllRead(recipientUserId: string, readBefore: Date, readAt: Date): Promise<{
+    updatedCount: number;
+    unreadCount: number;
+    readBefore: string;
+    readAt: string;
+  }> {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const updateResult = await client.query<{ id: string }>(
+        `UPDATE notification_service.notifications
+         SET status = 'READ', read_at = COALESCE(read_at, $2)
+         WHERE recipient_user_id = $1
+           AND status = 'UNREAD'
+           AND created_at <= $3
+         RETURNING id`,
+        [recipientUserId, readAt, readBefore]
+      );
+      const updatedCount = updateResult.rowCount ?? updateResult.rows.length;
+      const countResult = await client.query<{ count: string }>(
+        "SELECT count(*) FROM notification_service.notifications WHERE recipient_user_id = $1 AND status = 'UNREAD'",
+        [recipientUserId]
+      );
+      const unreadCount = Number(countResult.rows[0].count);
+      await client.query("COMMIT");
+      return {
+        updatedCount,
+        unreadCount,
+        readBefore: readBefore.toISOString(),
+        readAt: readAt.toISOString()
+      };
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   async retryDelivery(id: string) {

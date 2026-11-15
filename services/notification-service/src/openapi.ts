@@ -27,6 +27,30 @@ export const openapi = {
     "/health": { get: { summary: "Check Notification database readiness", security: [],
       responses: { "200": response({ type: "object", properties: { service: { type: "string" }, status: { type: "string" } } }),
         "503": error } } },
+    "/api/v1/notifications/unread-count": {
+      get: { summary: "Count unread notifications for the actor", security: [{ bearerAuth: [] }],
+        responses: {
+          "200": response({ type: "object", required: ["unreadCount"],
+            properties: { unreadCount: { type: "integer", minimum: 0 } } }),
+          "401": error, "503": error
+        } }
+    },
+    "/api/v1/notifications/read-all": {
+      patch: { summary: "Mark all notifications before cutoff as read", security: [{ bearerAuth: [] }],
+        requestBody: { required: false, content: { "application/json": { schema: {
+          type: "object", properties: { readBefore: { type: "string", format: "date-time" } }
+        } } } },
+        responses: {
+          "200": response({ type: "object", required: ["updatedCount", "unreadCount", "readBefore", "readAt"],
+            properties: {
+              updatedCount: { type: "integer", minimum: 0 },
+              unreadCount: { type: "integer", minimum: 0 },
+              readBefore: { type: "string", format: "date-time" },
+              readAt: { type: "string", format: "date-time" }
+            } }),
+          "400": error, "401": error, "503": error
+        } }
+    },
     "/api/v1/notifications": {
       get: { summary: "List the actor's notifications", security: [{ bearerAuth: [] }],
         parameters: [

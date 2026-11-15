@@ -25,6 +25,7 @@ const repository = new NotificationRepository(pool);
 const port = Number(process.env.NOTIFICATION_SERVICE_PORT ?? 3005);
 const appointmentUrl = process.env.APPOINTMENT_SERVICE_URL ?? "http://localhost:3003";
 const paging = z.object({ page: z.coerce.number().int().min(1).default(1), limit: z.coerce.number().int().min(1).max(100).default(20), status: z.enum(["UNREAD", "READ", "FAILED"]).optional() });
+const readAllSchema = z.object({ readBefore: z.string().datetime().optional() }).optional();
 const eventSchema = z.object({ eventId: z.string().min(1), type: z.enum(["appointment.created", "appointment.confirmed", "appointment.rescheduled", "appointment.cancelled", "appointment.checked_in", "medical-record.created", "medical-record.updated"]), payload: z.object({ recipientUserId: z.string().uuid(), patientId: z.string().uuid().optional(), appointmentId: z.string().uuid().optional(), recordId: z.string().uuid().optional(), scheduledStartAt: z.string().datetime().optional() }) });
 
 export const app = express();
@@ -103,6 +104,39 @@ app.get("/health", async (_req, res) => {
 app.get("/openapi.json", (_req, res) => res.json(openapi));
 app.use("/docs", swaggerUi.serve, swaggerUi.setup(openapi));
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(openapi));
+
+app.get("/api/v1/notifications/unread-count", async (req, res, next) => {
+  const userId = actor(req);
+  if (!userId) return fail(res, 401, "AUTH_REQUIRED", "Authentication required");
+  try {
+    const unreadCount = await repository.countUnread(userId);
+    return res.json(ok({ unreadCount }));
+  } catch (error) {
+    next(error);
+  }
+});
+
+app.patch("/api/v1/notifications/read-all", async (req, res, next) => {
+  const userId = actor(req);
+  if (!userId) return fail(res, 401, "AUTH_REQUIRED", "Authentication required");
+  const parsed = readAllSchema.safeParse(req.body ?? {});
+  if (!parsed.success) return fail(res, 400, "VALIDATION_ERROR", "Invalid readBefore timestamp");
+  const serverNow = new Date();
+  let readBeforeDate = serverNow;
+  if (parsed.data?.readBefore) {
+    const parsedDate = new Date(parsed.data.readBefore);
+    if (isNaN(parsedDate.getTime()) || parsedDate.getTime() > serverNow.getTime()) {
+      return fail(res, 400, "VALIDATION_ERROR", "readBefore cannot be in the future");
+    }
+    readBeforeDate = parsedDate;
+  }
+  try {
+    const result = await repository.markAllRead(userId, readBeforeDate, serverNow);
+    return res.json(ok(result));
+  } catch (error) {
+    next(error);
+  }
+});
 
 app.get("/api/v1/notifications", async (req, res) => {
   const userId = actor(req);

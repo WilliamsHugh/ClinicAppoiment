@@ -13,7 +13,10 @@ function database(created = true, failReminder = false, claimed = true) {
       return { rows: claimed ? [{ appointment_id: "appointment-1" }] : [] };
     if (failReminder && sql.includes("INSERT INTO notification_service.appointment_reminders")) throw new Error("reminder failed");
     if (sql.includes("INSERT INTO notification_service.notifications")) return { rows: created ? [notification] : [] };
-    if (sql.includes("UPDATE notification_service.notifications")) return { rows: values?.[1] === "user-1" ? [notification] : [] };
+    if (sql.includes("UPDATE notification_service.notifications")) {
+      if (sql.includes("created_at <=")) return { rowCount: 2, rows: [{ id: "n-1" }, { id: "n-2" }] };
+      return { rows: values?.[1] === "user-1" ? [notification] : [] };
+    }
     if (sql.includes("count(*)")) return { rows: [{ count: "1" }] };
     return { rows: [] };
   });
@@ -112,5 +115,26 @@ describe("Notification PostgreSQL repository", () => {
     "Reminder", "Visit soon");
     expect(delivered).toBe(false);
     expect(db.queries.some((item) => item.sql.includes("INSERT INTO notification_service.notifications"))).toBe(false);
+  });
+
+  it("counts exact unread notifications for recipient", async () => {
+    const db = database();
+    const count = await db.repo.countUnread("user-1");
+    expect(count).toBe(1);
+    expect(db.queries.at(-1)?.sql).toContain("recipient_user_id = $1 AND status = 'UNREAD'");
+    expect(db.queries.at(-1)?.values).toEqual(["user-1"]);
+  });
+
+  it("marks all notifications read before cutoff in a single transaction", async () => {
+    const db = database();
+    const cutoff = new Date("2026-05-01T12:00:00Z");
+    const readAt = new Date("2026-05-01T12:05:00Z");
+    const result = await db.repo.markAllRead("user-1", cutoff, readAt);
+    expect(result.updatedCount).toBe(2);
+    expect(result.unreadCount).toBe(1);
+    expect(result.readBefore).toBe(cutoff.toISOString());
+    expect(result.readAt).toBe(readAt.toISOString());
+    expect(db.queries.map((q) => q.sql)).toEqual(expect.arrayContaining(["BEGIN", "COMMIT"]));
+    expect(db.queries.some((q) => q.sql.includes("UPDATE notification_service.notifications") && q.sql.includes("created_at <="))).toBe(true);
   });
 });

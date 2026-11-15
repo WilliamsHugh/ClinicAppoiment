@@ -11,15 +11,25 @@ const record: MedicalRecord = {
   createdAt: "2026-01-01T00:00:00Z", updatedAt: "2026-01-01T00:00:00Z"
 };
 
-function database(failAudit = false) {
+function database(failAudit = false, proofConflict = false, currentRecord: MedicalRecord = record) {
   const queries: Array<{ sql: string; values?: unknown[] }> = [];
   const query = vi.fn(async (sql: string, values?: unknown[]) => {
     queries.push({ sql, values });
     if (failAudit && sql.includes("medical_record_audit_logs")) throw new Error("audit failed");
-    if (sql.includes("INSERT INTO medical_record_service.medical_records")) return { rows: [record] };
-    if (sql.includes("UPDATE medical_record_service.medical_records")) return { rows: [record] };
+    if (sql.includes("INSERT INTO medical_record_service.clinical_grants"))
+      return { rows: [{ id: "grant-1", sessionId: "sess-1", doctorId: currentRecord.doctorId, patientId: currentRecord.patientId, appointmentId: currentRecord.appointmentId, recordId: null, accessMode: "CURRENT_ENCOUNTER", issuedAt: "2026-01-01T00:00:00Z", expiresAt: "2026-01-01T00:15:00Z" }] };
+    if (sql.includes("SELECT") && sql.includes("clinical_grants"))
+      return { rows: [{ id: "grant-1", sessionId: "sess-1", doctorId: currentRecord.doctorId, patientId: currentRecord.patientId, appointmentId: currentRecord.appointmentId, recordId: null, accessMode: "CURRENT_ENCOUNTER", issuedAt: "2026-01-01T00:00:00Z", expiresAt: "2026-01-01T00:15:00Z" }] };
+    if (sql.includes("INSERT INTO medical_record_service.finalization_contexts"))
+      return { rows: [{ id: "ctx-1", appointmentId: currentRecord.appointmentId, recordId: currentRecord.id, doctorId: currentRecord.doctorId, patientId: currentRecord.patientId, sessionId: "sess-1", expectedVersion: 1, contentDigest: "dig-1", expiresAt: "2026-01-01T00:05:00Z", createdAt: "2026-01-01T00:00:00Z" }] };
+    if (sql.includes("SELECT") && sql.includes("finalization_contexts"))
+      return { rows: [{ id: "ctx-1", appointmentId: currentRecord.appointmentId, recordId: currentRecord.id, doctorId: currentRecord.doctorId, patientId: currentRecord.patientId, sessionId: "sess-1", expectedVersion: 1, contentDigest: "dig-1", expiresAt: "2026-01-01T00:05:00Z", createdAt: "2026-01-01T00:00:00Z" }] };
+    if (sql.includes("INSERT INTO medical_record_service.consumed_proofs"))
+      return { rows: proofConflict ? [] : [{ proof_id: values?.[0] }] };
+    if (sql.includes("INSERT INTO medical_record_service.medical_records")) return { rows: [currentRecord] };
+    if (sql.includes("UPDATE medical_record_service.medical_records")) return { rows: [{ ...currentRecord, version: (currentRecord.version ?? 1) + 1, status: "FINAL", appointmentCompletion: "PENDING" }] };
     if (sql.includes("count(*)")) return { rows: [{ count: "1" }] };
-    if (sql.includes("SELECT") && sql.includes("medical_records")) return { rows: [record] };
+    if (sql.includes("SELECT") && sql.includes("medical_records")) return { rows: [currentRecord] };
     return { rows: [] };
   });
   const client = { query, release: vi.fn() };
@@ -87,5 +97,80 @@ describe("Medical Record PostgreSQL repository", () => {
     const db = database();
     await db.repo.deferOutbox(record.id, 7);
     expect(db.queries[0].sql).toContain("retry_count + 1 >= 8 THEN 'FAILED'");
+  });
+
+  it("stores and retrieves clinical grants with TTL and session bound", async () => {
+    const db = database();
+    const expiresAt = new Date(Date.now() + 900000);
+    const grant = await db.repo.createGrant({
+      sessionId: "sess-1",
+      doctorId: record.doctorId,
+      patientId: record.patientId,
+      appointmentId: record.appointmentId,
+      accessMode: "CURRENT_ENCOUNTER",
+      expiresAt
+    });
+    expect(grant.id).toBe("grant-1");
+    expect(grant.accessMode).toBe("CURRENT_ENCOUNTER");
+    const found = await db.repo.findGrantById("grant-1");
+    expect(found?.id).toBe("grant-1");
+    expect(db.queries.some((q) => q.sql.includes("FROM medical_record_service.clinical_grants"))).toBe(true);
+  });
+
+  it("stores and retrieves finalization context", async () => {
+    const db = database();
+    const context = await db.repo.createFinalizationContext({
+      appointmentId: record.appointmentId,
+      recordId: record.id,
+      doctorId: record.doctorId,
+      patientId: record.patientId,
+      sessionId: "sess-1",
+      expectedVersion: 1,
+      contentDigest: "dig-1",
+      expiresAt: new Date(Date.now() + 300000)
+    });
+    expect(context.id).toBe("ctx-1");
+    expect(context.contentDigest).toBe("dig-1");
+    const found = await db.repo.findFinalizationContext("ctx-1");
+    expect(found?.id).toBe("ctx-1");
+  });
+
+  it("finalizes draft record atomically, consumes proof and bumps version", async () => {
+    const db = database(false, false, { ...record, status: "DRAFT", version: 1 });
+    const result = await db.repo.finalizeRecord({
+      recordId: record.id,
+      expectedVersion: 1,
+      proofId: "proof-123",
+      contextId: "ctx-1",
+      actorId: record.createdBy,
+      recipientUserId: "user-1"
+    });
+    expect("success" in result && result.success).toBe(true);
+    if ("success" in result) {
+      expect(result.record.status).toBe("FINAL");
+      expect(result.record.version).toBe(2);
+      expect(result.record.appointmentCompletion).toBe("PENDING");
+    }
+    expect(db.queries.some((q) => q.sql.includes("INSERT INTO medical_record_service.consumed_proofs"))).toBe(true);
+    expect(db.queries.some((q) => q.sql.includes("SET status = 'FINAL'"))).toBe(true);
+  });
+
+  it("rejects proof replay when proof is already consumed", async () => {
+    const db = database(false, true, { ...record, status: "DRAFT", version: 1 }); // proofConflict = true
+    const result = await db.repo.finalizeRecord({
+      recordId: record.id,
+      expectedVersion: 1,
+      proofId: "proof-already-consumed",
+      contextId: "ctx-1",
+      actorId: record.createdBy,
+      recipientUserId: "user-1"
+    });
+    expect("conflict" in result && result.conflict).toBe("PROOF_ALREADY_CONSUMED");
+  });
+
+  it("updates appointment completion to COMPLETED", async () => {
+    const db = database();
+    await db.repo.markAppointmentCompletion(record.id, "COMPLETED");
+    expect(db.queries.some((q) => q.sql.includes("appointment_completion = $1"))).toBe(true);
   });
 });
