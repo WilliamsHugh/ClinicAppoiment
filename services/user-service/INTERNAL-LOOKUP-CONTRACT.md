@@ -115,3 +115,68 @@ Run `npm ci`, `npm run lint --workspace @clinic/user-service`,
 fixtures and do not establish PostgreSQL or cross-service acceptance. TV1's
 P0-07 smoke must run the merged tree with separate disposable service
 databases and the agreed credentials.
+
+## API Contract v2 Internal Extensions (M2-USER-004)
+
+### 1. Extended Internal Verify (`GET /internal/v1/auth/verify`)
+Caller: Gateway (`USER_GATEWAY_INTERNAL_API_TOKEN`).
+Response DTO (`InternalSessionVerifyResponse`):
+```json
+{
+  "id": "user-uuid",
+  "userId": "user-uuid",
+  "sessionId": "session-uuid",
+  "role": "PATIENT | DOCTOR | STAFF | ADMIN",
+  "status": "ACTIVE | PENDING_MFA | LOCKED | EXPIRED | REVOKED",
+  "accountStatus": "ACTIVE | INACTIVE | LOCKED",
+  "idleExpiresAt": "ISO-8601 string or null",
+  "absoluteExpiresAt": "ISO-8601 string or null",
+  "lockAt": "ISO-8601 string or null",
+  "sessionVersion": 1,
+  "mfaVerifiedAt": "ISO-8601 string or null"
+}
+```
+
+### 2. Invalidation Signal (`POST /internal/v1/auth/invalidate`)
+Caller: Gateway (`USER_GATEWAY_INTERNAL_API_TOKEN`).
+Body (`InvalidationPayload`):
+```json
+{
+  "userId": "user-uuid",
+  "sessionId": "session-uuid (optional)",
+  "scope": "CURRENT | ALL | ACCOUNT",
+  "reason": "LOGOUT_CURRENT | LOGOUT_ALL | SESSION_REVOKED | SESSION_LOCKED | ...",
+  "sessionVersion": 2,
+  "invalidatedAt": "ISO-8601 string"
+}
+```
+
+### 3. MFA Proof Verification (`POST /internal/v1/auth/mfa/proofs/verify` and `POST /internal/v1/mfa/verify-proof`)
+Caller: Medical Record, Doctor, Appointment (`USER_RECORD_INTERNAL_API_TOKEN`, `USER_DOCTOR_INTERNAL_API_TOKEN`, `USER_APPOINTMENT_INTERNAL_API_TOKEN`).
+Body (`InternalProofVerifyRequest`):
+```json
+{
+  "proofId": "proof-uuid (or proof_token)",
+  "purpose": "OPEN_CLINICAL_RECORDS | FINALIZE_MEDICAL_RECORD | AUTHORIZE_SENSITIVE_OPERATION",
+  "actorUserId": "user-uuid (or actor_id)",
+  "sessionId": "session-uuid (or session_id)",
+  "context": { "resourceId": "record-uuid", "...": "..." }
+}
+```
+Response:
+```json
+{
+  "valid": true,
+  "proofId": "proof-uuid",
+  "proof_token": "proof-uuid",
+  "purpose": "FINALIZE_MEDICAL_RECORD",
+  "expiresAt": "ISO-8601 string",
+  "context": {}
+}
+```
+
+### 4. Batch Patient Lookup (`POST /internal/v1/patients/lookup`)
+Caller: Appointment, Medical Record (`USER_APPOINTMENT_INTERNAL_API_TOKEN`, `USER_RECORD_INTERNAL_API_TOKEN`).
+Body: `{ "patientIds": ["uuid-1", "uuid-2"], "actorContext": {} }` (max 100 IDs).
+Response: `{ "items": [{ "id": "patient-id", "userId": "user-id", "fullName": "Full Name" }] }`.
+

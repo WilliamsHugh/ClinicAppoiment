@@ -8,9 +8,13 @@ import { createRequestLoggingMiddleware, logServiceEvent } from "@clinic/request
 import { createAuthRouter, createInternalVerifyHandler, createSupabaseAuthProvider } from "./auth.js";
 import { createDoctorEligibilityHandler } from "./doctor-eligibility.js";
 import { internalCredentialsFromEnv, requireInternalCaller } from "./internal-auth.js";
-import { createPatientLookupHandler } from "./internal-patients.js";
+import { createPatientLookupHandler, createBatchPatientLookupHandler } from "./internal-patients.js";
 import { createPatientScopeVerifier, PatientScopeUnavailableError } from "./patient-scope.js";
 import { UserRepository } from "./repository.js";
+import { SessionService } from "./session-service.js";
+import { MfaService } from "./mfa-service.js";
+import type { InvalidationPayload } from "./types/invalidation-payload.js";
+import type { MfaPurpose } from "./types/internal-proof-verify.js";
 import { swaggerDocument } from "./openapi.js";
 
 const databaseUrl = process.env.DATABASE_URL;
@@ -28,6 +32,8 @@ const pool = new Pool({
 });
 export const app = express();
 const repository = new UserRepository(pool);
+const sessionService = new SessionService(repository);
+const mfaService = new MfaService(repository);
 const authProviderTimeoutMs = Number(process.env.AUTH_PROVIDER_TIMEOUT_MS ?? 15_000);
 if (!Number.isInteger(authProviderTimeoutMs) || authProviderTimeoutMs <= 0) {
   throw new Error("AUTH_PROVIDER_TIMEOUT_MS must be a positive integer");
@@ -84,11 +90,76 @@ app.use(createRequestLoggingMiddleware("user-service"));
 app.get("/openapi.json", (_req, res) => res.json(swaggerDocument));
 app.use("/docs", swaggerUi.serve, swaggerUi.setup(swaggerDocument));
 app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerDocument));
-app.use("/api/v1/auth", createAuthRouter(authProvider, repository));
+app.use("/api/v1/auth", createAuthRouter(authProvider, repository, sessionService, mfaService));
 app.get("/internal/v1/auth/verify", requireInternalCaller(["gateway"], internalCredentials),
-  createInternalVerifyHandler(authProvider, repository));
+  createInternalVerifyHandler(authProvider, repository, sessionService));
 app.get("/internal/v1/users/:userId/doctor-eligibility",
   requireInternalCaller(["doctor"], internalCredentials), createDoctorEligibilityHandler(repository));
+
+app.post("/internal/v1/auth/invalidate",
+  requireInternalCaller(["gateway"], internalCredentials),
+  async (req, res) => {
+    const payload = req.body as InvalidationPayload;
+    if (!payload || !payload.userId || !payload.scope) {
+      return res.status(400).json(error("VALIDATION_ERROR", "Invalid invalidation payload"));
+    }
+    if (payload.scope === "ALL" || payload.scope === "ACCOUNT") {
+      await sessionService.revokeAllUserSessions(payload.userId);
+    } else if (payload.sessionId) {
+      await sessionService.revokeSession(payload.sessionId);
+    }
+    return res.json(success({ processed: true, payload }));
+  });
+
+const handleInternalProofVerify: express.RequestHandler = async (req, res) => {
+  const proofId = (req.body?.proofId ?? req.body?.proof_token) as string | undefined;
+  const purpose = req.body?.purpose as MfaPurpose | undefined;
+  const actorUserId = (req.body?.actorUserId ?? req.body?.actor_id) as string | undefined;
+  const sessionId = (req.body?.sessionId ?? req.body?.session_id) as string | undefined;
+  const context = (req.body?.context ?? (req.body?.resource_id ? { resourceId: req.body.resource_id } : {})) as Record<string, unknown>;
+
+  if (!proofId || !purpose) {
+    return res.status(400).json(error("VALIDATION_ERROR", "proofId and purpose are required"));
+  }
+
+  const result = await mfaService.verifyProof({
+    proofId,
+    purpose,
+    actorUserId,
+    sessionId,
+    context,
+  });
+
+  if (!result.valid || !result.proof) {
+    return res.json(success({
+      valid: false,
+      proofId,
+      proof_token: proofId,
+      purpose,
+      reason: result.reason ?? "INVALID_PROOF",
+    }));
+  }
+
+  return res.json(success({
+    valid: true,
+    proofId: result.proof.id,
+    proof_token: result.proof.id,
+    purpose: result.proof.purpose,
+    expiresAt: result.proof.expiresAt,
+    context: result.proof.context,
+  }));
+};
+
+app.post("/internal/v1/auth/mfa/proofs/verify",
+  requireInternalCaller(["gateway", "doctor", "record", "appointment"], internalCredentials),
+  handleInternalProofVerify);
+app.post("/internal/v1/mfa/verify-proof",
+  requireInternalCaller(["gateway", "doctor", "record", "appointment"], internalCredentials),
+  handleInternalProofVerify);
+
+app.post("/internal/v1/patients/lookup",
+  requireInternalCaller(["appointment", "record"], internalCredentials),
+  createBatchPatientLookupHandler(repository));
 
 function success<T>(data: T) {
   return { success: true, data };

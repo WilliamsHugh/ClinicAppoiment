@@ -27,3 +27,38 @@ export function createPatientLookupHandler(
     return res.json({ success: true, data: { id: patient.id, userId: patient.userId } });
   };
 }
+
+const batchPatientLookupSchema = z.object({
+  patientIds: z.array(z.string().uuid()).min(1).max(100),
+  actorContext: z.record(z.string(), z.unknown()).optional(),
+  appointmentIds: z.array(z.string().uuid()).optional(),
+});
+
+export function createBatchPatientLookupHandler(
+  repository: Pick<UserRepository, "findPatientById">,
+): RequestHandler {
+  return async (req, res) => {
+    const parsed = batchPatientLookupSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({
+        success: false,
+        error: { code: "VALIDATION_ERROR", message: "Invalid batch patient lookup request", details: parsed.error.issues },
+      });
+    }
+
+    const items: Array<{ id: string; userId: string; fullName?: string }> = [];
+    for (const patientId of parsed.data.patientIds) {
+      const patient = await repository.findPatientById(patientId);
+      if (patient) {
+        items.push({
+          id: patient.id,
+          userId: patient.userId,
+          fullName: patient.fullName,
+        });
+      }
+    }
+
+    return res.json({ success: true, data: { items } });
+  };
+}
+
