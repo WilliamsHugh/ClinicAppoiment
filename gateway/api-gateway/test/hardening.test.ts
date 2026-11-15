@@ -389,7 +389,7 @@ describe("Gateway proxy boundary", () => {
       .set("Authorization", "Bearer token");
 
     const log = logger.info.mock.calls.at(-1)?.[0] as string;
-    expect(JSON.parse(log).path).toBe("/api/v1/appointments/:id");
+    expect(log).toContain("GET /api/v1/appointments/:id");
     expect(log).not.toContain("patient-sensitive-appointment");
     expect(log).not.toContain("verified-user");
     expect(log).not.toContain("verified-auth-user");

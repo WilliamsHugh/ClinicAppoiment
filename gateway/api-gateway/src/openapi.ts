@@ -29,13 +29,42 @@ export const gatewayOpenApiDocument = {
           "403": { $ref: "#/components/responses/Forbidden" }
         }
       }
+    },
+    "/internal/v1/auth/cache-invalidate": {
+      post: {
+        summary: "Invalidate cached identities on user session change",
+        tags: ["System"],
+        security: [{ internalToken: [] }],
+        requestBody: {
+          required: true,
+          content: json(ref("InvalidationPayload"))
+        },
+        responses: {
+          "200": { description: "Cache invalidated", content: json(ref("SuccessEnvelope")) },
+          "400": { $ref: "#/components/responses/BadRequest" },
+          "401": { $ref: "#/components/responses/Unauthorized" }
+        }
+      }
     }
   },
   components: {
     securitySchemes: {
-      bearerAuth: { type: "http", scheme: "bearer", bearerFormat: "JWT" }
+      bearerAuth: { type: "http", scheme: "bearer", bearerFormat: "JWT" },
+      internalToken: { type: "apiKey", in: "header", name: "X-Internal-Token" }
     },
     schemas: {
+      InvalidationPayload: {
+        type: "object",
+        required: ["userId", "reason"],
+        properties: {
+          userId: { type: "string" },
+          sessionId: { type: "string", nullable: true },
+          scope: { type: "string", enum: ["CURRENT", "ALL", "ACCOUNT"] },
+          reason: { type: "string" },
+          sessionVersion: { type: "integer" },
+          invalidatedAt: { type: "string", format: "date-time" }
+        }
+      },
       SuccessEnvelope: {
         type: "object",
         required: ["success", "data"],
