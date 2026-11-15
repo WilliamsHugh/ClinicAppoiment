@@ -1,9 +1,62 @@
-.board { display: grid; gap: 20px; min-width: 0; }
+.board { display: grid; gap: 24px; min-width: 0; }
 .board h1 { font-size: clamp(1.5rem, 2.5vw, 2rem); }
 .muted, .columnHelp { color: var(--muted); line-height: 1.6; }
-.toolbar { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-end; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius-lg); padding: 16px; }
-.toolbar label, .form label { display: grid; gap: 8px; font-weight: 600; }
-.toolbar input, .form input, .form select, .form textarea { background: var(--surface); color: var(--ink); font: inherit; border: 1px solid var(--line); border-radius: 8px; padding: 10px; min-width: 0; max-width: 100%; }
+.toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  align-items: flex-end;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-lg, 8px);
+  padding: 16px 20px;
+  box-shadow: var(--shadow-sm);
+}
+.toolbar label {
+  display: grid;
+  gap: 6px;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+.toolbar input[type="date"] {
+  min-height: 44px;
+  padding: 8px 12px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md, 6px);
+  font-size: 0.875rem;
+  color: var(--ink);
+  background: var(--surface);
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+.toolbar input[type="date"]:focus-visible {
+  outline: 2px solid var(--brand);
+  outline-offset: 1px;
+}
+.toolbar button {
+  min-height: 44px;
+  padding: 8px 14px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md, 6px);
+  background: var(--surface);
+  color: var(--ink);
+  font-weight: 500;
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease;
+}
+.toolbar button:hover:not(:disabled) {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+.toolbar button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+.form label { display: grid; gap: 8px; font-weight: 600; }
+.form input, .form select, .form textarea { background: var(--surface); color: var(--ink); font: inherit; border: 1px solid var(--line); border-radius: 8px; padding: 10px; min-width: 0; max-width: 100%; }
 .toolbar input:focus-visible, .form :is(input, select, textarea):focus-visible, .board button:focus-visible, .dialog button:focus-visible, .closed summary:focus-visible { outline: 3px solid var(--brand); outline-offset: 3px; }
 .columns { display: grid; grid-template-columns: repeat(4, minmax(220px, 1fr)); gap: 14px; overflow-x: auto; padding: 4px 2px 14px; align-items: start; }
 .column { background: var(--surface-subtle); border: 1px solid var(--line); border-radius: var(--radius-lg); padding: 12px; min-height: 210px; display: grid; gap: 12px; }

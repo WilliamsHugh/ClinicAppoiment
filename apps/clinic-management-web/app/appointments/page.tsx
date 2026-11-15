@@ -12,7 +12,7 @@ export default function AppointmentsPage() {
 
   if (view === "queue") {
     return (
-      <section>
+      <section className="page-stack">
         <PageHeader
           pathname="/appointments"
           actions={<Button variant="secondary" type="button" onClick={() => setView("appointments")}>Danh sách lịch hẹn</Button>}

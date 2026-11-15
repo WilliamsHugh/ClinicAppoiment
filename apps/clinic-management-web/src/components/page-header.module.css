@@ -7,6 +7,11 @@
   gap: 16px;
   flex-wrap: wrap;
   width: 100%;
+  max-width: 100%;
+}
+
+:global(.page-heading).header {
+  max-width: 100%;
 }
 
 .textContainer {
@@ -14,6 +19,7 @@
   flex-direction: column;
   gap: 4px;
   max-width: 780px;
+  flex: 1 1 auto;
 }
 
 .title {
@@ -37,4 +43,6 @@
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
+  margin-left: auto;
+  flex-shrink: 0;
 }
