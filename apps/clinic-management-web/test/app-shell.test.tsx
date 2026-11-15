@@ -94,6 +94,23 @@ describe("AppShell & RouteGuard (M3-UI-LEAD-004, M3-UI-LEAD-005)", () => {
       expect(html).toContain("Nhân viên phòng khám");
       expect(html.match(/Nhân viên phòng khám/g)).toHaveLength(1);
     });
+
+    it("renders session recovery banner and retry CTA when recovery is active", () => {
+      currentSession = {
+        ...makeSession("STAFF"),
+        recovery: {
+          message: "Mất kết nối tới máy chủ. Vui lòng thử lại.",
+          pending: false,
+          retry: vi.fn(),
+        },
+      };
+      mockPathname = "/dashboard";
+      const html = renderToStaticMarkup(<AppShell>Dashboard</AppShell>);
+
+      expect(html).toContain("Khôi phục phiên đăng nhập");
+      expect(html).toContain("Mất kết nối tới máy chủ. Vui lòng thử lại.");
+      expect(html).toContain("Thử kết nối lại");
+    });
   });
 
   describe("RouteGuard (403 Forbidden)", () => {

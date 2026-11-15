@@ -11,7 +11,7 @@ import { useSession } from "../lib/session/session-context";
 import { clinicRoleLabel, sessionDisplayName } from "../lib/session/session";
 import { useNotifications } from "../features/notifications/notification-context";
 import { RouteGuard } from "./route-guard";
-import { Badge, ConfirmModal } from "./ui";
+import { Alert, Badge, Button, ConfirmModal } from "./ui";
 import styles from "./app-shell.module.css";
 
 export interface AppShellProps {
@@ -62,7 +62,7 @@ export function AppShell({ children, NotificationSlot }: AppShellProps) {
   React.useEffect(() => { setMobileMenuOpen(false); }, [pathname]);
 
   React.useEffect(() => {
-    if (!mobileMenuOpen || !isMobile) return;
+    if (!mobileMenuOpen) return;
     drawerCloseRef.current?.focus();
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
@@ -89,7 +89,7 @@ export function AppShell({ children, NotificationSlot }: AppShellProps) {
       document.removeEventListener("keydown", handleKeyDown);
       menuButtonRef.current?.focus();
     };
-  }, [mobileMenuOpen, isMobile]);
+  }, [mobileMenuOpen]);
 
   // The public clinic home and authentication pages use their own layouts.
   if (pathname === "/auth" || pathname === "/") {
@@ -277,6 +277,25 @@ export function AppShell({ children, NotificationSlot }: AppShellProps) {
           </div>
         </header>
         <div className={styles.mobileDate}>{todayLabel} · UTC+7</div>
+
+        {session.recovery && (
+          <div className={styles.recoveryBanner} role="alert">
+            <Alert variant="warning" title="Khôi phục phiên đăng nhập">
+              <div className={styles.recoveryContent}>
+                <span>{session.recovery.message}</span>
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  loading={session.recovery.pending}
+                  onClick={() => void session.recovery?.retry()}
+                >
+                  Thử kết nối lại
+                </Button>
+              </div>
+            </Alert>
+          </div>
+        )}
 
         {/* Content Area */}
         <main className={`${styles.content} content`}>

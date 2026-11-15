@@ -390,6 +390,22 @@
   outline-offset: 2px;
 }
 
+.recoveryBanner {
+  padding: 12px 24px 0;
+  max-width: 1050px;
+  margin-inline: auto;
+  width: 100%;
+}
+
+.recoveryContent {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-top: 4px;
+}
+
 /* Mobile responsive drawer overlay */
 .mobileBackdrop {
   display: none;
@@ -451,6 +467,7 @@
   .sessionStatusText { flex: 0 1 96px; min-width: 0; max-width: 96px; font-size: 0.75rem; display: block; line-height: 44px; }
   .notificationLink { padding: 12px; }
   .mobileDate { display: block; padding: 8px 16px 0; font-size: 0.75rem; color: var(--muted); }
+  .recoveryBanner { padding: 12px 16px 0; }
   .content { padding: 16px; }
 
   .mobileBackdrop {

@@ -84,7 +84,7 @@ function MedicalRecordsPanelWorkspace({ session }: { session: Session }) {
   currentSession.current = session;
   const client = useMemo(() => createBrowserApiClient({
     getAccessToken: () => currentSession.current.getAccessToken(),
-    handleUnauthorized: () => currentSession.current.handleUnauthorized?.(),
+    handleUnauthorized: async () => { await currentSession.current.handleUnauthorized?.(); },
   }), []);
   const isDoctor = session.status === "authenticated" && session.identity?.role === "DOCTOR";
   const [appointments, setAppointments] = useState<AppointmentOption[]>([]);

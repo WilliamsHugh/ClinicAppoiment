@@ -24,7 +24,7 @@ function NotificationsPanelWorkspace({ session }: { session: Session }) {
   currentSession.current = session;
   const client = useMemo(() => createBrowserApiClient({
     getAccessToken: () => currentSession.current.getAccessToken(),
-    handleUnauthorized: () => currentSession.current.handleUnauthorized?.(),
+    handleUnauthorized: async () => { await currentSession.current.handleUnauthorized?.(); },
   }), []);
   const {
     unreadCount,
