@@ -94,6 +94,114 @@ function setupSession(role: ClinicRole = "STAFF", id = "user-1") {
   };
 }
 
+async function switchDoctorTab(label: string) {
+  const tab = Array.from(host.querySelectorAll<HTMLButtonElement>('[role="tab"]')).find((item) => item.textContent === label);
+  expect(tab).toBeTruthy();
+  await act(async () => tab!.click());
+}
+
+type DoctorOverride = (url: URL, options?: RequestInit) => Response | undefined;
+async function renderDoctor(role: ClinicRole, id = "user-1", override?: DoctorOverride) {
+  setupSession(role, id);
+  const fetcher = vi.fn<typeof fetch>(async (input, options) => {
+    const url = new URL(String(input));
+    const custom = override?.(url, options);
+    if (custom) return custom;
+    if (url.pathname === "/api/v1/doctors") return envelope(page([
+      { ...mockDoctor, id: "other-doctor", userId: "other-user", displayName: "BS. Nguyễn B" }, mockDoctor,
+    ]));
+    if (url.pathname === "/api/v1/specialties") return envelope(page([mockSpecialty]));
+    if (url.pathname === "/api/v1/users") return envelope(page([]));
+    if (url.pathname.endsWith("/schedules")) return envelope({ items: [{ id: "schedule-1", doctorId: url.pathname.split("/")[4],
+      weekday: 1, startTime: "08:00", endTime: "12:00", slotDurationMinutes: 30, isActive: true }], page: 1, limit: 100, total: 1 });
+    if (url.pathname.endsWith("/time-offs")) return envelope(page([]));
+    if (url.pathname.endsWith("/available-slots")) return envelope([{ startAt: "2030-01-07T01:00:00Z", endAt: "2030-01-07T01:30:00Z" }]);
+    if (url.pathname === "/api/v1/doctors/doc-1") return envelope(mockDoctor);
+    throw new Error(`Unexpected fixture request: ${url.pathname}`);
+  });
+  vi.stubGlobal("fetch", fetcher);
+  await act(async () => root.render(<DoctorPanel />));
+  return fetcher;
+}
+
+describe("TV3 / M2-BOOKING-005 doctor task tabs", () => {
+  it.each(["STAFF", "DOCTOR", "ADMIN"] as const)("keeps specialty management scoped to ADMIN for %s", async (role) => {
+    const fetcher = await renderDoctor(role);
+    await switchDoctorTab("Chuyên khoa");
+    expect(host.textContent).toContain("Nội tổng quát");
+    expect(Boolean(host.querySelector("form"))).toBe(role === "ADMIN");
+    expect(fetcher.mock.calls.filter(([, options]) => options?.method === "PATCH")).toHaveLength(0);
+  });
+
+  it("selects a doctor's own profile by userId even when another doctor is listed first", async () => {
+    const fetcher = await renderDoctor("DOCTOR", mockDoctor.userId);
+    expect(host.querySelector<HTMLSelectElement>("select")!.value).toBe(mockDoctor.id);
+    expect(host.querySelector('[aria-label="Quản lý lịch làm việc"]')).not.toBeNull();
+    expect(fetcher.mock.calls.some(([url]) => new URL(String(url)).pathname.includes("other-doctor/"))).toBe(false);
+    expect(fetcher.mock.calls.some(([url]) => new URL(String(url)).pathname === "/api/v1/doctors/me")).toBe(false);
+  });
+
+  it("does not choose an unrelated doctor or grant management when its own profile cannot be resolved", async () => {
+    const fetcher = await renderDoctor("DOCTOR", "unresolved-user");
+    expect(host.querySelector<HTMLSelectElement>("select")!.value).toBe("");
+    expect(fetcher.mock.calls.some(([url]) => /\/schedules|\/time-offs/.test(String(url)))).toBe(false);
+    await switchDoctorTab("Danh sách bác sĩ");
+    const doctor = Array.from(host.querySelectorAll("button")).find((item) => item.textContent?.includes(mockDoctor.displayName))!;
+    await act(async () => doctor.click());
+    expect(host.querySelector('[aria-label="Lịch làm việc định kỳ"]')).not.toBeNull();
+    expect(host.querySelector('[aria-label="Quản lý lịch làm việc"]')).toBeNull();
+    expect(host.querySelector('[aria-label="Thời gian nghỉ"]')).toBeNull();
+    expect(fetcher.mock.calls.some(([url]) => String(url).includes("/time-offs"))).toBe(false);
+  });
+
+  it("keeps time off and slots available when recurring schedules fail", async () => {
+    await renderDoctor("DOCTOR", mockDoctor.userId, (url) => {
+      if (url.pathname.endsWith("/schedules")) return failure(503, "Không thể tải ca làm việc");
+      if (url.pathname.endsWith("/time-offs")) return envelope(page([{ id: "off-1", doctorId: mockDoctor.id,
+        startAt: "2030-01-08T01:00:00Z", endAt: "2030-01-08T02:00:00Z", reason: "Nghỉ tập huấn" }]));
+    });
+    expect(host.textContent).toContain("Không thể tải ca làm việc");
+    expect(host.textContent).toContain("Nghỉ tập huấn");
+    expect(host.querySelector('[aria-label="Khung giờ khả dụng (UTC+7)"]')).not.toBeNull();
+    expect(host.textContent).not.toContain("Chưa có lịch làm việc định kỳ");
+  });
+
+  it("reads time off beyond the first 20 entries without changing the selected doctor", async () => {
+    const fetcher = await renderDoctor("DOCTOR", mockDoctor.userId, (url) => {
+      if (!url.pathname.endsWith("/time-offs")) return;
+      const current = Number(url.searchParams.get("page"));
+      const items = Array.from({ length: current === 1 ? 20 : 1 }, (_, index) => ({
+        id: `off-${(current - 1) * 20 + index + 1}`, doctorId: mockDoctor.id,
+        startAt: "2030-01-08T01:00:00Z", endAt: "2030-01-08T02:00:00Z", reason: `Nghỉ ${current === 1 ? "trang đầu" : "trang sau"}`,
+      }));
+      return envelope({ items, page: current, limit: 20, total: 21 });
+    });
+    const next = host.querySelector<HTMLButtonElement>('[aria-label="Trang sau"]')!;
+    await act(async () => next.click());
+    expect(host.textContent).toContain("Nghỉ trang sau");
+    expect(host.textContent).not.toContain("Nghỉ trang đầu");
+    expect(host.querySelector<HTMLSelectElement>("select")!.value).toBe(mockDoctor.id);
+    expect(fetcher.mock.calls.filter(([url]) => String(url).includes("/time-offs"))
+      .map(([url]) => new URL(String(url)).searchParams.get("page"))).toEqual(["1", "2"]);
+  });
+
+  it("preserves a specialty edit after a failed write", async () => {
+    await renderDoctor("ADMIN", "admin-user", (_url, options) => options?.method === "PATCH" ? failure(503, "Chưa lưu được chuyên khoa") : undefined);
+    await switchDoctorTab("Chuyên khoa");
+    const edit = Array.from(host.querySelectorAll("button")).find((item) => item.textContent === "Sửa")!;
+    await act(async () => edit.click());
+    const name = host.querySelector<HTMLInputElement>("form input")!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(name, "Chuyên khoa cập nhật");
+      name.dispatchEvent(new Event("input", { bubbles: true }));
+      host.querySelector("form")!.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+    });
+    expect(host.textContent).toContain("Chưa lưu được chuyên khoa");
+    expect(name.value).toBe("Chuyên khoa cập nhật");
+    expect(host.querySelector("details")!.open).toBe(true);
+  });
+});
+
 describe("Agent B · Filter, State & Error Recovery (M3-UI-BOOK-004, M3-UI-DOC-001)", () => {
   describe("1. Phân biệt rõ empty state vs error state", () => {
     it("Appointments: response 200 [] renders EmptyState, but 500 error renders ErrorState with retry", async () => {
@@ -198,6 +306,7 @@ describe("Agent B · Filter, State & Error Recovery (M3-UI-BOOK-004, M3-UI-DOC-0
       });
 
       // Select doctor
+      await switchDoctorTab("Danh sách bác sĩ");
       const doctorCard = Array.from(host.querySelectorAll("button")).find((el) =>
         el.textContent?.includes("BS. Trần Văn A")
       );
@@ -291,6 +400,7 @@ describe("Agent B · Filter, State & Error Recovery (M3-UI-BOOK-004, M3-UI-DOC-0
       });
 
       // Doctor error is shown in doctor list
+      await switchDoctorTab("Danh sách bác sĩ");
       expect(host.textContent).toContain("Không thể tải danh sách bác sĩ");
       // But specialty filter options still populated!
       const specialtyOptions = Array.from(host.querySelectorAll("option")).map((o) => o.textContent);

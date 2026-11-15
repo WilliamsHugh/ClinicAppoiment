@@ -1,5 +1,6 @@
 import React, { useState, type FormEvent } from "react";
-import { Button } from "../../components/ui";
+import { Button, Skeleton } from "../../components/ui";
+import { Pagination } from "../../components/pagination";
 import type { Schedule, TimeOff } from "./doctor-api";
 import { ScheduleCalendar } from "./schedule-calendar";
 import styles from "./doctors-panel.module.css";
@@ -10,11 +11,20 @@ const displayTime = (iso: string) =>
     timeZone: "Asia/Ho_Chi_Minh",
     day: "2-digit",
     month: "2-digit",
+    year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(iso));
 
 export interface SchedulePanelProps {
+  canManage?: boolean;
+  scheduleError?: string;
+  onRetrySchedule?: () => void;
+  scheduleLoading?: boolean;
+  timeOffLoading?: boolean;
+  timeOffPage?: number;
+  timeOffTotal?: number;
+  onTimeOffPageChange?: (page: number) => void;
   schedules: Schedule[];
   timeOffs: TimeOff[];
   timeOffError: string;
@@ -49,6 +59,14 @@ export interface SchedulePanelProps {
 }
 
 export function SchedulePanel({
+  canManage = true,
+  scheduleError,
+  onRetrySchedule,
+  scheduleLoading = false,
+  timeOffLoading = false,
+  timeOffPage = 1,
+  timeOffTotal = 0,
+  onTimeOffPageChange,
   schedules,
   timeOffs,
   timeOffError,
@@ -82,10 +100,13 @@ export function SchedulePanel({
   onRetryTimeOff,
 }: SchedulePanelProps) {
   const [scheduleView, setScheduleView] = useState<"calendar" | "list">("list");
+  const [scheduleFormOpen, setScheduleFormOpen] = useState(false);
+  const [timeOffFormOpen, setTimeOffFormOpen] = useState(false);
+  const scheduleBusy = busy || scheduleLoading || Boolean(scheduleError);
   return (
     <>
       {/* Quản lý lịch làm việc tuần */}
-      <section className={styles.card} aria-label="Quản lý lịch làm việc">
+      <section className={styles.card} aria-label={canManage ? "Quản lý lịch làm việc" : "Lịch làm việc định kỳ"}>
         <div className={styles.scheduleHeading}>
           <h2>Lịch làm việc</h2>
           <div role="group" aria-label="Cách hiển thị lịch làm việc">
@@ -93,22 +114,25 @@ export function SchedulePanel({
             <Button type="button" variant={scheduleView === "list" ? "primary" : "secondary"} aria-pressed={scheduleView === "list"} onClick={() => setScheduleView("list")}>Danh sách</Button>
           </div>
         </div>
-        {scheduleView === "calendar" ? <ScheduleCalendar schedules={schedules} disabled={busy} onEdit={onEditSchedule} onAdd={() => {
+        {scheduleError && <div role="alert" className={styles.error}><span>{scheduleError}</span><Button type="button" variant="secondary" disabled={scheduleLoading} onClick={onRetrySchedule}>Tải lại lịch làm việc</Button></div>}
+        {scheduleLoading && !schedules.length ? <div aria-busy="true" aria-label="Đang tải lịch làm việc"><Skeleton height={48} /><Skeleton height={48} /></div> : scheduleError && !schedules.length ? null :
+        scheduleView === "calendar" ? <ScheduleCalendar schedules={schedules} disabled={scheduleBusy} onEdit={canManage ? (item) => { setScheduleFormOpen(true); onEditSchedule(item); } : undefined} onAdd={canManage ? () => {
+          setScheduleFormOpen(true);
           onResetScheduleForm();
-          document.getElementById("schedule-weekday")?.focus();
-        }} /> : <div className={styles.list}>
+        } : undefined} /> : <div className={styles.list} aria-busy={scheduleLoading || undefined}>
+          {!schedules.length && <p className={styles.muted}>Chưa có lịch làm việc định kỳ.</p>}
           {schedules.map((item) => (
             <div key={item.id} className={styles.listRow}>
               <span>
                 {weekdays[item.weekday]} · {item.startTime}–{item.endTime} · {item.slotDurationMinutes} phút{" "}
                 {item.isActive ? "" : "(ngừng)"}
               </span>
-              <Button
+              {canManage && <><Button
                 type="button"
                 variant="secondary"
                 size="sm"
-                disabled={busy}
-                onClick={() => onEditSchedule(item)}
+                disabled={scheduleBusy}
+                onClick={() => { setScheduleFormOpen(true); onEditSchedule(item); }}
               >
                 Sửa
               </Button>
@@ -116,15 +140,19 @@ export function SchedulePanel({
                 type="button"
                 variant={item.isActive ? "danger" : "primary"}
                 size="sm"
-                disabled={busy}
+                disabled={scheduleBusy}
                 onClick={() => onToggleSchedule(item)}
               >
                 {busy && busyAction === `schedule-toggle-${item.id}` ? "Đang xử lý..." : (item.isActive ? "Ngừng" : "Kích hoạt")}
               </Button>
+              </>}
             </div>
           ))}
         </div>}
-        <form className={styles.row} onSubmit={onSubmitSchedule}>
+        {canManage && <details open={scheduleFormOpen} onToggle={(event) => setScheduleFormOpen(event.currentTarget.open)} className={styles.editor}>
+        <summary>{scheduleId ? "Sửa lịch làm việc" : "Thêm lịch làm việc"}</summary>
+        <form onSubmit={onSubmitSchedule}>
+        <fieldset className={styles.formFields} disabled={scheduleBusy}>
           <label>
             Thứ
             <select
@@ -168,7 +196,7 @@ export function SchedulePanel({
               onChange={(event) => onDurationChange(Number(event.target.value))}
             />
           </label>
-          <Button type="submit" variant="primary" disabled={busy}>
+          <Button type="submit" variant="primary" disabled={scheduleBusy}>
             {busy && busyAction === "schedule" ? "Đang lưu..." : (scheduleId ? "Cập nhật lịch" : "Lưu lịch")}
           </Button>
           {scheduleId && (
@@ -181,12 +209,15 @@ export function SchedulePanel({
               Thêm mới
             </Button>
           )}
+        </fieldset>
         </form>
+        </details>}
       </section>
 
       {/* Thời gian nghỉ phép */}
-      <section className={styles.card} aria-label="Thời gian nghỉ">
+      {canManage && <section className={styles.card} aria-label="Thời gian nghỉ">
         <h2>Thời gian nghỉ</h2>
+        <p className={styles.muted}>Ngày giờ theo Việt Nam (UTC+7).</p>
         {timeOffError && (
           <p role="alert" className={styles.error}>
             {timeOffError}{" "}
@@ -201,7 +232,9 @@ export function SchedulePanel({
             </Button>
           </p>
         )}
-        <div className={styles.list}>
+        {timeOffLoading && !timeOffs.length ? <div aria-busy="true" aria-label="Đang tải thời gian nghỉ"><Skeleton height={48} /><Skeleton height={48} /></div> :
+        <div className={styles.list} aria-busy={timeOffLoading || undefined}>
+          {!timeOffs.length && !timeOffError && <p className={styles.muted}>Chưa có thời gian nghỉ trên trang này.</p>}
           {timeOffs.map((item) => (
             <div key={item.id} className={styles.listRow}>
               <span>
@@ -212,15 +245,19 @@ export function SchedulePanel({
                 type="button"
                 variant="secondary"
                 size="sm"
-                disabled={busy}
-                onClick={() => onEditTimeOff(item)}
+                disabled={busy || timeOffLoading || Boolean(timeOffError)}
+                onClick={() => { setTimeOffFormOpen(true); onEditTimeOff(item); }}
               >
                 Sửa
               </Button>
             </div>
           ))}
-        </div>
-        <form className={styles.row} onSubmit={onSubmitTimeOff}>
+        </div>}
+        {onTimeOffPageChange && timeOffTotal > 20 && <Pagination page={timeOffPage} limit={20} total={timeOffTotal} disabled={timeOffLoading || busy} onPageChange={onTimeOffPageChange} />}
+        <details open={timeOffFormOpen} onToggle={(event) => setTimeOffFormOpen(event.currentTarget.open)} className={styles.editor}>
+        <summary>{timeOffId ? "Sửa thời gian nghỉ" : "Thêm thời gian nghỉ"}</summary>
+        <form onSubmit={onSubmitTimeOff}>
+        <fieldset className={styles.formFields} disabled={busy || timeOffLoading || Boolean(timeOffError)}>
           <label>
             Bắt đầu (giờ Việt Nam)
             <input
@@ -259,8 +296,10 @@ export function SchedulePanel({
               Thêm mới
             </Button>
           )}
+        </fieldset>
         </form>
-      </section>
+        </details>
+      </section>}
     </>
   );
 }

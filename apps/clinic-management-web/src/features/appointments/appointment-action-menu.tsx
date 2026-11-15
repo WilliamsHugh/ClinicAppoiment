@@ -1,6 +1,7 @@
-import React from "react";
+import React, { useId, useState } from "react";
 import type { ClinicRole } from "../../lib/session/session";
 import type { Appointment } from "./appointment-api";
+import { allowedActions } from "./queue-api";
 import styles from "./appointments-panel.module.css";
 
 export interface AppointmentActionMenuProps {
@@ -25,13 +26,15 @@ export function AppointmentActionMenu({
   onViewRecord,
 }: AppointmentActionMenuProps) {
   const isDoctor = role === "DOCTOR";
-  const isStaffOrAdmin = role === "STAFF" || role === "ADMIN";
+  const actions = role ? allowedActions(role, appointment.status) : [];
+  const [expanded, setExpanded] = useState(false);
+  const secondaryId = useId();
   const { status } = appointment;
 
   return (
     <div className={styles.actionGroup} role="group" aria-label="Thao tác lịch hẹn">
       {/* STAFF & ADMIN: Xác nhận khi status = PENDING */}
-      {isStaffOrAdmin && status === "PENDING" && (
+      {actions.includes("confirm") && (
         <button
           type="button"
           disabled={inFlight}
@@ -44,7 +47,7 @@ export function AppointmentActionMenu({
       )}
 
       {/* STAFF & ADMIN: Check-in khi status = CONFIRMED */}
-      {isStaffOrAdmin && status === "CONFIRMED" && (
+      {actions.includes("check-in") && (
         <button
           type="button"
           disabled={inFlight}
@@ -56,8 +59,11 @@ export function AppointmentActionMenu({
         </button>
       )}
 
-      {/* STAFF & ADMIN: Hủy khi status = PENDING hoặc CONFIRMED */}
-      {isStaffOrAdmin && (status === "PENDING" || status === "CONFIRMED") && (
+      {actions.includes("cancel") && <button type="button" className={styles.moreActions}
+        aria-expanded={expanded} aria-controls={secondaryId} disabled={inFlight}
+        onClick={() => setExpanded((value) => !value)}>Thao tác khác</button>}
+      <div id={secondaryId} className={styles.secondaryActions} data-expanded={expanded}>
+      {actions.includes("cancel") && (
         <button
           type="button"
           disabled={inFlight}
@@ -70,7 +76,7 @@ export function AppointmentActionMenu({
       )}
 
       {/* STAFF & ADMIN: Không đến khi status = CONFIRMED */}
-      {isStaffOrAdmin && status === "CONFIRMED" && (
+      {actions.includes("no-show") && (
         <button
           type="button"
           disabled={inFlight}
@@ -81,6 +87,7 @@ export function AppointmentActionMenu({
           {inFlight ? "Đang xử lý..." : "Không đến"}
         </button>
       )}
+      </div>
 
       {/* DOCTOR: Xem hồ sơ hoặc khám bệnh khi status = CHECKED_IN hoặc COMPLETED */}
       {isDoctor && (status === "CHECKED_IN" || status === "COMPLETED") && (

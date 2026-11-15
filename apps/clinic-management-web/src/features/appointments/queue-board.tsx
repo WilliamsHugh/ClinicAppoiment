@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useRef, useState, type ComponentType } from 
 import { createBrowserApiClient } from "../../lib/api/client";
 import type { Session } from "../../lib/session/session";
 import { useSession } from "../../lib/session/session-context";
+import { ConfirmModal } from "../../components/ui";
 import { allowedActions, appointmentApi, clinicTime, clinicToday, queueError, statusLabels,
   type Appointment, type AppointmentStatus, type QueueAction, type QueueAppointment } from "./queue-api";
 import { actionLabels, QueueActionDialog } from "./queue-action-dialog";
@@ -49,6 +50,7 @@ function AuthenticatedQueue({ session, PatientLookup, hideHeader = false }: Queu
   const [busyId, setBusyId] = useState<string | null>(null);
   const [revision, setRevision] = useState(0);
   const [modal, setModal] = useState<{ item: QueueAppointment; action: "cancel" | "reschedule" | "no-show" } | null>(null);
+  const [confirmation, setConfirmation] = useState<{ item: QueueAppointment; action: "confirm" | "check-in" } | null>(null);
   const [detail, setDetail] = useState<QueueAppointment | null>(null);
   const busyRef = useRef(false);
   const alive = useRef(true);
@@ -72,7 +74,7 @@ function AuthenticatedQueue({ session, PatientLookup, hideHeader = false }: Queu
   function updated(item: Appointment, label: string) {
     setItems((rows) => rows.map((row) => row.id === item.id ? { ...row, ...item } : row));
     setNotice(`${label} thành công.`);
-    setModal(null); refresh();
+    setModal(null); setConfirmation(null); refresh();
   }
   async function quickAction(item: QueueAppointment, action: QueueAction) {
     if (busyRef.current || !canAct || !allowedActions(role, item.status).includes(action)) return;
@@ -81,7 +83,7 @@ function AuthenticatedQueue({ session, PatientLookup, hideHeader = false }: Queu
       const result = await api.mutate(item, action);
       if (alive.current) updated(result, actionLabels[action]);
     } catch (caught) {
-      if (alive.current) { setError(queueError(caught)); }
+      if (alive.current) { setError(queueError(caught)); setConfirmation(null); }
     } finally {
       busyRef.current = false;
       if (alive.current) setBusyId(null);
@@ -99,13 +101,13 @@ function AuthenticatedQueue({ session, PatientLookup, hideHeader = false }: Queu
           disabled={!canAct || item.identityUnavailable} className={action === "cancel" ? styles.danger : undefined}
           onClick={() => {
             if (action === "cancel" || action === "reschedule" || action === "no-show") setModal({ item, action });
-            else void quickAction(item, action);
+            else setConfirmation({ item, action });
           }}>{busyId === item.id ? "Đang lưu…" : actionLabels[action]}</button>)}
       </div>
     </article>;
   }
   return <div className={styles.board}>
-    {!hideHeader && <header><p className="eyebrow">Health&amp;Human · Lịch hẹn</p><h1>Hàng đợi khám</h1>
+    {!hideHeader && <header><h1>Hàng đợi khám</h1>
       <p className={styles.muted}>{role === "DOCTOR" ? "Lịch khám được phân công cho bạn." : "Theo dõi lịch hẹn và đón tiếp bệnh nhân trong ngày."} Giờ Việt Nam (UTC+7).</p>
     </header>}
     <section className={styles.toolbar} aria-label="Bộ lọc lịch hẹn">
@@ -145,6 +147,20 @@ function AuthenticatedQueue({ session, PatientLookup, hideHeader = false }: Queu
     </>}
     {modal && <QueueActionDialog key={`${modal.item.id}:${modal.action}`} {...modal} api={api}
       onClose={() => setModal(null)} onUpdated={(item) => updated(item, actionLabels[modal.action])} onStale={refresh} />}
+    <ConfirmModal isOpen={Boolean(confirmation)}
+      title={confirmation?.action === "check-in" ? "Xác nhận tiếp đón (Check-in)" : "Xác nhận lịch hẹn"}
+      confirmLabel={confirmation?.action === "check-in" ? "Xác nhận Check-in" : "Xác nhận lịch hẹn"}
+      cancelLabel="Quay lại" variant="primary" isLoading={Boolean(busyId)} confirmDisabled={!canAct}
+      onCancel={() => setConfirmation(null)}
+      onConfirm={() => confirmation ? quickAction(confirmation.item, confirmation.action) : undefined}>
+      {confirmation && <>
+        <p><strong>{confirmation.item.patientName}</strong> · {confirmation.item.doctorName}</p>
+        <p>{date} · {clinicTime(confirmation.item.scheduledStartAt)}–{clinicTime(confirmation.item.scheduledEndAt)} (UTC+7)</p>
+        <p>{confirmation.action === "check-in"
+          ? "Ghi nhận bệnh nhân đã có mặt tại phòng khám và chuyển vào hàng đợi chờ khám?"
+          : "Xác nhận lịch hẹn khám cho bệnh nhân này?"}</p>
+      </>}
+    </ConfirmModal>
     {detail && <QueueDialog title="Chi tiết lịch hẹn" onClose={() => setDetail(null)}>
       <dl className={styles.summary}>
         <dt>Bệnh nhân</dt><dd>{detail.patientName}</dd><dt>Bác sĩ</dt><dd>{detail.doctorName}</dd>

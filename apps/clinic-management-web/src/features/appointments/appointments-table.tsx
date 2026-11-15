@@ -119,34 +119,34 @@ export function AppointmentsTable({
                     aria-busy={inFlight ? "true" : undefined}
                     aria-label={`Lịch hẹn ${patient.name}`}
                   >
-                    <td>
+                    <td className={styles.appointmentTime}>
                       <div className={styles.timeCell}>
                         <span className={styles.timeHours}>{timeRange}</span>
-                        <span className={styles.timeDate}>{dateStr}</span>
+                        <span className={styles.timeDate}>{dateStr} · UTC+7</span>
                       </div>
                     </td>
-                    <td>
+                    <td className={styles.appointmentPatient}>
                       <div className={styles.patientCell}>
                         <span className={styles.patientName}>{patient.name}</span>
                         <span className={styles.patientSub}>{patient.sub}</span>
                       </div>
                     </td>
                     {!isDoctor && (
-                      <td>
+                      <td className={styles.appointmentDoctor} data-label="Bác sĩ">
                         <div className={styles.doctorCell}>
                           <span className={styles.doctorName}>{doctorName}</span>
                         </div>
                       </td>
                     )}
                     {!isDoctor && (
-                      <td>
+                      <td className={styles.appointmentSpecialty} data-label="Chuyên khoa">
                         <span className={styles.specialtyBadge}>{specialtyName}</span>
                       </td>
                     )}
-                    <td>
+                    <td className={styles.appointmentStatus}>
                       <StatusBadge status={appointment.status} />
                     </td>
-                    <td style={{ textAlign: "right" }}>
+                    <td className={styles.appointmentActions}>
                       <AppointmentActionMenu
                         appointment={appointment}
                         role={role}

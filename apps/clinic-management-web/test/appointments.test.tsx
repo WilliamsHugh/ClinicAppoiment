@@ -189,7 +189,7 @@ describe("AppointmentsPanel (M3-WEB-010)", () => {
 
     // Verify Title & Filter Bar
     expect(host.textContent).toContain("Quản lý lịch hẹn");
-    expect(host.textContent).toContain("Ngày khám:");
+    expect(host.textContent).toContain("Ngày khám (UTC+7):");
     expect(host.textContent).toContain("Chờ xác nhận");
 
     // Verify resolved patient name and fallback (no raw UUID leakage)
@@ -328,5 +328,49 @@ describe("AppointmentsPanel (M3-WEB-010)", () => {
     // Conflict alert should appear inline
     expect(host.textContent).toContain("Xung đột trạng thái lịch hẹn (409)");
     expect(host.textContent).toContain("Xung đột trạng thái:");
+  });
+
+  it("keeps pagination usable when a page-local search has no matches", async () => {
+    let reads = 0;
+    const fetcher = mockGateway((path) => path === "/api/v1/appointments" ? envelope({
+      items: [pendingAppt], page: ++reads, limit: 20, total: 40,
+    }) : undefined);
+    await renderPanel("STAFF", fetcher);
+    const search = host.querySelector<HTMLInputElement>('input[type="search"]')!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(search, "không khớp");
+      search.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    expect(host.textContent).toContain("Không có kết quả trên trang hiện tại");
+    const pagination = host.querySelector('[aria-label="Phân trang lịch hẹn"]')!;
+    const next = Array.from(pagination.querySelectorAll("button")).find((item) => item.textContent === "Trang sau")!;
+    expect(next.disabled).toBe(false);
+    await act(async () => next.click());
+    expect(search.value).toBe("không khớp");
+    expect(host.textContent).toContain("Trang 2 / 2");
+    const listCalls = fetcher.mock.calls.filter(([url]) => new URL(String(url)).pathname === "/api/v1/appointments");
+    expect(listCalls.map(([url]) => new URL(String(url)).searchParams.get("page"))).toEqual(["1", "2"]);
+    expect(listCalls.every(([url]) => !new URL(String(url)).searchParams.has("q"))).toBe(true);
+    expect(new URL(String(listCalls[0][0])).searchParams.get("to")).toBe(
+      new Date(Date.parse(new URL(String(listCalls[0][0])).searchParams.get("from")!) + 86400_000).toISOString()
+    );
+  });
+
+  it("ignores an older appointment response after the selected day changes", async () => {
+    let resolveOld!: (value: Response) => void;
+    let reads = 0;
+    const fetcher = mockGateway((path) => path === "/api/v1/appointments" ? ++reads === 1
+      ? new Promise<Response>((resolve) => { resolveOld = resolve; })
+      : envelope(page([])) : undefined);
+    await renderPanel("STAFF", fetcher);
+    const date = host.querySelector<HTMLInputElement>('input[type="date"]')!;
+    await act(async () => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(date, "2030-01-08");
+      date.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+    await act(async () => resolveOld(envelope(page([pendingAppt]))));
+    expect(host.querySelector("tbody")).toBeNull();
+    expect(date.value).toBe("2030-01-08");
+    expect(host.textContent).toContain("Không tìm thấy lịch hẹn");
   });
 });

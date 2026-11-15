@@ -43,6 +43,10 @@ function dialog(): HTMLDialogElement {
   const value = host.querySelector("dialog"); if (!value) throw new Error("Missing dialog"); return value;
 }
 async function click(value: HTMLElement) { await act(async () => value.click()); }
+function confirmation(): HTMLElement {
+  const value = host.querySelector<HTMLElement>('[role="dialog"]');
+  if (!value) throw new Error("Missing confirmation"); return value;
+}
 async function change(value: HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement, text: string) {
   await act(async () => {
     Object.getOwnPropertyDescriptor(Object.getPrototypeOf(value), "value")!.set!.call(value, text);
@@ -95,8 +99,14 @@ describe("Clinic Queue Board", () => {
     const listCount = () => fetcher.mock.calls.filter(([url]) => new URL(String(url)).pathname === "/api/v1/appointments").length;
     expect(listCount()).toBe(1);
     await click(button("Xác nhận", ticket("PENDING")));
+    expect(writes(fetcher)).toHaveLength(0);
+    expect(confirmation().textContent).toContain("Nguyễn Văn An");
+    expect(confirmation().textContent).toContain("08:00–08:30 (UTC+7)");
+    await click(button("Xác nhận lịch hẹn", confirmation()));
     expect(ticket("CONFIRMED")).toBeDefined();
     await click(button("Check-in", ticket("CONFIRMED")));
+    expect(writes(fetcher)).toHaveLength(1);
+    await click(button("Xác nhận Check-in", confirmation()));
     expect(ticket("CHECKED_IN")).toBeDefined();
     expect(writes(fetcher).map(([url]) => new URL(String(url)).pathname.split("/").at(-1))).toEqual(["confirm", "check-in"]);
     expect(listCount()).toBe(3);
@@ -120,14 +130,25 @@ describe("Clinic Queue Board", () => {
     await click(button("No-show", ticket("CONFIRMED")));
     await submit(); expect(ticket("NO_SHOW")).toBeDefined();
   });
-  it("blocks duplicate quick actions until the request resolves", async () => {
+  it.each(["Xác nhận", "Check-in"])("dismisses %s confirmation without sending a mutation", async (label) => {
+    const fetcher = await render("STAFF", gateway([label === "Xác nhận" ? pending : confirmed]));
+    await click(button(label, ticket(label === "Xác nhận" ? "PENDING" : "CONFIRMED")));
+    expect(confirmation().textContent).toContain("Bác sĩ Bình");
+    await act(async () => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+    expect(host.querySelector('[role="dialog"]')).toBeNull();
+    expect(writes(fetcher)).toHaveLength(0);
+  });
+  it("blocks duplicate confirmed actions and dismissal until the request resolves", async () => {
     let resolve!: (value: Response) => void;
     const fetcher = gateway([pending], (_url, method) => method === "PATCH" ? new Promise<Response>((done) => { resolve = done; }) : undefined);
     await render("STAFF", fetcher);
-    const confirm = button("Xác nhận", ticket("PENDING"));
+    await click(button("Xác nhận", ticket("PENDING")));
+    const confirm = button("Xác nhận lịch hẹn", confirmation());
     await act(async () => { confirm.click(); confirm.click(); });
     expect(writes(fetcher)).toHaveLength(1);
     expect(confirm.disabled).toBe(true);
+    await act(async () => document.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+    expect(host.querySelector('[role="dialog"]')).not.toBeNull();
     await act(async () => { resolve(envelope({ ...pending, status: "CONFIRMED" })); });
   });
   it("keeps the cancellation form open and blocks Escape while a write is pending", async () => {
@@ -209,6 +230,7 @@ describe("Clinic Queue Board", () => {
       if (url.pathname === "/api/v1/appointments" && failReads) return failure("DEPENDENCY_UNAVAILABLE", 503);
     });
     await render("STAFF", fetcher); await click(button("Xác nhận", ticket("PENDING")));
+    await click(button("Xác nhận lịch hẹn", confirmation()));
     expect(ticket("CONFIRMED")).toBeDefined();
     expect(host.textContent).toContain("Xác nhận thành công");
     expect(host.textContent).toContain("Dữ liệu hiện có thể đã thay đổi");

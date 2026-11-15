@@ -47,6 +47,10 @@ export function AppointmentsPanel({ onOpenQueue }: { onOpenQueue?: () => void } 
 
   // Data states
   const [appointments, setAppointments] = useState<Appointment[]>([]);
+  const [loadedQuery, setLoadedQuery] = useState("");
+  const requestRef = useRef(0);
+  const queryKey = `${selectedDate}:${selectedStatus}:${page}`;
+  const currentAppointments = loadedQuery === queryKey ? appointments : [];
   const [totalCount, setTotalCount] = useState<number>(0);
   const [loading, setLoading] = useState<boolean>(true);
   const [isRefreshing, setIsRefreshing] = useState<boolean>(false);
@@ -129,7 +133,8 @@ export function AppointmentsPanel({ onOpenQueue }: { onOpenQueue?: () => void } 
   const fetchAppointments = useCallback(
     async (isRefresh = false) => {
       if (!isAuthorized) return;
-      if (isRefresh && appointments.length > 0) {
+      const request = ++requestRef.current;
+      if (isRefresh && currentAppointments.length > 0) {
         setIsRefreshing(true);
       } else {
         setLoading(true);
@@ -140,7 +145,7 @@ export function AppointmentsPanel({ onOpenQueue }: { onOpenQueue?: () => void } 
       try {
         // Create local day boundaries for from/to in Vietnam timezone (GMT+7)
         const from = new Date(`${selectedDate}T00:00:00+07:00`).toISOString();
-        const to = new Date(`${selectedDate}T23:59:59.999+07:00`).toISOString();
+        const to = new Date(Date.parse(from) + 86400_000).toISOString();
 
         const res = await api.list({
           from,
@@ -150,8 +155,10 @@ export function AppointmentsPanel({ onOpenQueue }: { onOpenQueue?: () => void } 
           limit: 20,
         });
 
+        if (request !== requestRef.current) return;
         const items = res.data.items;
         setAppointments(items);
+        setLoadedQuery(queryKey);
         setTotalCount(res.data.total ?? items.length);
         setIsStaleData(false);
 
@@ -168,6 +175,7 @@ export function AppointmentsPanel({ onOpenQueue }: { onOpenQueue?: () => void } 
               return api.getPatient(pid, appt?.id);
             })
           ).then((results) => {
+            if (request !== requestRef.current) return;
             setPatientsMap((prev) => {
               const updated = { ...prev };
               results.forEach((r, idx) => {
@@ -181,7 +189,8 @@ export function AppointmentsPanel({ onOpenQueue }: { onOpenQueue?: () => void } 
           });
         }
       } catch (err: unknown) {
-        if (appointments.length > 0) {
+        if (request !== requestRef.current) return;
+        if (currentAppointments.length > 0) {
           setIsStaleData(true);
           showToast(
             "Không thể cập nhật danh sách lịch hẹn mới nhất. Đang hiển thị kết quả gần nhất.",
@@ -196,23 +205,26 @@ export function AppointmentsPanel({ onOpenQueue }: { onOpenQueue?: () => void } 
           }
         }
       } finally {
-        setLoading(false);
-        setIsRefreshing(false);
+        if (request === requestRef.current) {
+          setLoading(false);
+          setIsRefreshing(false);
+        }
       }
     },
-    [api, isAuthorized, selectedDate, selectedStatus, page, patientsMap, appointments.length, showToast]
+    [api, isAuthorized, selectedDate, selectedStatus, page, patientsMap, currentAppointments.length, queryKey, showToast]
   );
 
   useEffect(() => {
     fetchAppointments(false);
-  }, [selectedDate, selectedStatus, page]); // eslint-disable-line react-hooks/exhaustive-deps
+    return () => { requestRef.current++; };
+  }, [api, isAuthorized, selectedDate, selectedStatus, page]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Filter client-side search query
   const filteredAppointments = useMemo(() => {
-    if (!searchQuery.trim()) return appointments;
-    const q = searchQuery.toLowerCase();
+    if (!searchQuery.trim()) return currentAppointments;
+    const q = searchQuery.trim().toLowerCase();
 
-    return appointments.filter((appt) => {
+    return currentAppointments.filter((appt) => {
       const patientName = patientsMap[appt.patientId]?.toLowerCase() || "";
       const doctorName = doctorsMap[appt.doctorId]?.toLowerCase() || "";
       const reason = appt.reason?.toLowerCase() || "";
@@ -225,7 +237,7 @@ export function AppointmentsPanel({ onOpenQueue }: { onOpenQueue?: () => void } 
         shortId.includes(q)
       );
     });
-  }, [appointments, searchQuery, patientsMap, doctorsMap]);
+  }, [appointments, loadedQuery, queryKey, searchQuery, patientsMap, doctorsMap]);
 
   // Handlers for status transitions
   const handleExecuteConfirm = async () => {
@@ -305,7 +317,7 @@ export function AppointmentsPanel({ onOpenQueue }: { onOpenQueue?: () => void } 
       appointment,
       action: "confirm",
       title: "Xác nhận lịch hẹn",
-      description: `Bạn có chắc chắn muốn xác nhận lịch hẹn khám cho ${pName}?`,
+      description: `Bạn có chắc chắn muốn xác nhận lịch hẹn khám cho ${pName}? ${reviewContext(appointment)} Trạng thái sẽ chuyển từ Chờ xác nhận sang Đã xác nhận.`,
       confirmLabel: "Xác nhận lịch hẹn",
       variant: "primary",
     });
@@ -318,7 +330,7 @@ export function AppointmentsPanel({ onOpenQueue }: { onOpenQueue?: () => void } 
       appointment,
       action: "check-in",
       title: "Xác nhận tiếp đón (Check-in)",
-      description: `Ghi nhận ${pName} đã có mặt tại phòng khám và chuyển vào hàng đợi chờ bác sĩ khám?`,
+      description: `Ghi nhận ${pName} đã có mặt tại phòng khám và chuyển vào hàng đợi chờ bác sĩ khám? ${reviewContext(appointment)}`,
       confirmLabel: "Xác nhận Check-in",
       variant: "primary",
     });
@@ -401,7 +413,7 @@ export function AppointmentsPanel({ onOpenQueue }: { onOpenQueue?: () => void } 
       appointment,
       action: "cancel",
       title: "Xác nhận hủy lịch hẹn",
-      description: `Bạn có chắc chắn muốn hủy lịch hẹn của ${pName}? Thao tác này sẽ cập nhật trạng thái sang "Đã hủy" và không thể hoàn tác.`,
+      description: `Bạn có chắc chắn muốn hủy lịch hẹn của ${pName}? ${reviewContext(appointment)} Thao tác này sẽ cập nhật trạng thái sang "Đã hủy" và không thể hoàn tác.`,
       confirmLabel: "Hủy lịch hẹn",
       variant: "danger",
     });
@@ -414,7 +426,7 @@ export function AppointmentsPanel({ onOpenQueue }: { onOpenQueue?: () => void } 
       appointment,
       action: "no-show",
       title: "Xác nhận bệnh nhân không đến",
-      description: `Đánh dấu ${pName} không đến phòng khám theo giờ hẹn đã đăng ký?`,
+      description: `Đánh dấu ${pName} không đến phòng khám theo giờ hẹn đã đăng ký? ${reviewContext(appointment)}`,
       confirmLabel: "Xác nhận vắng mặt",
       variant: "danger",
     });
@@ -423,6 +435,13 @@ export function AppointmentsPanel({ onOpenQueue }: { onOpenQueue?: () => void } 
   const handleViewRecord = (appointment: Appointment) => {
     router.push(`/medical-records?appointmentId=${encodeURIComponent(appointment.id)}`);
   };
+
+  function reviewContext(appointment: Appointment) {
+    const dateTime = new Intl.DateTimeFormat("vi-VN", {
+      timeZone: "Asia/Ho_Chi_Minh", dateStyle: "short", timeStyle: "short", hourCycle: "h23",
+    }).format(new Date(appointment.scheduledStartAt));
+    return `${doctorsMap[appointment.doctorId] ?? "Chưa có tên bác sĩ"} · ${dateTime} (UTC+7).`;
+  }
 
   const handleResetFilters = () => {
     setSelectedDate(todayStr);
@@ -442,7 +461,7 @@ export function AppointmentsPanel({ onOpenQueue }: { onOpenQueue?: () => void } 
   // Permission check
   if (!isAuthorized) {
     return (
-      <div className={styles.panel}>
+      <div className={`page-stack ${styles.panel}`}>
         <PageHeader pathname="/appointments" />
         <PermissionDeniedState
           title="Quyền truy cập hạn chế"
@@ -459,7 +478,7 @@ export function AppointmentsPanel({ onOpenQueue }: { onOpenQueue?: () => void } 
     selectedDate !== todayStr;
 
   return (
-    <div className={styles.panel}>
+    <div className={`page-stack ${styles.panel}`}>
       {/* Page Header */}
       <PageHeader
         pathname="/appointments"
@@ -486,7 +505,7 @@ export function AppointmentsPanel({ onOpenQueue }: { onOpenQueue?: () => void } 
       />
 
       {/* Main Content Area / State Matrix */}
-      {loading && appointments.length === 0 ? (
+      {loading && currentAppointments.length === 0 ? (
         <SkeletonTable
           rows={8}
           headers={
@@ -495,7 +514,7 @@ export function AppointmentsPanel({ onOpenQueue }: { onOpenQueue?: () => void } 
               : ["Giờ khám", "Bệnh nhân", "Bác sĩ", "Chuyên khoa", "Trạng thái", "Thao tác"]
           }
         />
-      ) : error && appointments.length === 0 ? (
+      ) : error && currentAppointments.length === 0 ? (
         <ErrorState
           message={error}
           requestId={errorRequestId}
@@ -505,7 +524,7 @@ export function AppointmentsPanel({ onOpenQueue }: { onOpenQueue?: () => void } 
         isFiltered ? (
           <EmptyState
             title="Không tìm thấy lịch hẹn"
-            message="Không có lịch hẹn nào phù hợp với bộ lọc hoặc từ khóa tìm kiếm đã chọn."
+            message={searchQuery.trim() ? "Không có kết quả trên trang hiện tại. Bạn có thể đổi từ khóa hoặc chuyển trang để tìm tiếp." : "Không có lịch hẹn nào phù hợp với bộ lọc đã chọn."}
             action={{
               label: "Xóa bộ lọc",
               onClick: handleResetFilters,
@@ -568,37 +587,37 @@ export function AppointmentsPanel({ onOpenQueue }: { onOpenQueue?: () => void } 
             onViewRecord={handleViewRecord}
           />
 
-          {/* Pagination Controls */}
+        </div>
+      )}
+
           {totalCount > 20 && (
-            <div className={styles.paginationBar}>
+            <nav className={styles.paginationBar} aria-label="Phân trang lịch hẹn">
               <span>
-                Hiển thị {filteredAppointments.length} / tổng số {totalCount} lịch hẹn
+                {filteredAppointments.length} kết quả trên trang {page} · {totalCount} lịch hẹn theo bộ lọc ngày và trạng thái
               </span>
               <div className={styles.paginationControls}>
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
-                  disabled={page <= 1}
+                  disabled={page <= 1 || loading || isRefreshing}
                   onClick={() => setPage((p) => Math.max(1, p - 1))}
                 >
                   Trang trước
                 </Button>
-                <span>Trang {page}</span>
+                <span aria-live="polite">Trang {page} / {Math.ceil(totalCount / 20)}</span>
                 <Button
                   type="button"
                   variant="outline"
                   size="sm"
-                  disabled={page * 20 >= totalCount}
+                  disabled={page * 20 >= totalCount || loading || isRefreshing}
                   onClick={() => setPage((p) => p + 1)}
                 >
                   Trang sau
                 </Button>
               </div>
-            </div>
+            </nav>
           )}
-        </div>
-      )}
 
       {/* Action Confirmation Modal */}
       <ConfirmModal

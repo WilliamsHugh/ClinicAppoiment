@@ -48,7 +48,7 @@ export function AppointmentFilterBar({
         <div className={styles.dateFilterGroup}>
           <label htmlFor="appointment-date-filter" className={styles.dateLabel}>
             <span style={{ display: "inline-flex", alignItems: "center", gap: 5 }}>
-              <Calendar size={14} aria-hidden="true" /> Ngày khám:
+              <Calendar size={14} aria-hidden="true" /> Ngày khám (UTC+7):
             </span>
           </label>
           <input
@@ -73,14 +73,18 @@ export function AppointmentFilterBar({
 
         {/* Search input */}
         <div className={styles.searchGroup}>
+          <label htmlFor="appointment-search" className={styles.dateLabel}>Tìm trong trang hiện tại</label>
           <input
+            id="appointment-search"
             type="search"
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
-            placeholder="Tìm theo tên bệnh nhân, bác sĩ, lý do (trong trang hiện tại)..."
+            placeholder="Tên bệnh nhân, bác sĩ hoặc lý do"
             className={styles.searchInput}
             aria-label="Tìm kiếm lịch hẹn"
+            aria-describedby="appointment-search-hint"
           />
+          <small id="appointment-search-hint" className={styles.searchHint}>Chỉ lọc các lịch hẹn trên trang đang xem.</small>
         </div>
 
         {/* Action buttons */}

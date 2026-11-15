@@ -17,7 +17,7 @@ export const doctorApi = (client: ApiClient) => {
       client.get<Page<Doctor>>("/api/v1/doctors", { query }),
     doctor: (id: string, signal?: AbortSignal) => client.get<Doctor>(`/api/v1/doctors/${encodeURIComponent(id)}`, { signal }),
     schedules: (id: string, page = 1, signal?: AbortSignal) => client.get<Page<Schedule>>(`/api/v1/doctors/${encodeURIComponent(id)}/schedules`, { query: { page, limit: 100 }, signal }),
-    timeOffs: (id: string, signal?: AbortSignal) => client.get<Page<TimeOff>>(`/api/v1/doctors/${encodeURIComponent(id)}/time-offs`, { signal }),
+    timeOffs: (id: string, signal?: AbortSignal, page = 1) => client.get<Page<TimeOff>>(`/api/v1/doctors/${encodeURIComponent(id)}/time-offs`, { query: { page, limit: 20 }, signal }),
     slots: (id: string, date: string, signal?: AbortSignal) => client.get<Slot[]>(`/api/v1/doctors/${encodeURIComponent(id)}/available-slots`, { query: { date }, signal }),
     doctorAccounts: () => client.get<Page<UserAccount>>("/api/v1/users", { query: { role: "DOCTOR", status: "ACTIVE", limit: 100 } }),
     createSpecialty: (body: { name: string; description?: string }) => client.post<Specialty>("/api/v1/specialties", { body }),

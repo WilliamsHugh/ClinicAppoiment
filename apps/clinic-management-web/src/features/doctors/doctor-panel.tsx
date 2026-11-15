@@ -27,6 +27,7 @@ const displayTime = (iso: string) =>
     timeZone: "Asia/Ho_Chi_Minh",
     day: "2-digit",
     month: "2-digit",
+    year: "numeric",
     hour: "2-digit",
     minute: "2-digit",
   }).format(new Date(iso));
@@ -46,6 +47,9 @@ export function DoctorPanel() {
   const [selected, setSelected] = useState<Doctor | null>(null);
   const [schedules, setSchedules] = useState<Schedule[]>([]);
   const [timeOffs, setTimeOffs] = useState<TimeOff[]>([]);
+  const [timeOffPage, setTimeOffPage] = useState(1);
+  const [timeOffTotal, setTimeOffTotal] = useState(0);
+  const [timeOffLoading, setTimeOffLoading] = useState(false);
   const [slots, setSlots] = useState<Slot[]>([]);
   const [timeOffError, setTimeOffError] = useState("");
   const [search, setSearch] = useState("");
@@ -53,17 +57,27 @@ export function DoctorPanel() {
   const [specialtyFilter, setSpecialtyFilter] = useState("");
   const [page, setPage] = useState(1);
   const [date, setDate] = useState(localToday);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
+  const [specialtyLoading, setSpecialtyLoading] = useState(true);
+  const [specialtyError, setSpecialtyError] = useState("");
+  const [accountError, setAccountError] = useState("");
+  const [detailError, setDetailError] = useState("");
+  const [scheduleError, setScheduleError] = useState("");
+  const [scheduleLoading, setScheduleLoading] = useState(false);
   const [detailLoading, setDetailLoading] = useState(false);
   const [error, setError] = useState("");
   const [doctorError, setDoctorError] = useState("");
   const [slotError, setSlotError] = useState("");
   const [slotLoading, setSlotLoading] = useState(false);
+  const [slotRevision, setSlotRevision] = useState(0);
   const [notice, setNotice] = useState("");
   const [busy, setBusy] = useState(false);
   const [mutatingAction, setMutatingAction] = useState<string | null>(null);
   const busyRef = useRef(false);
   const [revision, setRevision] = useState(0);
+  const [tab, setTab] = useState<"schedule" | "doctors" | "specialties">("schedule");
+  const [doctorFormOpen, setDoctorFormOpen] = useState(false);
+  const [specialtyFormOpen, setSpecialtyFormOpen] = useState(false);
 
   // Admin specialty form state
   const [specialtyName, setSpecialtyName] = useState("");
@@ -107,39 +121,30 @@ export function DoctorPanel() {
   useEffect(() => {
     if (session.status !== "authenticated") return;
     let alive = true;
+    setSpecialtyLoading(true);
+    setSpecialtyError("");
+    api.specialties({ page: 1, limit: 100, ...(admin ? {} : { isActive: true }) })
+      .then((response) => { if (alive) setSpecialties(response.data.items); })
+      .catch((caught) => { if (alive) setSpecialtyError(message(caught)); })
+      .finally(() => { if (alive) setSpecialtyLoading(false); });
+    return () => { alive = false; };
+  }, [api, session.status, admin, revision]);
+
+  useEffect(() => {
+    if (session.status !== "authenticated") return;
+    let alive = true;
     setLoading(true);
-    setError("");
     setDoctorError("");
-    Promise.allSettled([
-      api.specialties({ page: 1, limit: 100, ...(admin ? {} : { isActive: true }) }),
-      api.doctors({
+    api.doctors({
         page,
         limit: 20,
         q: query || undefined,
         specialtyId: specialtyFilter || undefined,
         ...(admin ? {} : { isActive: true }),
-      }),
-    ])
-      .then(([specialtyResponse, doctorResponse]) => {
-        if (!alive) return;
-        if (specialtyResponse.status === "fulfilled") {
-          setSpecialties(specialtyResponse.value.data.items);
-        }
-        if (doctorResponse.status === "fulfilled") {
-          setDoctors(doctorResponse.value.data);
-          setDoctorError("");
-        } else {
-          const err = message(doctorResponse.reason);
-          setDoctorError(err);
-          setError(err);
-        }
       })
+      .then((response) => { if (alive) setDoctors(response.data); })
       .catch((caught: unknown) => {
-        if (alive) {
-          const err = message(caught);
-          setDoctorError(err);
-          setError(err);
-        }
+        if (alive) setDoctorError(message(caught));
       })
       .finally(() => {
         if (alive) setLoading(false);
@@ -150,8 +155,15 @@ export function DoctorPanel() {
   }, [api, session.status, admin, page, query, specialtyFilter, revision]);
 
   useEffect(() => {
+    if (role !== "DOCTOR" || selectedId) return;
+    const own = doctors.items.find((item) => item.userId === session.identity?.id);
+    if (own) { setSelectedId(own.id); setSelected(own); }
+  }, [doctors.items, role, selectedId, session.identity?.id]);
+
+  useEffect(() => {
     if (!admin) return;
     let alive = true;
+    setAccountError("");
     api
       .doctorAccounts()
       .then((result) => {
@@ -163,7 +175,7 @@ export function DoctorPanel() {
           );
       })
       .catch((caught: unknown) => {
-        if (alive) setError(message(caught));
+        if (alive) setAccountError(message(caught));
       });
     return () => {
       alive = false;
@@ -174,60 +186,48 @@ export function DoctorPanel() {
     if (!selectedId || session.status !== "authenticated") return;
     let alive = true;
     setDetailLoading(true);
-    setError("");
-    void (async () => {
-      try {
-        const [doctorResult, scheduleResult] = await Promise.all([
-          api.doctor(selectedId),
-          api.schedules(selectedId),
-        ]);
-        if (!alive) return;
-        setSelected(doctorResult.data);
-        setSchedules(scheduleResult.data.items);
-        if (doctorResult.data.isActive) {
-          try {
-            setSlotLoading(true);
-            setSlotError("");
-            const slotResult = await api.slots(selectedId, date);
-            if (alive) setSlots(slotResult.data);
-          } catch (caught) {
-            if (alive) {
-              setSlotError(message(caught));
-              setSlots([]);
-            }
-          } finally {
-            if (alive) setSlotLoading(false);
-          }
-        } else if (alive) {
-          setSlots([]);
-          setSlotError("");
-        }
+    setDetailError("");
+    api.doctor(selectedId)
+      .then((result) => { if (alive) setSelected(result.data); })
+      .catch((caught) => { if (alive) setDetailError(message(caught)); })
+      .finally(() => { if (alive) setDetailLoading(false); });
+    return () => { alive = false; };
+  }, [api, selectedId, revision, session.status]);
 
-        if (
-          role === "ADMIN" ||
-          role === "STAFF" ||
-          (role === "DOCTOR" && doctorResult.data.userId === session.identity?.id)
-        ) {
-          try {
-            const timeOffResult = await api.timeOffs(selectedId);
-            if (alive) {
-              setTimeOffs(timeOffResult.data.items);
-              setTimeOffError("");
-            }
-          } catch (caught) {
-            if (alive) setTimeOffError(message(caught));
-          }
-        } else if (alive) setTimeOffs([]);
-      } catch (caught) {
-        if (alive) setError(message(caught));
-      } finally {
-        if (alive) setDetailLoading(false);
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, [api, selectedId, date, revision, role, session.status]);
+  useEffect(() => {
+    if (!selectedId || session.status !== "authenticated") return;
+    let alive = true;
+    setScheduleLoading(true); setScheduleError("");
+    api.allSchedules(selectedId)
+      .then((items) => { if (alive) setSchedules(items); })
+      .catch((caught) => { if (alive) setScheduleError(message(caught)); })
+      .finally(() => { if (alive) setScheduleLoading(false); });
+    return () => { alive = false; };
+  }, [api, selectedId, revision, session.status]);
+
+  useEffect(() => {
+    if (!selected || !canManage || session.status !== "authenticated") return;
+    let alive = true;
+    setTimeOffLoading(true); setTimeOffError("");
+    api.timeOffs(selected.id, undefined, timeOffPage)
+      .then((result) => { if (alive) { setTimeOffs(result.data.items); setTimeOffTotal(result.data.total); } })
+      .catch((caught) => { if (alive) setTimeOffError(message(caught)); })
+      .finally(() => { if (alive) setTimeOffLoading(false); });
+    return () => { alive = false; };
+  }, [api, selected?.id, canManage, timeOffPage, revision, session.status]);
+
+  useEffect(() => {
+    if (!selected || session.status !== "authenticated") return;
+    let alive = true;
+    setSlots([]); setSlotError("");
+    if (!selected.isActive) { setSlotLoading(false); return; }
+    setSlotLoading(true);
+    api.slots(selected.id, date)
+      .then((result) => { if (alive) setSlots(result.data); })
+      .catch((caught) => { if (alive) setSlotError(message(caught)); })
+      .finally(() => { if (alive) setSlotLoading(false); });
+    return () => { alive = false; };
+  }, [api, selected?.id, selected?.isActive, date, revision, slotRevision, session.status]);
 
   async function mutate(action: () => Promise<unknown>, success: string, onSuccess?: () => void, actionKey?: string) {
     if (busyRef.current) return;
@@ -250,19 +250,7 @@ export function DoctorPanel() {
     }
   }
 
-  const handleRetrySlots = async () => {
-    if (!selectedId) return;
-    setSlotLoading(true);
-    setSlotError("");
-    try {
-      const slotResult = await api.slots(selectedId, date);
-      setSlots(slotResult.data);
-    } catch (caught) {
-      setSlotError(message(caught));
-    } finally {
-      setSlotLoading(false);
-    }
-  };
+  const handleRetrySlots = () => setSlotRevision((value) => value + 1);
 
   function submitSearch(event: FormEvent) {
     event.preventDefault();
@@ -271,6 +259,7 @@ export function DoctorPanel() {
   }
 
   function editSpecialty(item: Specialty) {
+    setSpecialtyFormOpen(true);
     setEditingSpecialtyId(item.id);
     setSpecialtyName(item.name);
     setSpecialtyDescription(item.description ?? "");
@@ -291,17 +280,43 @@ export function DoctorPanel() {
     setOffReason(item.reason ?? "");
   }
 
+  function selectDoctor(item: Doctor) {
+    setSelectedId(item.id); setSelected(item); setTab("schedule");
+    setSchedules([]); setTimeOffs([]); setSlots([]); setTimeOffPage(1); setTimeOffTotal(0);
+    setScheduleId(null); setTimeOffId(null); setEditingDoctor(false); setDoctorFormOpen(false);
+    setWeekday(1); setStartTime("08:00"); setEndTime("12:00"); setDuration(30);
+    setOffStart(""); setOffEnd(""); setOffReason("");
+    setDetailError(""); setScheduleError(""); setTimeOffError(""); setSlotError("");
+  }
+
+  const tabs = [
+    { id: "schedule", label: "Lịch làm việc" },
+    { id: "doctors", label: "Danh sách bác sĩ" },
+    { id: "specialties", label: "Chuyên khoa" },
+  ] as const;
+  const navigation = <div className={styles.tabs} role="tablist" aria-label="Bác sĩ và lịch làm việc">
+    {tabs.map((item, index) => <button key={item.id} id={`doctor-tab-${item.id}`} type="button" role="tab"
+      aria-selected={tab === item.id} aria-controls="doctor-panel-content" tabIndex={tab === item.id ? 0 : -1}
+      onClick={() => setTab(item.id)} onKeyDown={(event) => {
+        const next = event.key === "ArrowRight" ? (index + 1) % tabs.length : event.key === "ArrowLeft" ? (index + tabs.length - 1) % tabs.length : event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : -1;
+        if (next < 0) return;
+        event.preventDefault(); setTab(tabs[next].id);
+        document.getElementById(`doctor-tab-${tabs[next].id}`)?.focus();
+      }}>{item.label}</button>)}
+  </div>;
+
   if (session.status === "loading") {
     return (
-      <div className={styles.stack} aria-busy="true">
+      <div className={`page-stack ${styles.stack}`}>
         <PageHeader pathname="/doctors" />
+        {navigation}
         <SkeletonPage title={false} tableRows={5} tableCols={4} />
       </div>
     );
   }
   if (session.status !== "authenticated" || !role || role === "PATIENT") {
     return (
-      <div className={styles.stack}>
+      <div className={`page-stack ${styles.stack}`}>
         <PageHeader pathname="/doctors" />
         <ErrorState message="Bạn cần tài khoản bác sĩ, nhân viên hoặc quản trị viên để xem trang này." />
       </div>
@@ -309,8 +324,9 @@ export function DoctorPanel() {
   }
 
   return (
-    <div className={styles.stack}>
+    <div className={`page-stack ${styles.stack}`}>
       <PageHeader pathname="/doctors" />
+      {navigation}
 
       {error && (
         <div role="alert" className={styles.error}>
@@ -333,7 +349,29 @@ export function DoctorPanel() {
         </div>
       )}
 
+      <div id="doctor-panel-content" role="tabpanel" aria-labelledby={`doctor-tab-${tab}`} className={styles.tabContent}>
+      {tab === "schedule" && <section className={styles.card} aria-label="Chọn bác sĩ xem lịch">
+        <h2>Bác sĩ đang xem</h2>
+        <div className={styles.row}>
+          <label>Bác sĩ
+            <select value={selectedId ?? ""} disabled={busy || loading} onChange={(event) => {
+              const item = doctors.items.find((doctor) => doctor.id === event.target.value);
+              if (item) selectDoctor(item);
+            }}>
+              <option value="">Chọn bác sĩ để xem lịch</option>
+              {selected && !doctors.items.some((item) => item.id === selected.id) && <option value={selected.id}>{selected.displayName}</option>}
+              {doctors.items.map((item) => <option key={item.id} value={item.id}>{item.displayName}{!item.isActive ? " (ngừng hoạt động)" : ""}</option>)}
+            </select>
+          </label>
+          <Button type="button" variant="secondary" onClick={() => setTab("doctors")}>Chọn từ danh sách bác sĩ</Button>
+        </div>
+        {loading && <div role="status" aria-label="Đang tải bác sĩ" aria-busy="true"><Skeleton height={24} width="60%" /></div>}
+        {doctorError && <div role="alert" className={styles.error}><span>{doctorError}</span><Button type="button" variant="secondary" onClick={() => setRevision((value) => value + 1)}>Thử lại danh sách bác sĩ</Button></div>}
+        {!selectedId && <p className={styles.muted}>{role === "DOCTOR" ? "Chưa xác định hồ sơ bác sĩ của bạn. Chọn đúng hồ sơ trong danh sách để xem lịch; chỉ hồ sơ của bạn có quyền chỉnh sửa." : "Chọn bác sĩ để xem lịch làm việc, thời gian nghỉ và khung giờ khả dụng."}</p>}
+      </section>}
+
       {/* Danh sách & Tìm kiếm bác sĩ */}
+      {tab === "doctors" && <>
       <DoctorList
         doctors={doctors}
         specialties={specialties}
@@ -346,26 +384,21 @@ export function DoctorPanel() {
           setPage(1);
         }}
         selectedId={selectedId}
-        onSelectDoctor={(item) => {
-          setSelectedId(item.id);
-          setSelected(null);
-          setSchedules([]);
-          setTimeOffs([]);
-          setSlots([]);
-          setScheduleId(null);
-          setTimeOffId(null);
-          setEditingDoctor(false);
-        }}
+        onSelectDoctor={selectDoctor}
         loading={loading}
         page={page}
         onPageChange={setPage}
         error={doctorError}
         onRetry={() => setRevision((value) => value + 1)}
       />
+      {specialtyError && <div role="alert" className={styles.error}><span>Chưa tải được bộ lọc chuyên khoa: {specialtyError}</span><Button type="button" variant="secondary" onClick={() => setRevision((value) => value + 1)}>Thử lại chuyên khoa</Button></div>}
+      </>}
 
       {/* Chi tiết bác sĩ và khung giờ khả dụng */}
-      {selectedId && (
+      {tab === "schedule" && selectedId && (
         <section className={styles.card} aria-label="Chi tiết bác sĩ">
+          <h2>{selected?.displayName ?? "Chi tiết bác sĩ"}</h2>
+          {detailError && <div role="alert" className={styles.error}><span>{detailError}</span><Button type="button" variant="secondary" onClick={() => setRevision((value) => value + 1)}>Thử lại hồ sơ bác sĩ</Button></div>}
           {detailLoading && !selected ? (
             <div style={{ display: "flex", flexDirection: "column", gap: 12 }} aria-busy="true">
               <Skeleton height={24} width={180} />
@@ -378,14 +411,13 @@ export function DoctorPanel() {
           ) : (
             selected && (
               <>
-                <h2>{selected.displayName}</h2>
                 <p>{selected.bio || "Chưa có giới thiệu chuyên môn."}</p>
                 <p className={styles.muted}>
                   {specialties.find((item) => item.id === selected.specialtyId)?.name ??
                     "Chuyên khoa chưa xác định"}
                 </p>
                 <label>
-                  Ngày khám (giờ Việt Nam)
+                  Ngày khám (UTC+7)
                   <input
                     type="date"
                     min={localToday()}
@@ -393,7 +425,8 @@ export function DoctorPanel() {
                     onChange={(event) => setDate(event.target.value)}
                   />
                 </label>
-                {slotLoading || detailLoading ? (
+                <h3>Khung giờ khả dụng</h3>
+                {slotLoading ? (
                   <div className={styles.chips} aria-busy="true" aria-label="Đang nạp khung giờ khả dụng">
                     <Skeleton height={28} width={130} borderRadius="var(--radius-full)" />
                     <Skeleton height={28} width={130} borderRadius="var(--radius-full)" />
@@ -409,7 +442,7 @@ export function DoctorPanel() {
                 ) : slots.length === 0 ? (
                   <p>Không có khung giờ phù hợp trong ngày này.</p>
                 ) : (
-                  <div className={styles.chips}>
+                  <div className={styles.chips} aria-label="Khung giờ khả dụng (UTC+7)">
                     {slots.map((slot) => (
                       <span key={slot.startAt}>
                         {displayTime(slot.startAt)} – {displayTime(slot.endAt)}
@@ -417,7 +450,7 @@ export function DoctorPanel() {
                     ))}
                   </div>
                 )}
-                <p className={styles.muted}>Việc đặt lịch được xác nhận ở bước tạo lịch hẹn.</p>
+                <p className={styles.muted}>Giờ Việt Nam (UTC+7). Khung giờ được kiểm tra lại khi tạo lịch hẹn.</p>
               </>
             )
           )}
@@ -425,17 +458,18 @@ export function DoctorPanel() {
       )}
 
       {/* ADMIN: Quản lý chuyên khoa */}
-      {admin && (
-        <section className={styles.card} aria-label="Quản lý chuyên khoa">
-          <h2>Quản lý chuyên khoa</h2>
+      {tab === "specialties" && (
+        <section className={styles.card} aria-label={admin ? "Quản lý chuyên khoa" : "Danh sách chuyên khoa"}>
+          <h2>Chuyên khoa</h2>
+          {specialtyError && <div role="alert" className={styles.error}><span>{specialtyError}</span><Button type="button" variant="secondary" onClick={() => setRevision((value) => value + 1)}>Thử lại chuyên khoa</Button></div>}
           <div className={styles.list}>
-            {loading && specialties.length === 0 ? (
+            {specialtyLoading && specialties.length === 0 ? (
               <div style={{ display: "flex", flexDirection: "column", gap: 8 }} aria-busy="true">
                 <Skeleton height={36} width="100%" />
                 <Skeleton height={36} width="100%" />
                 <Skeleton height={36} width="100%" />
               </div>
-            ) : specialties.length === 0 ? (
+            ) : specialties.length === 0 && !specialtyError ? (
               <p className={styles.muted}>Chưa có chuyên khoa nào được cấu hình.</p>
             ) : (
               specialties.map((item) => (
@@ -443,7 +477,7 @@ export function DoctorPanel() {
                   <span>
                     {item.name} {!item.isActive && "(ngừng hoạt động)"}
                   </span>
-                  <Button
+                  {admin && <><Button
                     type="button"
                     variant="secondary"
                     size="sm"
@@ -485,10 +519,13 @@ export function DoctorPanel() {
                   >
                     {busy && mutatingAction === `specialty-toggle-${item.id}` ? "Đang xử lý..." : (item.isActive ? "Ngừng" : "Kích hoạt")}
                   </Button>
+                  </>}
                 </div>
               ))
             )}
           </div>
+          {admin && <details open={specialtyFormOpen} onToggle={(event) => setSpecialtyFormOpen(event.currentTarget.open)} className={styles.editor}>
+          <summary>{editingSpecialtyId ? "Sửa chuyên khoa" : "Thêm chuyên khoa"}</summary>
           <form
             className={styles.form}
             onSubmit={(event) => {
@@ -509,6 +546,7 @@ export function DoctorPanel() {
                   setEditingSpecialtyId(null);
                   setSpecialtyName("");
                   setSpecialtyDescription("");
+                  setSpecialtyFormOpen(false);
                 },
                 "specialty"
               );
@@ -550,11 +588,12 @@ export function DoctorPanel() {
               )}
             </div>
           </form>
+          </details>}
         </section>
       )}
 
       {/* ADMIN: Quản lý hồ sơ bác sĩ */}
-      {admin && (
+      {admin && tab === "doctors" && (
         <section className={styles.card} aria-label="Quản lý hồ sơ bác sĩ">
           <h2>Quản lý hồ sơ bác sĩ</h2>
           {selected && (
@@ -564,6 +603,7 @@ export function DoctorPanel() {
               disabled={busy}
               onClick={() => {
                 setEditingDoctor(true);
+                setDoctorFormOpen(true);
                 setDoctorUserId(selected.userId);
                 setDoctorSpecialtyId(selected.specialtyId);
                 setDoctorName(selected.displayName);
@@ -573,6 +613,9 @@ export function DoctorPanel() {
               Sửa bác sĩ đang chọn
             </Button>
           )}
+          <details open={doctorFormOpen} onToggle={(event) => setDoctorFormOpen(event.currentTarget.open)} className={styles.editor}>
+          <summary>{editingDoctor ? "Sửa hồ sơ bác sĩ" : "Thêm bác sĩ"}</summary>
+          {accountError && <div role="alert" className={styles.error}><span>Chưa tải được tài khoản bác sĩ: {accountError}</span><Button type="button" variant="secondary" onClick={() => setRevision((value) => value + 1)}>Thử lại tài khoản</Button></div>}
           <form
             className={styles.form}
             onSubmit={(event) => {
@@ -598,6 +641,7 @@ export function DoctorPanel() {
                   setDoctorSpecialtyId("");
                   setDoctorName("");
                   setDoctorBio("");
+                  setDoctorFormOpen(false);
                 },
                 "doctor"
               );
@@ -714,16 +758,26 @@ export function DoctorPanel() {
               )}
             </div>
           </form>
+          </details>
         </section>
       )}
 
       {/* Quản lý lịch làm việc & thời gian nghỉ */}
-      {canManage && selected && (
+      {tab === "schedule" && selected && (
         <SchedulePanel
+          key={selected.id}
           schedules={schedules}
           timeOffs={timeOffs}
           timeOffError={timeOffError}
-          busy={busy}
+          canManage={canManage}
+          scheduleError={scheduleError}
+          onRetrySchedule={() => setRevision((value) => value + 1)}
+          scheduleLoading={scheduleLoading}
+          timeOffLoading={timeOffLoading}
+          timeOffPage={timeOffPage}
+          timeOffTotal={timeOffTotal}
+          onTimeOffPageChange={(next) => { setTimeOffs([]); setTimeOffPage(next); }}
+          busy={busy || Boolean(detailError)}
           busyAction={mutatingAction}
           detailLoading={detailLoading}
           scheduleId={scheduleId}
@@ -826,6 +880,7 @@ export function DoctorPanel() {
           onRetryTimeOff={() => setRevision((value) => value + 1)}
         />
       )}
+      </div>
 
       <ConfirmModal
         isOpen={Boolean(pendingDeactivate)}

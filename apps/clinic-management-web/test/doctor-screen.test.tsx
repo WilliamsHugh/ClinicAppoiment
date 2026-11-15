@@ -27,10 +27,11 @@ describe("Doctor web screen permissions", () => {
     expect(markup).not.toContain("Quản lý chuyên khoa");
   });
 
-  it("limits specialty and doctor account management to ADMIN", () => {
+  it("opens the schedule task without putting administration forms in the initial flow", () => {
     expect(render("DOCTOR")).not.toContain("Quản lý chuyên khoa");
     expect(render("STAFF")).not.toContain("Quản lý hồ sơ bác sĩ");
-    expect(render("ADMIN")).toContain("Quản lý chuyên khoa");
-    expect(render("ADMIN")).toContain("Quản lý hồ sơ bác sĩ");
+    expect(render("ADMIN")).toContain("Chọn bác sĩ để xem lịch");
+    expect(render("ADMIN")).not.toContain("Tên chuyên khoa");
+    expect(render("ADMIN")).not.toContain("Tài khoản bác sĩ");
   });
 });
