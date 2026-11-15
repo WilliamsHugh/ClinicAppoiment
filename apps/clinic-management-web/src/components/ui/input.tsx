@@ -1,4 +1,5 @@
-import React, { InputHTMLAttributes, SelectHTMLAttributes, TextareaHTMLAttributes, forwardRef } from "react";
+import React, { InputHTMLAttributes, SelectHTMLAttributes, TextareaHTMLAttributes, forwardRef, useId } from "react";
+import styles from "./ui.module.css";
 
 export interface InputProps extends InputHTMLAttributes<HTMLInputElement> {
   label?: string;
@@ -10,7 +11,8 @@ export const TextInput = forwardRef<HTMLInputElement, InputProps>(function TextI
   { label, error, hint, id, className, style, ...props },
   ref
 ) {
-  const inputId = id || (label ? `input-${label.toLowerCase().replace(/\s+/g, "-")}` : undefined);
+  const generatedId = useId();
+  const inputId = id || generatedId;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 4, width: "100%" }}>
@@ -25,6 +27,7 @@ export const TextInput = forwardRef<HTMLInputElement, InputProps>(function TextI
       <input
         ref={ref}
         id={inputId}
+        className={`${styles.fieldControl} ${className || ""}`.trim()}
         style={{
           padding: "8px 12px",
           borderRadius: "var(--radius-md)",
@@ -33,7 +36,6 @@ export const TextInput = forwardRef<HTMLInputElement, InputProps>(function TextI
           color: "var(--ink)",
           fontSize: "0.875rem",
           fontFamily: "inherit",
-          outline: "none",
           width: "100%",
           boxSizing: "border-box",
           ...style,
@@ -64,10 +66,11 @@ export interface SelectProps extends SelectHTMLAttributes<HTMLSelectElement> {
 }
 
 export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select(
-  { label, error, id, children, style, ...props },
+  { label, error, id, children, className, style, ...props },
   ref
 ) {
-  const selectId = id || (label ? `select-${label.toLowerCase().replace(/\s+/g, "-")}` : undefined);
+  const generatedId = useId();
+  const selectId = id || generatedId;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 4, width: "100%" }}>
@@ -82,6 +85,9 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select
       <select
         ref={ref}
         id={selectId}
+        className={`${styles.fieldControl} ${className || ""}`.trim()}
+        aria-invalid={!!error}
+        aria-describedby={error ? `${selectId}-error` : undefined}
         style={{
           padding: "8px 12px",
           borderRadius: "var(--radius-md)",
@@ -90,7 +96,6 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select
           color: "var(--ink)",
           fontSize: "0.875rem",
           fontFamily: "inherit",
-          outline: "none",
           width: "100%",
           boxSizing: "border-box",
           ...style,
@@ -100,7 +105,7 @@ export const Select = forwardRef<HTMLSelectElement, SelectProps>(function Select
         {children}
       </select>
       {error && (
-        <span role="alert" style={{ fontSize: "0.75rem", color: "var(--danger)", fontWeight: 500 }}>
+        <span id={`${selectId}-error`} role="alert" style={{ fontSize: "0.75rem", color: "var(--danger)", fontWeight: 500 }}>
           {error}
         </span>
       )}
@@ -114,10 +119,11 @@ export interface TextareaProps extends TextareaHTMLAttributes<HTMLTextAreaElemen
 }
 
 export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(function Textarea(
-  { label, error, id, style, ...props },
+  { label, error, id, className, style, ...props },
   ref
 ) {
-  const textareaId = id || (label ? `textarea-${label.toLowerCase().replace(/\s+/g, "-")}` : undefined);
+  const generatedId = useId();
+  const textareaId = id || generatedId;
 
   return (
     <div style={{ display: "flex", flexDirection: "column", gap: 4, width: "100%" }}>
@@ -132,6 +138,9 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(function 
       <textarea
         ref={ref}
         id={textareaId}
+        className={`${styles.fieldControl} ${className || ""}`.trim()}
+        aria-invalid={!!error}
+        aria-describedby={error ? `${textareaId}-error` : undefined}
         style={{
           padding: "8px 12px",
           borderRadius: "var(--radius-md)",
@@ -140,7 +149,6 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(function 
           color: "var(--ink)",
           fontSize: "0.875rem",
           fontFamily: "inherit",
-          outline: "none",
           minHeight: 80,
           width: "100%",
           boxSizing: "border-box",
@@ -149,7 +157,7 @@ export const Textarea = forwardRef<HTMLTextAreaElement, TextareaProps>(function 
         {...props}
       />
       {error && (
-        <span role="alert" style={{ fontSize: "0.75rem", color: "var(--danger)", fontWeight: 500 }}>
+        <span id={`${textareaId}-error`} role="alert" style={{ fontSize: "0.75rem", color: "var(--danger)", fontWeight: 500 }}>
           {error}
         </span>
       )}

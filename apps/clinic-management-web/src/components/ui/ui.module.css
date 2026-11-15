@@ -2,6 +2,8 @@
 
 /* Button */
 .button {
+  min-height: 44px;
+  min-width: 44px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -221,6 +223,8 @@
 }
 
 .modalCloseBtn {
+  min-height: 44px;
+  min-width: 44px;
   background: transparent;
   border: none;
   font-size: 1.25rem;
@@ -291,10 +295,18 @@
 
 /* Skeleton */
 .skeleton {
-  background: linear-gradient(90deg, #e2e8f0 25%, #f1f5f9 50%, #e2e8f0 75%);
+  background: linear-gradient(90deg, var(--surface-subtle) 25%, var(--line) 50%, var(--surface-subtle) 75%);
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
   border-radius: var(--radius-sm);
+}
+
+.fieldControl { min-height: 44px; }
+.fieldControl:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .skeleton, .modalBackdrop, .modalContent { animation: none; }
+  .button { transition: none; }
 }
 
 @keyframes shimmer {

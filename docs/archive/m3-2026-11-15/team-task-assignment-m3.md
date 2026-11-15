@@ -1,10 +1,12 @@
+> **LƯU TRỮ — 15/11/2026:** Bản lịch sử, không dùng để giao việc hoặc xác nhận hiện trạng. Kế hoạch đang áp dụng: [Web UI parallel tasks](../../web-ui-parallel-tasks.md). Giữ nội dung để tra cứu quyết định và bằng chứng cũ.
+
 # Kế Hoạch Milestone 3 (M3): Trọng Tâm Hoàn Thiện Giao Diện (UI/UX) & Tích Hợp Hệ Thống
 
 > **Dự án**: Clinic Appointment System (Health&Human)  
 > **Giai đoạn**: Milestone 3 (M3) — **UI/UX-Centric Milestone**  
 > **Trưởng nhóm (Team Lead)**: **WilliamsHugh** (`thuantruongtran0905@gmail.com`)  
 > **Cập nhật lần cuối**: 02/11/2026 (sau khi hoàn thành toàn diện 4 Milestone Web UI Next.js M1–M4)  
-> **Quy chuẩn thiết kế gốc**: [`docs/ui-design-contract.md`](ui-design-contract.md) v2.0  
+> **Quy chuẩn thiết kế gốc**: [`docs/ui-design-contract.md`](../../ui-design-contract.md) v2.0  
 
 ---
 

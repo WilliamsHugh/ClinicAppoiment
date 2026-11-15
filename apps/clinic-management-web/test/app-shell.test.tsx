@@ -107,7 +107,6 @@ describe("AppShell & RouteGuard (M3-UI-LEAD-004, M3-UI-LEAD-005)", () => {
       );
       expect(html).toContain("403 · KHÔNG CÓ QUYỀN TRUY CẬP");
       expect(html).toContain("Truy cập khu vực bị giới hạn");
-      expect(html).toContain("DOCTOR");
       expect(html).not.toContain("Admin Only Secret Content");
       expect(html).toContain("Về trang chủ");
     });

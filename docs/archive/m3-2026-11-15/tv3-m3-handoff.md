@@ -1,3 +1,5 @@
+> **LƯU TRỮ — 15/11/2026:** Bản lịch sử, không dùng để giao việc hoặc xác nhận hiện trạng. Kế hoạch đang áp dụng: [Web UI parallel tasks](../../web-ui-parallel-tasks.md). Giữ nội dung để tra cứu quyết định và bằng chứng cũ.
+
 # TV3 M3: booking, clinic queue and doctor management
 
 Connects patient slot selection to confirmed appointment creation, adds appointment

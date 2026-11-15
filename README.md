@@ -127,9 +127,11 @@ toàn bộ migration lược đồ dữ liệu. Hợp đồng tích hợp backen
 
 ## Tài Liệu
 
+Xem [chỉ mục tài liệu đang sử dụng](docs/README.md) và [phân công UI song song](docs/web-ui-parallel-tasks.md). Kế hoạch nghiệm thu/handoff cũ đã chuyển vào `docs/archive/` để tránh giao lại các task đã tích hợp.
+
 - Quy tắc bắt buộc cho agent và phối hợp nhánh: [.agents/rules.md](.agents/rules.md)
 - Thiết kế hệ thống: `docs/system-design.md`
 - Hợp đồng API v1: `docs/api-contract.md`
-- Báo cáo đề xuất cải thiện kiến trúc: `docs/architecture-improvements.md`
+- Hợp đồng API đích v2 và thiết kế cache: `docs/api-contract-v2.md`, `docs/backend-cache-design.md` (chưa phải tuyên bố triển khai)
 - Hợp đồng thiết kế UI cho thành viên và agent: `docs/ui-design-contract.md`
 - Supabase migrations riêng từng service: `infrastructure/supabase/<service>/schema.sql`

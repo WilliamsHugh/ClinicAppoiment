@@ -1,10 +1,12 @@
+> **LƯU TRỮ — 15/11/2026:** Bản lịch sử, không dùng để giao việc hoặc xác nhận hiện trạng. Kế hoạch đang áp dụng: [Web UI parallel tasks](../../web-ui-parallel-tasks.md). Giữ nội dung để tra cứu quyết định và bằng chứng cũ.
+
 # Kế Hoạch Chỉnh Sửa & Nâng Cấp Giao Diện Clinic Management Web (M3 Follow-Up)
 
 > **Tài liệu tham chiếu bắt buộc:**
-> - [`.agents/rules.md`](../.agents/rules.md)
-> - [`docs/ui-design-contract.md`](./ui-design-contract.md) (v2.0)
-> - [`docs/web-rendering-contract.md`](./web-rendering-contract.md)
-> - [`docs/team-task-assignment-m3.md`](./team-task-assignment-m3.md)
+> - [`.agents/rules.md`](../../../.agents/rules.md)
+> - [`docs/ui-design-contract.md`](../../ui-design-contract.md) (v2.0)
+> - [`docs/web-rendering-contract.md`](../../web-rendering-contract.md)
+> - [`docs/team-task-assignment-m3.md`](team-task-assignment-m3.md)
 
 ---
 

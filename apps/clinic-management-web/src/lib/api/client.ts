@@ -115,7 +115,8 @@ export class ApiClient {
     let token: string | null;
     try {
       token = await this.options.session.getAccessToken();
-    } catch {
+    } catch (error) {
+      if (error instanceof ApiClientError) throw error;
       throw new ApiClientError("Không thể đọc phiên đăng nhập.", 0, "SESSION_UNAVAILABLE");
     }
     if (!token) {
@@ -205,6 +206,20 @@ export function createBrowserApiClient(
 /** Formats any caught API error into a friendly Vietnamese message */
 export function toUserFriendlyError(caught: unknown, fallback = "Đã xảy ra lỗi khi kết nối hệ thống."): string {
   if (caught instanceof ApiClientError) {
+    const messages: Record<string, string> = {
+      SESSION_UNAVAILABLE: "Chưa thể xác minh phiên đăng nhập. Vui lòng kiểm tra kết nối và thử lại.",
+      AUTH_SERVICE_UNAVAILABLE: "Dịch vụ xác thực tạm thời không khả dụng. Vui lòng thử lại, thông tin đang nhập được giữ nguyên.",
+      AUTH_SESSION_LOCKED: "Phiên đang khóa. Vui lòng xác minh để tiếp tục.",
+      AUTH_SESSION_EXPIRED: "Ca làm việc đã hết phiên. Vui lòng đăng nhập lại.",
+      CLINICAL_VERIFICATION_REQUIRED: "Cần xác minh quyền truy cập ca khám trước khi xem hồ sơ.",
+      MFA_ENROLLMENT_REQUIRED: "Tài khoản cần thiết lập xác minh hai bước trước khi tiếp tục.",
+      MFA_CODE_INVALID: "Mã xác minh không hợp lệ. Vui lòng kiểm tra và nhập lại.",
+      MFA_CHALLENGE_EXPIRED: "Yêu cầu xác minh đã hết hạn. Vui lòng bắt đầu xác minh lại.",
+      MFA_RATE_LIMITED: "Đã đạt giới hạn xác minh. Vui lòng thử lại sau thời gian được thông báo.",
+      RECORD_VERSION_CONFLICT: "Bệnh án đã có phiên bản mới. Vui lòng đối chiếu trước khi lưu lại.",
+      FINALIZATION_CONTEXT_CHANGED: "Nội dung cần chốt đã thay đổi. Vui lòng xem lại và xác minh lại.",
+    };
+    if (messages[caught.code]) return messages[caught.code];
     if (caught.code === "APPOINTMENT_SLOT_UNAVAILABLE") {
       return "Khung giờ này vừa có người đặt. Vui lòng chọn khung giờ khác.";
     }

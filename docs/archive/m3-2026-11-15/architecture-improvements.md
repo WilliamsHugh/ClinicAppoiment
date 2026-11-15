@@ -1,3 +1,5 @@
+> **LƯU TRỮ — 15/11/2026:** Bản lịch sử, không dùng để giao việc hoặc xác nhận hiện trạng. Kế hoạch đang áp dụng: [Web UI parallel tasks](../../web-ui-parallel-tasks.md). Giữ nội dung để tra cứu quyết định và bằng chứng cũ.
+
 # Báo Cáo Phân Tích & Đề Xuất Cải Thiện Kiến Trúc Hệ Thống (Health&Human)
 
 > **Tài liệu**: Báo cáo kỹ thuật đề xuất nâng cấp kiến trúc & tối ưu hóa hệ thống  

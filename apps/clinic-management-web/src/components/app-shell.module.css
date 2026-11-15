@@ -28,6 +28,7 @@
 
 /* Brand header */
 .brandHeader {
+  flex-shrink: 0;
   height: 56px;
   display: flex;
   align-items: center;
@@ -86,6 +87,7 @@
 }
 
 .navItem {
+  min-height: 44px;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -163,6 +165,8 @@
 }
 
 .logoutButton {
+  min-height: 44px;
+  min-width: 44px;
   background: transparent;
   border: none;
   padding: 4px 6px;
@@ -203,10 +207,12 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 clamp(16px, 3vw, 28px);
+  padding: 0 24px;
+  gap: 16px;
 }
 
 .topbarLeft {
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 12px;
@@ -239,7 +245,12 @@
   display: flex;
   align-items: center;
   gap: 12px;
+  min-width: 0;
 }
+
+.topbar .topbarRight { flex-wrap: nowrap; }
+
+.drawerClose, .mobileDate { display: none; }
 
 .notificationSlotWrapper {
   display: flex;
@@ -247,6 +258,9 @@
 }
 
 .notificationLink {
+  min-height: 44px;
+  min-width: 44px;
+  justify-content: center;
   color: var(--primary);
   text-decoration: none;
   display: flex;
@@ -321,6 +335,14 @@
 }
 
 .sessionStatusText {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 192px;
+  text-decoration: none;
   font-size: 0.8125rem;
   color: var(--ink);
   font-weight: 500;
@@ -352,9 +374,20 @@
   min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
-  padding: clamp(20px, 3vw, 36px);
+  padding: 24px;
   min-width: 0;
   background-color: var(--canvas);
+}
+
+.content > * {
+  width: 100%;
+  max-width: 1050px;
+  margin-inline: auto;
+}
+
+.sessionStatusText:focus-visible, .drawerClose:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
 }
 
 /* Mobile responsive drawer overlay */
@@ -392,6 +425,8 @@
     bottom: 0;
     z-index: 100;
     transform: translateX(-100%);
+    visibility: hidden;
+    pointer-events: none;
     box-shadow: var(--shadow-lg);
   }
 
@@ -401,7 +436,22 @@
 
   .sidebarMobileOpen {
     transform: translateX(0);
+    visibility: visible;
+    pointer-events: auto;
   }
+
+  .brandHeader { justify-content: space-between; padding-inline: 12px; }
+  .drawerClose { display: inline-flex; align-items: center; justify-content: center; min-width: 44px; min-height: 44px; padding: 8px; }
+  .topbar { padding-inline: 16px; gap: 8px; }
+  .topbarSubtitle, .notificationText { display: none; }
+  .topbarRight { gap: 8px; }
+  .topbar .topbarRight { flex: 1; }
+  .topbarRight > :not(.sessionStatusText) { flex-shrink: 0; }
+  .topbarRight :global(.session-dot) { display: none; }
+  .sessionStatusText { flex: 0 1 96px; min-width: 0; max-width: 96px; font-size: 0.75rem; display: block; line-height: 44px; }
+  .notificationLink { padding: 12px; }
+  .mobileDate { display: block; padding: 8px 16px 0; font-size: 0.75rem; color: var(--muted); }
+  .content { padding: 16px; }
 
   .mobileBackdrop {
     display: block;
@@ -410,4 +460,9 @@
     background: rgba(15, 23, 42, 0.4);
     z-index: 90;
   }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar { transition: none; }
+  .notificationBadgeSkeleton { animation: none; }
 }

@@ -1,10 +1,12 @@
+> **LƯU TRỮ — 15/11/2026:** Bản lịch sử, không dùng để giao việc hoặc xác nhận hiện trạng. Kế hoạch đang áp dụng: [Web UI parallel tasks](../../web-ui-parallel-tasks.md). Giữ nội dung để tra cứu quyết định và bằng chứng cũ.
+
 # Kế hoạch hoàn thiện và nghiệm thu Clinic Management Web cuối tuần
 
 > **Ngày lập:** 12/11/2026 (UTC+7)  
 > **Thời hạn đề xuất:** 15/11/2026  
 > **Phạm vi:** Next.js Clinic Management Web cho `DOCTOR`, `STAFF`, `ADMIN`  
 > **Nền tảng:** M3 UI; tài liệu này là checklist nghiệm thu hiện trạng, không thay thế hợp đồng giao diện/API.  
-> **Tài liệu ưu tiên:** [UI Design Contract](ui-design-contract.md), [Web Rendering Contract](web-rendering-contract.md), [API Contract](api-contract.md), [.agents/rules.md](../.agents/rules.md).
+> **Tài liệu ưu tiên:** [UI Design Contract](../../ui-design-contract.md), [Web Rendering Contract](../../web-rendering-contract.md), [API Contract](../../api-contract.md), [.agents/rules.md](../../../.agents/rules.md).
 
 ## 1. Mục tiêu nghiệm thu
 
@@ -87,7 +89,7 @@ Các vùng nghiệp vụ cần review theo ownership hiện có:
 | `/users` | ADMIN | Tìm/lọc, xem trạng thái; đổi role hoặc khóa tài khoản qua xác nhận; không cho tự khóa chính mình nếu contract cấm. |
 | `/health` | ADMIN | Đọc payload tổng hợp qua Gateway; phân biệt trạng thái Gateway với từng service; thử refresh, lỗi Gateway và stale data. Role khác nhận permission denied/redirect đúng quy tắc. |
 
-> Các role “theo quyền API” phải được xác nhận theo response thực tế và [API Contract](api-contract.md), không suy ra quyền chỉ từ route UI.
+> Các role “theo quyền API” phải được xác nhận theo response thực tế và [API Contract](../../api-contract.md), không suy ra quyền chỉ từ route UI.
 
 #### 3.3. Loading, empty, error và dữ liệu cũ
 

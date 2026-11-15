@@ -1,3 +1,5 @@
+> **LƯU TRỮ — 15/11/2026:** Bản lịch sử, không dùng để giao việc hoặc xác nhận hiện trạng. Kế hoạch đang áp dụng: [Web UI parallel tasks](../../web-ui-parallel-tasks.md). Giữ nội dung để tra cứu quyết định và bằng chứng cũ.
+
 # Phân công nhiệm vụ nghiệm thu Web UI cuối tuần — M3
 
 > **Lập từ:** [web-ui-weekend-acceptance-plan-m3.md](web-ui-weekend-acceptance-plan-m3.md)  

@@ -1,0 +1,105 @@
+[
+  {
+    "antipattern": "overused-font",
+    "name": "Overused font",
+    "description": "Inter, Roboto, Fraunces, Geist, Plus Jakarta Sans, and Space Grotesk are used on so many sites they no longer feel distinctive. Each new wave of AI-generated UIs converges on the same handful of faces. Choose a face that gives your interface personality.",
+    "severity": "warning",
+    "category": "slop",
+    "file": "/home/Williams/Projects/ClinicAppoiment/apps/clinic-management-web/app/globals.css",
+    "line": 49,
+    "snippet": "font-family: Inter",
+    "importedBy": [
+      "layout.tsx"
+    ]
+  },
+  {
+    "antipattern": "side-tab",
+    "name": "Side-tab accent border",
+    "description": "Thick colored border on one side of a card — the most recognizable tell of AI-generated UIs. Use a subtler accent or remove it entirely.",
+    "severity": "warning",
+    "category": "slop",
+    "file": "/home/Williams/Projects/ClinicAppoiment/apps/clinic-management-web/src/features/dashboard/dashboard.module.css",
+    "line": 101,
+    "snippet": "border-left: 4px solid var(--info)",
+    "importedBy": [
+      "admin-dashboard.tsx",
+      "doctor-dashboard.tsx",
+      "staff-dashboard.tsx",
+      "today-schedule-summary.tsx"
+    ]
+  },
+  {
+    "antipattern": "side-tab",
+    "name": "Side-tab accent border",
+    "description": "Thick colored border on one side of a card — the most recognizable tell of AI-generated UIs. Use a subtler accent or remove it entirely.",
+    "severity": "warning",
+    "category": "slop",
+    "file": "/home/Williams/Projects/ClinicAppoiment/apps/clinic-management-web/src/features/dashboard/dashboard.module.css",
+    "line": 106,
+    "snippet": "border-left: 4px solid var(--primary)",
+    "importedBy": [
+      "admin-dashboard.tsx",
+      "doctor-dashboard.tsx",
+      "staff-dashboard.tsx",
+      "today-schedule-summary.tsx"
+    ]
+  },
+  {
+    "antipattern": "side-tab",
+    "name": "Side-tab accent border",
+    "description": "Thick colored border on one side of a card — the most recognizable tell of AI-generated UIs. Use a subtler accent or remove it entirely.",
+    "severity": "warning",
+    "category": "slop",
+    "file": "/home/Williams/Projects/ClinicAppoiment/apps/clinic-management-web/src/features/dashboard/dashboard.module.css",
+    "line": 110,
+    "snippet": "border-left: 4px solid var(--warning)",
+    "importedBy": [
+      "admin-dashboard.tsx",
+      "doctor-dashboard.tsx",
+      "staff-dashboard.tsx",
+      "today-schedule-summary.tsx"
+    ]
+  },
+  {
+    "antipattern": "overused-font",
+    "name": "Overused font",
+    "description": "Inter, Roboto, Fraunces, Geist, Plus Jakarta Sans, and Space Grotesk are used on so many sites they no longer feel distinctive. Each new wave of AI-generated UIs converges on the same handful of faces. Choose a face that gives your interface personality.",
+    "severity": "warning",
+    "category": "slop",
+    "file": "/home/Williams/Projects/ClinicAppoiment/apps/clinic-management-web/src/features/landing/clinic-landing.module.css",
+    "line": 13,
+    "snippet": "font-family: Inter",
+    "importedBy": [
+      "clinic-landing-page.tsx"
+    ]
+  },
+  {
+    "antipattern": "side-tab",
+    "name": "Side-tab accent border",
+    "description": "Thick colored border on one side of a card — the most recognizable tell of AI-generated UIs. Use a subtler accent or remove it entirely.",
+    "severity": "warning",
+    "category": "slop",
+    "file": "/home/Williams/Projects/ClinicAppoiment/apps/clinic-management-web/src/features/medical-records/medical-records-panel.module.css",
+    "line": 360,
+    "snippet": "border-left: 4px solid var(--success)",
+    "importedBy": [
+      "appointment-selector.tsx",
+      "medical-records-panel.tsx",
+      "prescription-form.tsx"
+    ]
+  },
+  {
+    "antipattern": "side-tab",
+    "name": "Side-tab accent border",
+    "description": "Thick colored border on one side of a card — the most recognizable tell of AI-generated UIs. Use a subtler accent or remove it entirely.",
+    "severity": "warning",
+    "category": "slop",
+    "file": "/home/Williams/Projects/ClinicAppoiment/apps/clinic-management-web/src/features/notifications/notifications-panel.module.css",
+    "line": 103,
+    "snippet": "border-left: 4px solid var(--primary)",
+    "importedBy": [
+      "notification-item.tsx",
+      "notifications-panel.tsx"
+    ]
+  }
+]

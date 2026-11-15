@@ -411,9 +411,6 @@ export function RouteGuard({ children }: { children: ReactNode }) {
   }
   if (canAccessRoute(route, session)) return <>{children}</>;
 
-  const currentRole = session.identity?.role;
-  const allowedRoles = route.roles.join(", ");
-
   return (
     <div className="page-stack">
       <PageHeader pathname={pathname} />
@@ -459,9 +456,7 @@ export function RouteGuard({ children }: { children: ReactNode }) {
         </h2>
 
       <p style={{ margin: 0, color: "var(--muted)", lineHeight: 1.6, fontSize: "0.925rem" }}>
-        Bạn đang đăng nhập với vai trò{" "}
-        <strong style={{ color: "var(--ink)" }}>{currentRole || "Chưa xác định"}</strong>, không
-        nằm trong danh sách vai trò được phép truy cập trang này ({allowedRoles}).
+        Tài khoản của bạn không có quyền truy cập trang này. Vui lòng trở về trang chủ hoặc liên hệ người quản trị nếu cần hỗ trợ.
       </p>
 
       <div style={{ display: "flex", gap: 12, marginTop: 12, flexWrap: "wrap", justifyContent: "center" }}>

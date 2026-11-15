@@ -3,8 +3,8 @@
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import React, { useState, type ReactNode } from "react";
-import { Menu, Bell } from "lucide-react";
+import React, { useRef, useState, type ReactNode } from "react";
+import { Menu, Bell, X } from "lucide-react";
 import { visibleRoutes } from "../lib/navigation/routes";
 import { formatVietnamDate } from "../lib/formatting/date-time";
 import { useSession } from "../lib/session/session-context";
@@ -41,19 +41,55 @@ export function AppShell({ children, NotificationSlot }: AppShellProps) {
   const session = useSession();
   const { unreadCount, isLoading: isLoadingUnread } = useNotifications();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
   const [confirmSignOutOpen, setConfirmSignOutOpen] = useState(false);
+  const sidebarRef = useRef<HTMLElement>(null);
+  const menuButtonRef = useRef<HTMLButtonElement>(null);
+  const drawerCloseRef = useRef<HTMLButtonElement>(null);
 
-  // Close mobile sidebar on Escape key
   React.useEffect(() => {
-    if (!mobileMenuOpen) return;
+    if (typeof window.matchMedia !== "function") return;
+    const media = window.matchMedia("(max-width: 768px)");
+    const update = () => {
+      setIsMobile(media.matches);
+      if (!media.matches) setMobileMenuOpen(false);
+    };
+    update();
+    media.addEventListener("change", update);
+    return () => media.removeEventListener("change", update);
+  }, []);
+
+  React.useEffect(() => { setMobileMenuOpen(false); }, [pathname]);
+
+  React.useEffect(() => {
+    if (!mobileMenuOpen || !isMobile) return;
+    drawerCloseRef.current?.focus();
     function handleKeyDown(event: KeyboardEvent) {
       if (event.key === "Escape") {
+        event.preventDefault();
         setMobileMenuOpen(false);
+      } else if (event.key === "Tab") {
+        const controls = sidebarRef.current?.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), [tabindex="0"]',
+        );
+        if (!controls?.length) return;
+        const first = controls[0];
+        const last = controls[controls.length - 1];
+        if (event.shiftKey && (document.activeElement === first || !sidebarRef.current?.contains(document.activeElement))) {
+          event.preventDefault();
+          last.focus();
+        } else if (!event.shiftKey && (document.activeElement === last || !sidebarRef.current?.contains(document.activeElement))) {
+          event.preventDefault();
+          first.focus();
+        }
       }
     }
     document.addEventListener("keydown", handleKeyDown);
-    return () => document.removeEventListener("keydown", handleKeyDown);
-  }, [mobileMenuOpen]);
+    return () => {
+      document.removeEventListener("keydown", handleKeyDown);
+      menuButtonRef.current?.focus();
+    };
+  }, [mobileMenuOpen, isMobile]);
 
   // The public clinic home and authentication pages use their own layouts.
   if (pathname === "/auth" || pathname === "/") {
@@ -78,8 +114,13 @@ export function AppShell({ children, NotificationSlot }: AppShellProps) {
 
       {/* Sidebar (Left, 232px width per Anima ApplicationSidebarSection) */}
       <aside
+        ref={sidebarRef}
+        id="app-navigation"
         className={`${styles.sidebar} shell-sidebar ${mobileMenuOpen ? `${styles.sidebarMobileOpen} sidebar-mobile-open` : ""}`}
         aria-label="Thanh điều hướng chính"
+        role={isMobile && mobileMenuOpen ? "dialog" : undefined}
+        aria-modal={isMobile && mobileMenuOpen ? true : undefined}
+        inert={isMobile && !mobileMenuOpen ? true : undefined}
       >
         {/* Brand Header */}
         <div className={styles.brandHeader}>
@@ -99,6 +140,10 @@ export function AppShell({ children, NotificationSlot }: AppShellProps) {
             </span>
             <span className={styles.brandText}>Health&amp;Human</span>
           </Link>
+          <button ref={drawerCloseRef} type="button" className={styles.drawerClose}
+            aria-label="Đóng menu điều hướng" onClick={() => setMobileMenuOpen(false)}>
+            <X size={20} aria-hidden="true" />
+          </button>
         </div>
 
         {/* Navigation list */}
@@ -145,15 +190,17 @@ export function AppShell({ children, NotificationSlot }: AppShellProps) {
       </aside>
 
       {/* Main Area: Topbar + Content */}
-      <div className={styles.mainArea}>
+      <div className={styles.mainArea} inert={isMobile && mobileMenuOpen ? true : undefined}>
         <header className={`${styles.topbar} topbar`}>
           {/* Mobile menu toggle & Subtitle */}
           <div className={styles.topbarLeft}>
             <button
+              ref={menuButtonRef}
               type="button"
               className={`${styles.mobileMenuToggle} mobile-menu-toggle`}
               aria-label="Mở menu điều hướng"
               aria-expanded={mobileMenuOpen}
+              aria-controls="app-navigation"
               onClick={() => setMobileMenuOpen((open) => !open)}
             >
               <Menu size={18} aria-hidden="true" />
@@ -194,7 +241,7 @@ export function AppShell({ children, NotificationSlot }: AppShellProps) {
                         </span>
                       )}
                     </div>
-                    <span>Thông báo</span>
+                    <span className={styles.notificationText}>Thông báo</span>
                     {isLoadingUnread && unreadCount === null ? (
                       <span
                         className={styles.notificationBadgeSkeleton}
@@ -214,13 +261,13 @@ export function AppShell({ children, NotificationSlot }: AppShellProps) {
               className={`session-dot session-dot-${session.status}`}
               aria-hidden="true"
             />
-            <span className={styles.sessionStatusText}>
+            <Link href="/profile" className={styles.sessionStatusText} title={displayName}>
               {session.status === "authenticated"
                 ? displayName
                 : session.status === "loading"
                 ? "Đang tải…"
                 : "Chưa đăng nhập"}
-            </span>
+            </Link>
 
             {session.status === "unauthenticated" ? (
               <Link href="/auth" className={styles.loginLink}>
@@ -229,6 +276,7 @@ export function AppShell({ children, NotificationSlot }: AppShellProps) {
             ) : null}
           </div>
         </header>
+        <div className={styles.mobileDate}>{todayLabel} · UTC+7</div>
 
         {/* Content Area */}
         <main className={`${styles.content} content`}>
