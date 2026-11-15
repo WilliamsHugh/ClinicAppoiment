@@ -134,6 +134,48 @@ describe("Auth & Profile Pages (M3-WEB-030)", () => {
       expect(mockPush).toHaveBeenCalledWith("/dashboard");
     });
 
+    it("shows TOTP MFA step for STAFF/ADMIN when login requires MFA", async () => {
+      const mockVerifyMfa = vi.fn().mockResolvedValueOnce(undefined);
+      currentSession = {
+        ...makeSession(),
+        signIn: vi.fn().mockResolvedValueOnce({ pendingMfa: true, challengeId: "ch-123" }),
+        verifyMfa: mockVerifyMfa,
+      };
+
+      await act(async () => {
+        root.render(<AuthPage />);
+      });
+
+      const emailInput = host.querySelector("#auth-email") as HTMLInputElement;
+      const passInput = host.querySelector("#auth-password") as HTMLInputElement;
+      const form = host.querySelector("form")!;
+
+      await act(async () => {
+        changeInput(emailInput, "staff@clinic.vn");
+        changeInput(passInput, "password123");
+      });
+
+      await act(async () => {
+        form.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+      });
+
+      expect(host.textContent).toContain("Xác thực 2 bước (TOTP)");
+      const totpInput = host.querySelector("#auth-totp") as HTMLInputElement;
+      expect(totpInput).toBeTruthy();
+
+      const mfaForm = host.querySelector("form")!;
+      await act(async () => {
+        changeInput(totpInput, "123456");
+      });
+
+      await act(async () => {
+        mfaForm.dispatchEvent(new Event("submit", { bubbles: true, cancelable: true }));
+      });
+
+      expect(mockVerifyMfa).toHaveBeenCalledWith("123456", "ch-123");
+      expect(mockPush).toHaveBeenCalledWith("/dashboard");
+    });
+
     it("toggles password visibility when eye button is clicked", async () => {
       currentSession = makeSession();
 

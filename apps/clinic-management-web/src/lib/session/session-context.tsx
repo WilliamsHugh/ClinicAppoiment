@@ -81,6 +81,7 @@ function RealSessionProvider({ children }: { children: ReactNode }) {
   const [recoveryMessage, setRecoveryMessage] = useState<string | null>(null);
   const [refreshPending, setRefreshPending] = useState(false);
   const current = useRef<StoredSessionData | null>(null);
+  const pendingMfa = useRef<{ next: StoredSessionData; sessionId?: string } | null>(null);
   const blocked = useRef(false);
   const refreshInFlight = useRef<Promise<string | null> | null>(null);
   const generation = useRef(0);
@@ -89,6 +90,7 @@ function RealSessionProvider({ children }: { children: ReactNode }) {
   const clearLocalSession = useCallback(() => {
     generation.current += 1;
     current.current = null;
+    pendingMfa.current = null;
     blocked.current = false;
     refreshInFlight.current = null;
     setStoredSession(null);
@@ -229,6 +231,30 @@ function RealSessionProvider({ children }: { children: ReactNode }) {
       const next = readAuthSession(payload.data);
       if (!next) throw new Error("Không thể đăng nhập. Clinic Management Web chỉ dành cho bác sĩ, nhân viên và quản trị viên.");
       next.identity.email = email;
+
+      const sessionObj = isRecord(payload.data) && isRecord(payload.data.session) ? payload.data.session : null;
+      if (sessionObj && sessionObj.status === "PENDING_MFA") {
+        const sessionId = typeof sessionObj.sessionId === "string" ? sessionObj.sessionId : undefined;
+        pendingMfa.current = { next, sessionId };
+        setStatus("unauthenticated");
+        let challengeId: string | undefined;
+        try {
+          const chRes = await fetch(`${baseUrl}/api/v1/auth/mfa/challenges`, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              Authorization: `Bearer ${next.accessToken}`,
+            },
+            body: JSON.stringify({ purpose: "STAFF_ADMIN_LOGIN" }),
+          });
+          const chPayload = await chRes.json();
+          if (chRes.ok && chPayload.success && chPayload.data?.challengeId) {
+            challengeId = chPayload.data.challengeId;
+          }
+        } catch { /* challenge creation fallback */ }
+        return { pendingMfa: true, challengeId, sessionId };
+      }
+
       try {
         const profileRes = await fetch(`${baseUrl}/api/v1/users/me`, {
           headers: { Authorization: `Bearer ${next.accessToken}` }, cache: "no-store",
@@ -243,8 +269,70 @@ function RealSessionProvider({ children }: { children: ReactNode }) {
       if (generation.current !== requestGeneration) throw new Error("Yêu cầu đăng nhập đã kết thúc.");
       saveSession(next);
       setStatus("authenticated");
+      return { pendingMfa: false };
     } catch (cause) {
       if (generation.current === requestGeneration) setStatus("unauthenticated");
+      throw cause;
+    }
+  };
+
+  const handleVerifyMfa = async (code: string, challengeId?: string) => {
+    const pending = pendingMfa.current;
+    if (!pending) throw new Error("Không có phiên đăng nhập chờ xác thực TOTP.");
+    setStatus("loading");
+    try {
+      let cid = challengeId;
+      if (!cid) {
+        const chRes = await fetch(`${baseUrl}/api/v1/auth/mfa/challenges`, {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${pending.next.accessToken}`,
+          },
+          body: JSON.stringify({ purpose: "STAFF_ADMIN_LOGIN" }),
+        });
+        const chPayload = await chRes.json();
+        if (!chRes.ok || !chPayload.success) {
+          throw new Error(chPayload?.error?.message || "Không thể tạo yêu cầu xác thực TOTP.");
+        }
+        cid = chPayload.data.challengeId;
+      }
+
+      const verifyRes = await fetch(`${baseUrl}/api/v1/auth/mfa/verify`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${pending.next.accessToken}`,
+        },
+        body: JSON.stringify({
+          challengeId: cid,
+          code,
+          sessionId: pending.sessionId,
+        }),
+      });
+      const verifyPayload = await verifyRes.json();
+      if (!verifyRes.ok || !verifyPayload.success) {
+        throw new Error(verifyPayload?.error?.message || "Mã xác thực TOTP không chính xác hoặc đã hết hạn.");
+      }
+
+      const next = pending.next;
+      try {
+        const profileRes = await fetch(`${baseUrl}/api/v1/users/me`, {
+          headers: { Authorization: `Bearer ${next.accessToken}` },
+          cache: "no-store",
+        });
+        const profile = await profileRes.json();
+        if (profileRes.ok && profile.success && profile.data) {
+          next.identity.displayName = typeof profile.data.fullName === "string" ? profile.data.fullName : undefined;
+          next.identity.phone = typeof profile.data.phone === "string" ? profile.data.phone : undefined;
+        }
+      } catch { /* profile */ }
+
+      pendingMfa.current = null;
+      saveSession(next);
+      setStatus("authenticated");
+    } catch (cause) {
+      setStatus("unauthenticated");
       throw cause;
     }
   };
@@ -266,6 +354,7 @@ function RealSessionProvider({ children }: { children: ReactNode }) {
     recovery: recoveryMessage ? { message: recoveryMessage, pending: refreshPending, retry: async () => { await refreshSession(); } } : undefined,
     getAccessToken,
     signIn: handleSignIn,
+    verifyMfa: handleVerifyMfa,
     signOut: handleSignOut,
     handleUnauthorized: async () => { clearLocalSession(); },
   };

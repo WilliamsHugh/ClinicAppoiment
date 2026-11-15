@@ -171,7 +171,13 @@ export function AppointmentsPanel({ onOpenQueue }: { onOpenQueue?: () => void } 
           const uniqueIds = Array.from(new Set(unresolvedPatientIds));
           Promise.allSettled(
             uniqueIds.map((pid) => {
-              const appt = items.find((a) => a.patientId === pid);
+              const appt =
+                items.find(
+                  (a) =>
+                    a.patientId === pid &&
+                    a.status !== "CANCELLED" &&
+                    a.status !== "NO_SHOW"
+                ) ?? items.find((a) => a.patientId === pid);
               return api.getPatient(pid, appt?.id);
             })
           ).then((results) => {

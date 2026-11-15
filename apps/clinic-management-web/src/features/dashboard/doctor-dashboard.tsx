@@ -14,6 +14,7 @@ import {
   formatVietnamTime,
   formatPatientDisplay,
 } from "./today-schedule-summary";
+import { getVietnamDayRange } from "../../lib/formatting/date-time";
 import styles from "./dashboard.module.css";
 
 export interface AppointmentItem {
@@ -30,15 +31,10 @@ export interface AppointmentItem {
   specialtyName?: string;
 }
 
-// Module-level in-memory cache to preserve appointments across tab switches
-let cachedDoctorAppointments: AppointmentItem[] | null = null;
-
 export function DoctorDashboard() {
   const session = useSession();
-  const [appointments, setAppointments] = useState<AppointmentItem[]>(
-    cachedDoctorAppointments ?? []
-  );
-  const [loading, setLoading] = useState(!cachedDoctorAppointments);
+  const [appointments, setAppointments] = useState<AppointmentItem[]>([]);
+  const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [now] = useState<Date>(() => new Date());
@@ -53,12 +49,18 @@ export function DoctorDashboard() {
     setError(null);
     try {
       const api = createBrowserApiClient(session);
+      const { startUtc, endUtc } = getVietnamDayRange();
       const res = await api.get<PaginatedData<AppointmentItem>>("/api/v1/appointments", {
-        query: { page: 1, limit: 100 },
+        query: {
+          from: startUtc,
+          to: endUtc,
+          page: 1,
+          limit: 100,
+          include: "names",
+        },
       });
       const items = res.data.items || [];
       setAppointments(items);
-      cachedDoctorAppointments = items;
     } catch (caught: unknown) {
       setError(
         caught instanceof Error
@@ -73,9 +75,11 @@ export function DoctorDashboard() {
 
   useEffect(() => {
     if (session.status === "authenticated") {
-      void loadData(Boolean(cachedDoctorAppointments));
+      void loadData();
+    } else {
+      setAppointments([]);
     }
-  }, [session.status, loadData]);
+  }, [session.status, session.identity?.id, loadData]);
 
   // Lọc lịch hẹn hôm nay theo giờ Việt Nam
   const todayStr = useMemo(() => {
@@ -332,7 +336,7 @@ export function DoctorDashboard() {
           <div className={styles.sectionHeader}>
             <h2 id="doctor-summary-heading">Tiến độ hôm nay</h2>
             <span style={{ fontSize: "0.8125rem", color: "var(--muted)" }}>
-              Tổng: {loading && !cachedDoctorAppointments ? "..." : statusCounts.total}
+              Tổng: {loading && appointments.length === 0 ? "..." : statusCounts.total}
             </span>
           </div>
 
@@ -343,7 +347,7 @@ export function DoctorDashboard() {
                 <span>Đang chờ khám (đã check-in)</span>
               </div>
               <span className={styles.summaryItemCount} style={{ color: "var(--info)" }}>
-                {loading && !cachedDoctorAppointments ? <Skeleton height={20} width={24} /> : statusCounts.checkedIn}
+                {loading && appointments.length === 0 ? <Skeleton height={20} width={24} /> : statusCounts.checkedIn}
               </span>
             </div>
 
@@ -353,7 +357,7 @@ export function DoctorDashboard() {
                 <span>Sắp tới (đã xác nhận)</span>
               </div>
               <span className={styles.summaryItemCount}>
-                {loading && !cachedDoctorAppointments ? <Skeleton height={20} width={24} /> : statusCounts.confirmed}
+                {loading && appointments.length === 0 ? <Skeleton height={20} width={24} /> : statusCounts.confirmed}
               </span>
             </div>
 
@@ -363,7 +367,7 @@ export function DoctorDashboard() {
                 <span>Đã khám xong (hoàn tất)</span>
               </div>
               <span className={styles.summaryItemCount} style={{ color: "var(--success)" }}>
-                {loading && !cachedDoctorAppointments ? <Skeleton height={20} width={24} /> : statusCounts.completed}
+                {loading && appointments.length === 0 ? <Skeleton height={20} width={24} /> : statusCounts.completed}
               </span>
             </div>
 
@@ -373,7 +377,7 @@ export function DoctorDashboard() {
                 <span>Chờ xác nhận</span>
               </div>
               <span className={styles.summaryItemCount} style={{ color: "var(--warning)" }}>
-                {loading && !cachedDoctorAppointments ? <Skeleton height={20} width={24} /> : statusCounts.pending}
+                {loading && appointments.length === 0 ? <Skeleton height={20} width={24} /> : statusCounts.pending}
               </span>
             </div>
 
@@ -383,7 +387,7 @@ export function DoctorDashboard() {
                 <span>Đã hủy / vắng mặt</span>
               </div>
               <span className={styles.summaryItemCount} style={{ color: "var(--muted)" }}>
-                {loading && !cachedDoctorAppointments ? <Skeleton height={20} width={24} /> : statusCounts.cancelledOrNoShow}
+                {loading && appointments.length === 0 ? <Skeleton height={20} width={24} /> : statusCounts.cancelledOrNoShow}
               </span>
             </div>
           </div>

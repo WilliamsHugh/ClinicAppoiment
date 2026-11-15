@@ -20,11 +20,14 @@ export function AuthForm() {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  const [mfaPending, setMfaPending] = useState<{ challengeId?: string } | null>(null);
+  const [totpCode, setTotpCode] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({});
   const [confirmSignOut, setConfirmSignOut] = useState(false);
   const emailRef = useRef<HTMLInputElement>(null);
   const passwordRef = useRef<HTMLInputElement>(null);
+  const totpRef = useRef<HTMLInputElement>(null);
   const errorRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -33,6 +36,12 @@ export function AuthForm() {
       if (savedEmail) { setEmail(savedEmail); setRememberEmail(true); }
     } catch { /* Remembering email is optional. */ }
   }, []);
+
+  useEffect(() => {
+    if (mfaPending) {
+      totpRef.current?.focus();
+    }
+  }, [mfaPending]);
 
   useEffect(() => {
     if (!errorMessage) return;
@@ -56,14 +65,38 @@ export function AuthForm() {
     }
     setLoading(true);
     try {
-      await session.signIn(email.trim(), password);
+      const result = await session.signIn(email.trim(), password);
       try {
         if (rememberEmail) localStorage.setItem(REMEMBERED_EMAIL_KEY, email.trim());
         else localStorage.removeItem(REMEMBERED_EMAIL_KEY);
       } catch { /* Login does not depend on browser storage. */ }
+      if (result && typeof result === "object" && "pendingMfa" in result && result.pendingMfa) {
+        setMfaPending({ challengeId: result.challengeId });
+        setTotpCode("");
+        return;
+      }
       router.push("/dashboard");
     } catch (cause) {
       setErrorMessage(cause instanceof Error ? cause.message : "Đăng nhập thất bại. Vui lòng thử lại.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleMfaSubmit(event: FormEvent) {
+    event.preventDefault();
+    if (loading || !totpCode.trim() || !session.verifyMfa) return;
+    setErrorMessage(null);
+    if (!/^\d{6}$/.test(totpCode.trim())) {
+      setErrorMessage("Mã xác thực TOTP phải gồm đúng 6 chữ số.");
+      return;
+    }
+    setLoading(true);
+    try {
+      await session.verifyMfa(totpCode.trim(), mfaPending?.challengeId);
+      router.push("/dashboard");
+    } catch (cause) {
+      setErrorMessage(cause instanceof Error ? cause.message : "Xác thực mã TOTP thất bại. Vui lòng thử lại.");
     } finally {
       setLoading(false);
     }
@@ -100,6 +133,49 @@ export function AuthForm() {
               <Button type="button" onClick={() => router.push("/dashboard")}>Vào bảng điều khiển</Button>
               <Button type="button" variant="outline" onClick={() => setConfirmSignOut(true)}>Đăng xuất tất cả thiết bị</Button>
             </div>
+          </>
+        ) : mfaPending ? (
+          <>
+            <div className={styles.titleArea}>
+              <h1 className={styles.title}>Xác thực 2 bước (TOTP)</h1>
+              <p className={styles.subtitle}>Nhập mã xác thực 6 chữ số từ ứng dụng Authenticator của bạn</p>
+            </div>
+            {errorMessage && (
+              <div tabIndex={-1} ref={errorRef} className={styles.errorSummary}>
+                <Alert variant="danger" title="Lỗi xác thực">{errorMessage}</Alert>
+              </div>
+            )}
+            <form onSubmit={handleMfaSubmit} noValidate aria-label="Xác thực TOTP" className={styles.form}>
+              <Input
+                ref={totpRef}
+                id="auth-totp"
+                label="Mã TOTP 6 số"
+                type="text"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                maxLength={6}
+                placeholder="000000"
+                value={totpCode}
+                onChange={(event) => setTotpCode(event.target.value.replace(/\D/g, ""))}
+                required
+                disabled={disabled}
+              />
+              <Button type="submit" loading={loading} disabled={disabled || totpCode.length !== 6} fullWidth>
+                Xác nhận đăng nhập
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setMfaPending(null);
+                  setErrorMessage(null);
+                }}
+                disabled={disabled}
+                fullWidth
+              >
+                Quay lại đăng nhập
+              </Button>
+            </form>
           </>
         ) : (
           <>

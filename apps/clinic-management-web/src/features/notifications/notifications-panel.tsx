@@ -42,6 +42,7 @@ function NotificationsPanelWorkspace({ session }: { session: Session }) {
   const [total, setTotal] = useState(0);
   const [markingIds, setMarkingIds] = useState<Set<string>>(new Set());
   const [markingAll, setMarkingAll] = useState(false);
+  const [markingAllGlobal, setMarkingAllGlobal] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const requestVersion = useRef(0);
   const mutationInFlight = useRef(false);
@@ -215,6 +216,36 @@ function NotificationsPanelWorkspace({ session }: { session: Session }) {
     }
   };
 
+  const handleMarkAllGlobal = async () => {
+    if (mutationInFlight.current || loading || isRefreshing) return;
+    mutationInFlight.current = true;
+    setMarkingAllGlobal(true);
+    setMutationError(null);
+    try {
+      const nowIso = new Date().toISOString();
+      await client.patch<{ updatedCount: number }>("/api/v1/notifications/read-all", {
+        body: { readBefore: nowIso },
+      });
+      setItems((prev) =>
+        filter === "UNREAD" ? [] : prev.map((item) => ({ ...item, status: "READ" }))
+      );
+      if (typeof unreadCount === "number") {
+        setUnreadCount(0);
+      }
+      if (filter === "UNREAD") setTotal(0);
+      if (refreshUnreadCount) void refreshUnreadCount();
+    } catch (caught: unknown) {
+      setMutationError(
+        caught instanceof Error
+          ? caught.message
+          : "Không thể đánh dấu đã đọc tất cả thông báo. Vui lòng thử lại."
+      );
+    } finally {
+      mutationInFlight.current = false;
+      setMarkingAllGlobal(false);
+    }
+  };
+
   if (session.status === "loading") {
     return (
       <div className="page-stack" aria-busy="true">
@@ -270,12 +301,23 @@ function NotificationsPanelWorkspace({ session }: { session: Session }) {
         pathname="/notifications"
         actions={
           <div className={styles.headerActions}>
+            {typeof unreadCount === "number" && unreadCount > 0 && (
+              <Button
+                variant="secondary"
+                size="sm"
+                onClick={handleMarkAllGlobal}
+                loading={markingAllGlobal}
+                disabled={loading || isRefreshing || markingAllGlobal || markingAll || markingIds.size > 0}
+              >
+                Đánh dấu tất cả đã đọc
+              </Button>
+            )}
             <Button
               variant="secondary"
               size="sm"
               onClick={handleMarkAllRead}
               loading={markingAll}
-              disabled={loading || isRefreshing || markingAll || markingIds.size > 0 || unreadOnPage.length === 0}
+              disabled={loading || isRefreshing || markingAll || markingAllGlobal || markingIds.size > 0 || unreadOnPage.length === 0}
             >
               Đánh dấu trang này đã đọc
             </Button>

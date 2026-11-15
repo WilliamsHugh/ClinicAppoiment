@@ -14,6 +14,7 @@ import {
   formatVietnamTime,
   formatPatientDisplay,
 } from "./today-schedule-summary";
+import { getVietnamDayRange } from "../../lib/formatting/date-time";
 import styles from "./dashboard.module.css";
 
 export interface AppointmentItem {
@@ -36,15 +37,10 @@ interface DayVolume {
   isToday: boolean;
 }
 
-// Module-level in-memory cache to preserve appointments across tab switches
-let cachedStaffAppointments: AppointmentItem[] | null = null;
-
 export function StaffDashboard() {
   const session = useSession();
-  const [appointments, setAppointments] = useState<AppointmentItem[]>(
-    cachedStaffAppointments ?? []
-  );
-  const [loading, setLoading] = useState(!cachedStaffAppointments);
+  const [appointments, setAppointments] = useState<AppointmentItem[]>([]);
+  const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [now] = useState<Date>(() => new Date());
@@ -60,12 +56,18 @@ export function StaffDashboard() {
     setError(null);
     try {
       const api = createBrowserApiClient(session);
+      const { startUtc, endUtc } = getVietnamDayRange();
       const res = await api.get<PaginatedData<AppointmentItem>>("/api/v1/appointments", {
-        query: { page: 1, limit: 100 },
+        query: {
+          from: startUtc,
+          to: endUtc,
+          page: 1,
+          limit: 100,
+          include: "names",
+        },
       });
       const items = res.data.items || [];
       setAppointments(items);
-      cachedStaffAppointments = items;
     } catch (caught: unknown) {
       setError(
         caught instanceof Error
@@ -80,9 +82,11 @@ export function StaffDashboard() {
 
   useEffect(() => {
     if (session.status === "authenticated") {
-      void loadData(Boolean(cachedStaffAppointments));
+      void loadData();
+    } else {
+      setAppointments([]);
     }
-  }, [session.status, loadData]);
+  }, [session.status, session.identity?.id, loadData]);
 
   // Lọc lịch khám hôm nay theo giờ Việt Nam
   const todayStr = useMemo(() => {
@@ -323,7 +327,7 @@ export function StaffDashboard() {
                   <span>Lịch khám hôm nay</span>
                 </div>
                 <span className={styles.summaryItemCount}>
-                  {loading && !cachedStaffAppointments ? <Skeleton height={20} width={24} /> : stats.total}
+                  {loading && appointments.length === 0 ? <Skeleton height={20} width={24} /> : stats.total}
                 </span>
               </div>
 
@@ -333,7 +337,7 @@ export function StaffDashboard() {
                   <span>Đang chờ tiếp đón</span>
                 </div>
                 <span className={styles.summaryItemCount} style={{ color: "var(--primary)" }}>
-                  {loading && !cachedStaffAppointments ? <Skeleton height={20} width={24} /> : stats.waiting}
+                  {loading && appointments.length === 0 ? <Skeleton height={20} width={24} /> : stats.waiting}
                 </span>
               </div>
 
@@ -343,7 +347,7 @@ export function StaffDashboard() {
                   <span>Đã hoàn thành</span>
                 </div>
                 <span className={styles.summaryItemCount} style={{ color: "var(--success)" }}>
-                  {loading && !cachedStaffAppointments ? <Skeleton height={20} width={24} /> : stats.completed}
+                  {loading && appointments.length === 0 ? <Skeleton height={20} width={24} /> : stats.completed}
                 </span>
               </div>
 
@@ -353,7 +357,7 @@ export function StaffDashboard() {
                   <span>Đã hủy / Vắng mặt</span>
                 </div>
                 <span className={styles.summaryItemCount} style={{ color: "var(--danger)" }}>
-                  {loading && !cachedStaffAppointments ? <Skeleton height={20} width={24} /> : stats.cancelled}
+                  {loading && appointments.length === 0 ? <Skeleton height={20} width={24} /> : stats.cancelled}
                 </span>
               </div>
             </div>

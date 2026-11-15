@@ -23,20 +23,15 @@ interface UserSummary {
 
 export const STATIC_SYSTEM_SERVICES = SYSTEM_SERVICES;
 
-// Module-level in-memory cache to preserve state across tab switches (Stale-While-Revalidate)
-let cachedAdminHealth: SystemHealth | null = null;
-let cachedAdminUserSummary: UserSummary | null = null;
-let cachedAdminLastChecked: Date | null = null;
-
 export function AdminDashboard() {
   const session = useSession();
-  const [health, setHealth] = useState<SystemHealth | null>(cachedAdminHealth);
-  const [userSummary, setUserSummary] = useState<UserSummary | null>(cachedAdminUserSummary);
-  const [loading, setLoading] = useState(!cachedAdminHealth && !cachedAdminUserSummary);
+  const [health, setHealth] = useState<SystemHealth | null>(null);
+  const [userSummary, setUserSummary] = useState<UserSummary | null>(null);
+  const [loading, setLoading] = useState(true);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [healthError, setHealthError] = useState<string | null>(null);
   const [userError, setUserError] = useState<string | null>(null);
-  const [lastHealthChecked, setLastHealthChecked] = useState<Date | null>(cachedAdminLastChecked);
+  const [lastHealthChecked, setLastHealthChecked] = useState<Date | null>(null);
 
   const loadData = useCallback(async (isBackground = false) => {
     if (session.status !== "authenticated" || session.identity?.role !== "ADMIN") return;
@@ -54,10 +49,8 @@ export function AdminDashboard() {
       .then((res) => {
         if (res.data) {
           setHealth(res.data);
-          cachedAdminHealth = res.data;
           const checkedAt = new Date();
           setLastHealthChecked(checkedAt);
-          cachedAdminLastChecked = checkedAt;
           setHealthError(null);
         }
       })
@@ -73,7 +66,6 @@ export function AdminDashboard() {
         if (res.data) {
           const summary = { total: res.data.total };
           setUserSummary(summary);
-          cachedAdminUserSummary = summary;
           setUserError(null);
         }
       })
@@ -89,9 +81,13 @@ export function AdminDashboard() {
 
   useEffect(() => {
     if (session.status === "authenticated" && session.identity?.role === "ADMIN") {
-      void loadData(Boolean(cachedAdminHealth && cachedAdminUserSummary));
+      void loadData();
+    } else {
+      setHealth(null);
+      setUserSummary(null);
+      setLastHealthChecked(null);
     }
-  }, [session.status, session.identity?.role, loadData]);
+  }, [session.status, session.identity?.id, session.identity?.role, loadData]);
 
   const allHealthy = isSystemAllHealthy(health);
   const formattedHealthTime = formatClientCheckedAt(lastHealthChecked);
@@ -223,7 +219,7 @@ export function AdminDashboard() {
         <aside
           className={styles.sectionCard}
           aria-labelledby="user-stats-heading"
-          aria-busy={loading && !cachedAdminUserSummary}
+          aria-busy={loading && !userSummary}
         >
           <div className={styles.sectionHeader}>
             <div>

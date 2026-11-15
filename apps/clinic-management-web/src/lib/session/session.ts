@@ -29,6 +29,12 @@ export interface SessionIdentity {
   phone?: string;
 }
 
+export interface SignInResult {
+  pendingMfa?: boolean;
+  challengeId?: string;
+  sessionId?: string;
+}
+
 export interface Session {
   status: SessionStatus;
   identity: SessionIdentity | null;
@@ -38,7 +44,8 @@ export interface Session {
     retry(): Promise<void>;
   };
   getAccessToken(): Promise<string | null>;
-  signIn(email: string, password: string): Promise<void>;
+  signIn(email: string, password: string): Promise<SignInResult | void>;
+  verifyMfa?(code: string, challengeId?: string): Promise<void>;
   signOut(): Promise<void>;
   handleUnauthorized?(): Promise<void>;
 }
