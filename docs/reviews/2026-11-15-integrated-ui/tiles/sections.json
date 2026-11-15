@@ -1,0 +1,34 @@
+{
+ "url": "http://localhost:5307/profile?reviewRole=ADMIN",
+ "views": {
+  "desktop": {
+   "width": 1440,
+   "height": 900,
+   "navH": 0,
+   "scrollHeight": 900,
+   "screens": 1,
+   "sections": [
+    {
+     "n": 1,
+     "tag": "div",
+     "id": "",
+     "cls": "page-stack",
+     "top": 80,
+     "h": 675,
+     "hScreens": 0.75,
+     "offGrid": 675,
+     "tiles": [
+      {
+       "file": "desktop-sec-01-a.jpg",
+       "scrollY": 0,
+       "cutTop": 80,
+       "height": 675
+      }
+     ]
+    }
+   ],
+   "consoleErrors": []
+  }
+ },
+ "at": "2026-11-15T06:41:29.345Z"
+}
