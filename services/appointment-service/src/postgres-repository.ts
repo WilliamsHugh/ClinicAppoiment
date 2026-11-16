@@ -56,7 +56,7 @@ function appointment(row: Row): Appointment {
 
 function mapDatabaseError(error: unknown): never {
   if (typeof error === "object" && error !== null && "code" in error) {
-    if (error.code === "23P01") throw new SlotConflictError();
+    if (error.code === "23P01" || error.code === "40P01") throw new SlotConflictError();
     if (error.code === "23514") throw new RangeError("Appointment interval violates a database constraint");
     if (error.code === "23505") throw new ConcurrentChangeError();
   }

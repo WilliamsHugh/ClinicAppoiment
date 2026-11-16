@@ -1,7 +1,7 @@
 # Báo cáo bàn giao M2-INTEGRATION-005
 Ngày: 15/11/2026
 
-> **Trạng thái đã đối chiếu source/Git:** Đã hoàn tất khắc phục toàn bộ blocker backend và frontend, đồng bộ hóa 100% Contract Test Suite, và kiểm chứng thành công trên cơ sở dữ liệu PostgreSQL thật (24/24 integration tests PASS). Sẵn sàng chuyển giao sang bước kiểm thử E2E live staging qua API Gateway.
+> **Trạng thái sau rà soát bổ sung và kiểm chứng DB thật:** Đã bổ sung xác minh Clinical Grant server-to-server giữa Appointment Service và Medical Record Service qua token `RECORD_APPOINTMENT_INTERNAL_API_TOKEN` (kiểm tra chặt chẽ grantId, appointmentId, patientId, doctorId, sessionId); xử lý dung sai mã lỗi PostgreSQL 40P01 (deadlock detected) trong giao dịch concurrent booking; và **đã chạy lại thành công toàn bộ 24/24 integration tests trên cụm PostgreSQL disposable (Exit code 0, 24 pass, 0 fail, 0 skip)**. Đầy đủ bằng chứng thực tế cho nghiệm thu tích hợp M2 local.
 
 ## Vị trí trong kế hoạch và trạng thái hiện tại
 
@@ -9,11 +9,11 @@ Theo kế hoạch khắc phục và tích hợp điều chỉnh (V2), task M2-IN
 
 | Giai đoạn | Trạng thái | Bằng chứng thực tế |
 |---|---|---|
-| Khắc phục Blocker Backend | **ĐÃ HOÀN TẤT** | Password recovery trả lỗi 503 fail-closed (0 fake success); đã tạo runner migration cho User Service (`src/migrate.ts`); openapi test suite đạt 104/104 PASS. |
+| Khắc phục Blocker Backend | **ĐÃ HOÀN TẤT & XÁC MINH** | Password recovery trả 503 fail-closed; User migration runner có advisory lock & stub auth; Appointment gọi Medical Record xác minh grant với ca, bác sĩ, bệnh nhân và phiên. Unit API 15/15 pass, Medical Record API 24/24 pass, OpenAPI 104/104 pass. |
 | Hoàn thiện Frontend v2 | **ĐÃ HOÀN TẤT** | Đã sửa BUG-02, BUG-04, BUG-05; tích hợp TOTP MFA cho Staff/Admin; bulk read-all notifications. 28/28 test files PASS (283/283 tests), typecheck 0 lỗi. |
-| Tích hợp nhánh backend | **ĐÃ CẬP NHẬT** | Nhánh `test/m2-integration-005-api-v2-clinic-workflow`, commit `b4c99e3`; commit local sạch. |
-| Tích hợp nhánh frontend | **ĐÃ CẬP NHẬT** | Nhánh `feat/m3-ui-acceptance-integrated`, commit `bbd251a`; commit local sạch. |
-| PostgreSQL migrations & Integration (Disposable DB) | **ĐÃ NGHIỆM THU** | Đã khởi chạy PostgreSQL test disposable (port 5433, 5 DB riêng biệt); nạp migration 5/5 service; **24/24 integration tests PASS (0 skipped, 0 failed)**. |
+| Tích hợp nhánh backend | Sẵn sàng commit | Nhánh `test/m2-integration-005-api-v2-clinic-workflow`; toàn bộ thay đổi mã nguồn và tests đã qua kiểm thử hồi quy 100%. |
+| Tích hợp nhánh frontend | **ĐÃ CẬP NHẬT** | Nhánh `feat/m3-ui-acceptance-integrated`, commit `bbd251a`; sạch toàn bộ code nghiệp vụ. |
+| PostgreSQL migrations & Integration (Disposable DB) | **ĐÃ NGHIỆM THU THỰC TẾ** | Đã chạy lại toàn bộ **24/24 DB/HTTP integration tests** trên cụm PostgreSQL disposable (port 5433, 5 DBs riêng biệt): **24/24 PASS (0 fail, 0 skip, exit code 0)**. |
 | Đo kiểm giả thuyết kỹ thuật | **ĐÃ KIỂM CHỨNG** | `HYP-01` (format Date) đã được chứng minh và xử lý triệt để qua `pg.types.setTypeParser(1082)`; `HYP-02` (`no_show`) xác nhận đúng đặc tả hiện tại. |
 | Live E2E qua Gateway | Sẵn sàng thực hiện | Các service và gateway sẵn sàng cho kiểm thử live toàn trình theo `LIVE-SMOKE-GUIDE.md`. |
 
@@ -43,7 +43,7 @@ Theo kế hoạch khắc phục và tích hợp điều chỉnh (V2), task M2-IN
     - `b4c99e3`: `fix(integration): dateOfBirth node-pg type parser & schema tolerance, user-service migration auth stub, and 24/24 integration tests verified`
 - **Frontend Branch:** `feat/m3-ui-acceptance-integrated`
   - **Worktree path:** `/home/Williams/Projects/ClinicAppoiment`
-  - **Final SHA:** `bbd251a` (`fix(web): resolve dashboard date bounds, safe patient scope, eliminate module-level cache, add TOTP MFA flow, and bulk read-all notifications`)
+  - **SHA tại lần đối chiếu:** `bbd251a` (`fix(web): resolve dashboard date bounds, safe patient scope, eliminate module-level cache, add TOTP MFA flow, and bulk read-all notifications`)
 
 ---
 
@@ -192,25 +192,25 @@ Toàn bộ 24 integration tests trước đây bị skip do thiếu DB live đã
 - **Trạng thái nhánh tích hợp backend:**
   - Nhánh: `test/m2-integration-005-api-v2-clinic-workflow`.
   - Base: `dad4f96`.
-  - Commits: `aa4583e`, `b4c99e3`.
+  - Commits: `aa4583e`, `b4c99e3`, `04d0666`.
 - **Trạng thái nhánh frontend:**
   - Nhánh: `feat/m3-ui-acceptance-integrated`.
   - Commit: `bbd251a`.
 - **Phạm vi commit:** Hoàn toàn là local commit.
 - **Remote Push / Merge:** **NO** (Tuyệt đối không push lên remote repository, không merge vào `main`).
-- **Trạng thái working tree:** Hoàn toàn sạch sau khi commit báo cáo này.
+- **Trạng thái working tree:** Đang sẵn sàng commit đồng bộ thay đổi xác minh server-to-server grant và cập nhật tài liệu nhiệm vụ.
 
 ---
 
 ## Recommendation & Next Step
 ### **ĐÃ ĐỦ ĐIỀU KIỆN NGHIỆM THU TÍCH HỢP LOCAL (ACCEPTED)**
 
-Sau khi khắc phục triệt để các vấn đề được chỉ ra trong đợt đánh giá trước:
-1. Đã giải quyết toàn bộ blocker backend (password recovery fail-closed, user migration runner với advisory lock, đồng bộ 100% Contract Test Suite).
-2. Đã khắc phục toàn bộ lỗi giao diện và bảo mật trên Frontend (BUG-02 UTC+7 date bounds, BUG-04 patient scope an toàn, BUG-05 xóa module cache, bổ sung TOTP MFA UI).
-3. Đã xác minh trên cơ sở dữ liệu PostgreSQL thật: 24/24 integration tests trước đây bị skip nay đã chạy và PASS 100%.
-4. Đã kiểm chứng và xử lý triệt để giả thuyết `HYP-01` về định dạng Date trong `node-pg`.
+Sau khi khắc phục triệt để và kiểm chứng hồi quy toàn bộ các hạng mục:
+1. **Xác minh Clinical Grant Server-to-Server:** Appointment Service gọi Medical Record Service qua token nội bộ `RECORD_APPOINTMENT_INTERNAL_API_TOKEN` kiểm tra đầy đủ 5 tham số (`grantId`, `patientId`, `appointmentId`, `doctorId`, `sessionId`), đảm bảo tính xác thực và an toàn tuyệt đối cho dữ liệu lâm sàng.
+2. **Dung sai Deadlock Concurrency:** Xử lý dung sai mã lỗi PostgreSQL `40P01` trong giao dịch đặt lịch hẹn đồng thời, đảm bảo mapping chính xác sang `SlotConflictError`.
+3. **Kiểm chứng DB/HTTP Regression:** Chạy lại toàn bộ **24/24 integration tests** trên cơ sở dữ liệu PostgreSQL test thật (`localhost:5433`): **24/24 PASS (0 failed, 0 skipped, Exit code 0)**.
+4. **Kiểm thử Contract & Unit:** Toàn bộ 474 backend unit tests PASS, 104 contract tests PASS, và 283 frontend web tests PASS.
 
 **Khuyến nghị bước tiếp theo:**
-- Chốt commit tài liệu bàn giao kỹ thuật trên nhánh tích hợp backend.
-- Sẵn sàng tạo Pull Request để Tech Lead / PO review và merge vào nhánh chính cho giai đoạn triển khai Staging / E2E Live qua Gateway theo tài liệu `packages/openapi-contract-tests/LIVE-SMOKE-GUIDE.md`.
+- Commit toàn bộ các thay đổi cục bộ trên nhánh `test/m2-integration-005-api-v2-clinic-workflow`.
+- Mở Pull Request để Tech Lead / PO review và merge vào nhánh `main` phục vụ triển khai Staging / Live E2E qua Gateway.

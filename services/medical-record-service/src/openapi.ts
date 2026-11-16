@@ -188,11 +188,12 @@ export const openapi = {
             "application/json": {
               schema: {
                 type: "object",
-                required: ["grantId", "patientId", "appointmentId"],
+                required: ["grantId", "patientId", "appointmentId", "doctorId", "sessionId"],
                 properties: {
                   grantId: { type: "string", format: "uuid" },
                   patientId: { type: "string", format: "uuid" },
                   appointmentId: { type: "string", format: "uuid" },
+                  doctorId: { type: "string", format: "uuid" },
                   actorUserId: { type: "string", format: "uuid" },
                   sessionId: { type: "string" }
                 }

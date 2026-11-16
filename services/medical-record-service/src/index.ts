@@ -470,13 +470,23 @@ app.post("/api/v1/medical-records/finalization-contexts", async (req, res, next)
 });
 
 // 3. POST /internal/v1/medical-records/access-grants/verify
-app.post("/internal/v1/medical-records/access-grants/verify", requireInternalToken, async (req, res, next) => {
-  const { grantId, patientId, appointmentId } = req.body as {
+app.post("/internal/v1/medical-records/access-grants/verify", (req, res, next) => {
+  const expected = process.env.RECORD_APPOINTMENT_INTERNAL_API_TOKEN ?? "";
+  const received = req.header("X-Internal-Token") ?? "";
+  if (Buffer.byteLength(expected, "utf8") < 32 || Buffer.byteLength(expected, "utf8") !== Buffer.byteLength(received, "utf8") ||
+    !timingSafeEqual(Buffer.from(expected), Buffer.from(received)))
+    return void fail(res, 401, "INTERNAL_AUTH_REQUIRED", "Appointment internal credential required");
+  next();
+}, async (req, res, next) => {
+  const { grantId, patientId, appointmentId, doctorId, sessionId } = req.body as {
     grantId?: string;
     patientId?: string;
     appointmentId?: string;
+    doctorId?: string;
+    sessionId?: string;
   };
-  if (!grantId) return fail(res, 400, "VALIDATION_ERROR", "grantId is required");
+  if (!grantId || !patientId || !appointmentId || !doctorId || !sessionId)
+    return fail(res, 400, "VALIDATION_ERROR", "Grant, patient, appointment, doctor and session are required");
 
   try {
     const grant = await repository.findGrantById(grantId);
@@ -488,6 +498,12 @@ app.post("/internal/v1/medical-records/access-grants/verify", requireInternalTok
     }
     if (appointmentId && grant.appointmentId !== appointmentId) {
       return res.json({ success: true, data: { valid: false, reason: "APPOINTMENT_MISMATCH" } });
+    }
+    if (doctorId && grant.doctorId !== doctorId) {
+      return res.json({ success: true, data: { valid: false, reason: "DOCTOR_MISMATCH" } });
+    }
+    if (sessionId && grant.sessionId !== sessionId) {
+      return res.json({ success: true, data: { valid: false, reason: "SESSION_MISMATCH" } });
     }
     return res.json({
       success: true,

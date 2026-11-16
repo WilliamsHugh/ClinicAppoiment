@@ -222,6 +222,24 @@ async function doctorIdForUser(userId: string, requestId?: string) {
   }
 }
 
+async function verifyClinicalGrant(req: express.Request, grantId: string, patientId: string,
+  appointmentId: string, doctorId: string): Promise<boolean | null> {
+  const token = process.env.RECORD_APPOINTMENT_INTERNAL_API_TOKEN;
+  const sessionId = req.header("X-Session-Id");
+  if (!token || Buffer.byteLength(token, "utf8") < 32 || !sessionId) return null;
+  try {
+    const response = await fetch(`${medicalRecordServiceUrl}/internal/v1/medical-records/access-grants/verify`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "X-Internal-Token": token },
+      body: JSON.stringify({ grantId, patientId, appointmentId, doctorId, sessionId }),
+      redirect: "error", signal: AbortSignal.timeout(3000)
+    });
+    if (!response.ok) return null;
+    const body = await response.json() as { success?: boolean; data?: { valid?: boolean } };
+    return body.success === true && typeof body.data?.valid === "boolean" ? body.data.valid : null;
+  } catch { return null; }
+}
+
 async function patientExists(patientId: string): Promise<boolean | null> {
   try {
     const token = process.env.USER_APPOINTMENT_INTERNAL_API_TOKEN;
@@ -458,18 +476,9 @@ app.get("/api/v1/appointments", requireRoles("PATIENT", "DOCTOR", "STAFF", "ADMI
 
   const { page, limit, view, include, q, sort, ...filters } = parsed.data;
 
-  // Detail view access checks for DOCTOR
-  if (view === "detail" && role === "DOCTOR") {
-    if (!filters.patientId) {
-      return res.status(400).json(error("VALIDATION_ERROR", "patientId is required for doctor detail view"));
-    }
-    const grant = req.header("X-Clinical-Grant");
-    if (!grant) {
-      return res.status(403).json(error("CLINICAL_VERIFICATION_REQUIRED", "Clinical access grant is required for detail view"));
-    }
-  }
-
-  const allowedReasonSearch = role !== "DOCTOR" || Boolean(req.header("X-Clinical-Grant"));
+  if (view === "detail" && role === "DOCTOR" && !filters.patientId)
+    return res.status(400).json(error("VALIDATION_ERROR", "patientId is required for doctor detail view"));
+  const allowedReasonSearch = role !== "DOCTOR" || view === "detail";
 
   try {
     const listResult = await store.list({
@@ -482,10 +491,15 @@ app.get("/api/v1/appointments", requireRoles("PATIENT", "DOCTOR", "STAFF", "ADMI
     }, page, limit);
 
     if (view === "detail" && role === "DOCTOR") {
+      const grant = req.header("X-Clinical-Grant");
+      if (!grant) return res.status(403).json(error("CLINICAL_VERIFICATION_REQUIRED", "Clinical access grant is required"));
       for (const item of listResult.items) {
         if (item.status === "CANCELLED" || item.status === "NO_SHOW") {
           return res.status(403).json(error("CLINICAL_ACCESS_DENIED", "Cancelled or no-show appointments do not grant clinical access"));
         }
+        const valid = await verifyClinicalGrant(req, grant, item.patientId, item.id, item.doctorId);
+        if (valid === null) return res.status(503).json(error("DEPENDENCY_UNAVAILABLE", "Clinical grant verification is unavailable"));
+        if (!valid) return res.status(403).json(error("CLINICAL_VERIFICATION_REQUIRED", "Clinical grant is invalid for this appointment"));
       }
     }
 
@@ -611,6 +625,9 @@ app.get("/api/v1/appointments/:id", requireRoles("PATIENT", "DOCTOR", "STAFF", "
     if (!grant) {
       return res.status(403).json(error("CLINICAL_VERIFICATION_REQUIRED", "Clinical access grant is required for detail view"));
     }
+    const valid = await verifyClinicalGrant(req, grant, appointment.patientId, appointment.id, appointment.doctorId);
+    if (valid === null) return res.status(503).json(error("DEPENDENCY_UNAVAILABLE", "Clinical grant verification is unavailable"));
+    if (!valid) return res.status(403).json(error("CLINICAL_VERIFICATION_REQUIRED", "Clinical grant is invalid for this appointment"));
   }
 
   let namesMap: { patients: Map<string, PatientSummary>; doctors: Map<string, DoctorSummary> } | undefined;

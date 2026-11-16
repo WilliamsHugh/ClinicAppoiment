@@ -15,15 +15,23 @@ const staffHeaders = { "X-User-Id": staffUserId, "X-Role": "STAFF" };
 const internalRecordToken = "appointment-to-record-test-token-32-bytes";
 const internalDoctorToken = "doctor-internal-test-token-with-32-bytes";
 const internalUserToken = "appointment-to-user-test-token-at-least-32-bytes";
+const grantToken = "appointment-to-record-grant-verification-test-token";
 
 beforeEach(() => {
   repository.clear();
   vi.stubEnv("APPOINTMENT_RECORD_INTERNAL_API_TOKEN", internalRecordToken);
   vi.stubEnv("DOCTOR_INTERNAL_API_TOKEN", internalDoctorToken);
   vi.stubEnv("USER_APPOINTMENT_INTERNAL_API_TOKEN", internalUserToken);
+  vi.stubEnv("RECORD_APPOINTMENT_INTERNAL_API_TOKEN", grantToken);
 
   vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
     const url = String(input);
+    if (url.includes("/internal/v1/medical-records/access-grants/verify")) {
+      const body = JSON.parse(String(init?.body ?? "{}"));
+      const valid = body.grantId === "grant-test-token-123" && body.patientId === patientOwnedId &&
+        body.doctorId === doctorOwnedId && body.sessionId === "session-test-123";
+      return new Response(JSON.stringify({ success: true, data: { valid } }), { status: 200 });
+    }
     if (url.includes("/internal/v1/patients/by-user/")) {
       return new Response(JSON.stringify({ success: true, data: { id: patientOwnedId, userId: patientUserId } }), { status: 200 });
     }
@@ -128,9 +136,20 @@ describe("Appointment Service v2 APIs", () => {
       const res = await request(app)
         .get(`/api/v1/appointments?view=detail&patientId=${patientOwnedId}`)
         .set(doctorHeaders)
+        .set("X-Session-Id", "session-test-123")
         .set("X-Clinical-Grant", "grant-test-token-123");
       expect(res.status).toBe(200);
       expect(res.body.data.items[0].reason).toBe("Secret clinical reason");
+    });
+
+    it("rejects an invented grant and does not expose clinical reason", async () => {
+      repository.create({ patientId: patientOwnedId, doctorId: doctorOwnedId,
+        scheduledStartAt: "2026-11-15T08:00:00.000Z", scheduledEndAt: "2026-11-15T08:30:00.000Z",
+        reason: "Private reason", createdBy: patientUserId });
+      const res = await request(app).get(`/api/v1/appointments?view=detail&patientId=${patientOwnedId}`)
+        .set(doctorHeaders).set("X-Session-Id", "session-test-123").set("X-Clinical-Grant", "invented-grant");
+      expect(res.status).toBe(403);
+      expect(JSON.stringify(res.body)).not.toContain("Private reason");
     });
 
     it("filters by multi-value status", async () => {

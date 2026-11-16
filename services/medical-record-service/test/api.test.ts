@@ -31,6 +31,7 @@ const notificationToken = "record-notification-boundary-test-token-123456";
 const doctorToken = "record-doctor-boundary-test-token-123456";
 const userRecordToken = "record-user-boundary-test-token-123456";
 vi.stubEnv("APPOINTMENT_RECORD_INTERNAL_API_TOKEN", internalToken);
+vi.stubEnv("RECORD_APPOINTMENT_INTERNAL_API_TOKEN", "appointment-to-record-grant-verification-test-token");
 vi.stubEnv("NOTIFICATION_INTERNAL_API_TOKEN", notificationToken);
 vi.stubEnv("DOCTOR_INTERNAL_API_TOKEN", doctorToken);
 vi.stubEnv("USER_RECORD_INTERNAL_API_TOKEN", userRecordToken);
@@ -287,17 +288,31 @@ describe("Clinical Grants and Finalization", () => {
       id: "grant-1",
       patientId: ids.patient,
       appointmentId: ids.appointment,
+      doctorId: ids.doctor,
+      sessionId: "session-1",
       accessMode: "CURRENT_ENCOUNTER",
       expiresAt: new Date(Date.now() + 60000).toISOString()
     });
 
     const response = await request(app).post("/internal/v1/medical-records/access-grants/verify")
-      .set("X-Internal-Token", internalToken)
-      .send({ grantId: "grant-1", patientId: ids.patient, appointmentId: ids.appointment });
+      .set("X-Internal-Token", "appointment-to-record-grant-verification-test-token")
+      .send({ grantId: "grant-1", patientId: ids.patient, appointmentId: ids.appointment, doctorId: ids.doctor, sessionId: "session-1" });
 
     expect(response.status).toBe(200);
     expect(response.body.data.valid).toBe(true);
     expect(response.body.data.accessMode).toBe("CURRENT_ENCOUNTER");
+
+    const wrongSession = await request(app).post("/internal/v1/medical-records/access-grants/verify")
+      .set("X-Internal-Token", "appointment-to-record-grant-verification-test-token")
+      .send({ grantId: "grant-1", patientId: ids.patient, appointmentId: ids.appointment,
+        doctorId: ids.doctor, sessionId: "another-session" });
+    expect(wrongSession.body.data.valid).toBe(false);
+
+    const wrongCaller = await request(app).post("/internal/v1/medical-records/access-grants/verify")
+      .set("X-Internal-Token", internalToken)
+      .send({ grantId: "grant-1", patientId: ids.patient, appointmentId: ids.appointment,
+        doctorId: ids.doctor, sessionId: "session-1" });
+    expect(wrongCaller.status).toBe(401);
   });
 
   it("creates a finalization context with canonical content digest and 5m expiry", async () => {
