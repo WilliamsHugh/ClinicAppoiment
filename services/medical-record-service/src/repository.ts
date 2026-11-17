@@ -64,11 +64,16 @@ export type RecordInput = Omit<MedicalRecord, "id" | "createdAt" | "updatedAt" |
 export type RecordChanges = Partial<Pick<MedicalRecord, "symptoms" | "diagnosis" | "notes" | "treatmentPlan" | "prescription" | "status">>;
 export type OutboxEvent = { id: string; aggregateId: string; eventType: string; payload: Record<string, unknown>; retryCount: number };
 
-const select = `id, appointment_id AS "appointmentId", patient_id AS "patientId", doctor_id AS "doctorId",
-  symptoms, diagnosis, notes, treatment_plan AS "treatmentPlan", prescription, status,
-  COALESCE(version, 1) AS version,
-  COALESCE(appointment_completion, CASE WHEN status = 'FINAL' THEN 'PENDING' ELSE 'NOT_REQUESTED' END) AS "appointmentCompletion",
-  created_by AS "createdBy", updated_by AS "updatedBy", created_at AS "createdAt", updated_at AS "updatedAt"`;
+const recordColumns = (prefix = "") => {
+  const p = prefix ? `${prefix}.` : "";
+  return `${p}id, ${p}appointment_id AS "appointmentId", ${p}patient_id AS "patientId", ${p}doctor_id AS "doctorId",
+  ${p}symptoms, ${p}diagnosis, ${p}notes, ${p}treatment_plan AS "treatmentPlan", ${p}prescription, ${p}status,
+  COALESCE(${p}version, 1) AS version,
+  COALESCE(${p}appointment_completion, CASE WHEN ${p}status = 'FINAL' THEN 'PENDING' ELSE 'NOT_REQUESTED' END) AS "appointmentCompletion",
+  ${p}created_by AS "createdBy", ${p}updated_by AS "updatedBy", ${p}created_at AS "createdAt", ${p}updated_at AS "updatedAt"`;
+};
+
+const select = recordColumns();
 
 export class MedicalRecordRepository {
   constructor(private readonly pool: Pool) {}
@@ -157,9 +162,9 @@ export class MedicalRecordRepository {
 
   async findReplay(actorId: string, operation: string, idempotencyKey: string, fingerprint: Record<string, unknown>) {
     const result = await this.pool.query<{ record_id: string | null; fingerprintMatches: boolean } & MedicalRecord>(
-      `SELECT r.record_id, (r.request_fingerprint = $4::jsonb) AS "fingerprintMatches", ${select}
+      `SELECT r.record_id, (r.request_fingerprint = $4::jsonb) AS "fingerprintMatches", ${recordColumns("m")}
        FROM medical_record_service.idempotency_requests r
-       LEFT JOIN medical_record_service.medical_records ON medical_record_service.medical_records.id = r.record_id
+       LEFT JOIN medical_record_service.medical_records m ON m.id = r.record_id
        WHERE r.actor_id = $1 AND r.operation = $2 AND r.idempotency_key = $3`,
       [actorId, operation, idempotencyKey, JSON.stringify(fingerprint)]
     );
@@ -169,7 +174,17 @@ export class MedicalRecordRepository {
     return result.rows[0] as MedicalRecord;
   }
 
-  async create(input: RecordInput, recipientUserId: string, idempotencyKey?: string, fingerprint?: Record<string, unknown>, finalization?: { proofId: string; contextId: string }) {
+  async create(
+    input: RecordInput,
+    recipientUserId: string,
+    idempotencyKeyOrFinalization?: string | { proofId: string; contextId: string },
+    fingerprint?: Record<string, unknown>,
+    finalizationArg?: { proofId: string; contextId: string }
+  ) {
+    const finalization = typeof idempotencyKeyOrFinalization === "object" && idempotencyKeyOrFinalization !== null && "proofId" in idempotencyKeyOrFinalization
+      ? idempotencyKeyOrFinalization
+      : finalizationArg;
+    const idempotencyKey = typeof idempotencyKeyOrFinalization === "string" ? idempotencyKeyOrFinalization : undefined;
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN");
@@ -184,9 +199,9 @@ export class MedicalRecordRepository {
         );
         if (claim.rowCount === 0) {
           const existing = await client.query<{ fingerprintMatches: boolean } & MedicalRecord>(
-            `SELECT (r.request_fingerprint = $3::jsonb) AS "fingerprintMatches", ${select}
+            `SELECT (r.request_fingerprint = $3::jsonb) AS "fingerprintMatches", ${recordColumns("m")}
              FROM medical_record_service.idempotency_requests r
-             JOIN medical_record_service.medical_records ON medical_record_service.medical_records.id = r.record_id
+             JOIN medical_record_service.medical_records m ON m.id = r.record_id
              WHERE r.actor_id = $1 AND r.operation = 'CREATE' AND r.idempotency_key = $2`,
             [input.createdBy, idempotencyKey, JSON.stringify(fingerprint)]
           );
@@ -258,9 +273,9 @@ export class MedicalRecordRepository {
         );
         if (claim.rowCount === 0) {
           const existing = await client.query<{ fingerprintMatches: boolean } & MedicalRecord>(
-            `SELECT (r.request_fingerprint = $3::jsonb) AS "fingerprintMatches", ${select}
+            `SELECT (r.request_fingerprint = $3::jsonb) AS "fingerprintMatches", ${recordColumns("m")}
              FROM medical_record_service.idempotency_requests r
-             JOIN medical_record_service.medical_records ON medical_record_service.medical_records.id = r.record_id
+             JOIN medical_record_service.medical_records m ON m.id = r.record_id
              WHERE r.actor_id = $1 AND r.operation = 'UPDATE' AND r.idempotency_key = $2`,
             [actorId, idempotencyKey, JSON.stringify(fingerprint)]
           );
@@ -343,9 +358,9 @@ export class MedicalRecordRepository {
         );
         if (claim.rowCount === 0) {
           const existing = await client.query<{ fingerprintMatches: boolean } & MedicalRecord>(
-            `SELECT (r.request_fingerprint = $3::jsonb) AS "fingerprintMatches", ${select}
+            `SELECT (r.request_fingerprint = $3::jsonb) AS "fingerprintMatches", ${recordColumns("m")}
              FROM medical_record_service.idempotency_requests r
-             JOIN medical_record_service.medical_records ON medical_record_service.medical_records.id = r.record_id
+             JOIN medical_record_service.medical_records m ON m.id = r.record_id
              WHERE r.actor_id = $1 AND r.operation = 'FINALIZE' AND r.idempotency_key = $2`,
             [params.actorId, params.idempotencyKey, JSON.stringify(params.fingerprint)]
           );

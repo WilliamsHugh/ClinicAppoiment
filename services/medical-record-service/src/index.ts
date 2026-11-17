@@ -886,7 +886,9 @@ app.post("/api/v1/medical-records", async (req, res, next) => {
     const finalization = parsed.data.status === "FINAL" ? {
       proofId: parsed.data.verificationProofId!, contextId: parsed.data.contextId!
     } : undefined;
-    const record = await repository.create(recordData, patient.userId, idempotencyKey, fingerprint, finalization);
+    const record = idempotencyKey
+      ? await repository.create(recordData, patient.userId, idempotencyKey, fingerprint, finalization)
+      : await repository.create(recordData, patient.userId, finalization);
     return res.status(201).json({ success: true, data: record });
   } catch (error) {
     if (error instanceof IdempotencyMismatchError) {
@@ -894,7 +896,6 @@ app.post("/api/v1/medical-records", async (req, res, next) => {
     }
     if (error instanceof Error && error.message === "PROOF_ALREADY_CONSUMED") {
       return fail(res, 409, "PROOF_ALREADY_CONSUMED", "Verification proof has already been used");
-    }
     }
     if (typeof error === "object" && error !== null && "code" in error && error.code === "23505") {
       return fail(res, 409, "MEDICAL_RECORD_ALREADY_EXISTS", "Record already exists for appointment");
