@@ -9,4 +9,4 @@ const internalToken = process.env.DOCTOR_INTERNAL_API_TOKEN ?? "";
 const repository = new DoctorRepository(createPool());
 const app = createDoctorApp(repository, createUserDirectory(), createAppointmentOccupancy(), internalToken);
 
-app.listen(port, () => logServiceEvent("doctor-service", "info", "service.started", { port }));
+app.listen(port, process.env.HOST ?? "0.0.0.0", () => logServiceEvent("doctor-service", "info", "service.started", { port }));

@@ -309,30 +309,15 @@ function createUserServiceApp() {
   app.delete("/api/v1/auth/sessions/:sessionId", async (req, res) => {
     const targetSessionId = req.params.sessionId;
     let found = null;
-    let foundToken = null;
-    for (const [t, s] of store.sessions.entries()) {
+    for (const s of store.sessions.values()) {
       if (s.session.sessionId === targetSessionId) {
         found = s;
-        foundToken = t;
         break;
       }
     }
     if (found) {
       found.revoked = true;
       found.session.state = "REVOKED";
-      // Invalidate Gateway Cache
-      try {
-        await fetch(`http://127.0.0.1:${GATEWAY_PORT}/internal/v1/auth/cache-invalidate`, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Internal-Token": INTERNAL_TOKEN
-          },
-          body: JSON.stringify({ userId: found.user.id, sessionId: targetSessionId })
-        });
-      } catch (err) {
-        // ignore cache signal error in test
-      }
     }
     return res.json({ success: true, data: { revoked: true, sessionId: targetSessionId } });
   });

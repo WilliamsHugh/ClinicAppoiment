@@ -216,5 +216,5 @@ app.use((error: unknown, _req: Request, res: express.Response, _next: express.Ne
 if (process.env.NODE_ENV !== "test") {
   const timer = setInterval(() => { void dispatchReminders().catch(() => logServiceEvent("notification-service", "error", "reminder.poll_failed")); }, 60_000);
   timer.unref();
-  app.listen(port, () => logServiceEvent("notification-service", "info", "service.started", { port }));
+  app.listen(port, process.env.HOST ?? "0.0.0.0", () => logServiceEvent("notification-service", "info", "service.started", { port }));
 }

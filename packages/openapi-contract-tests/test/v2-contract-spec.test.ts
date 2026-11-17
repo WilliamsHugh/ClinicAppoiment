@@ -40,7 +40,6 @@ export const v2ServicesContract: ServiceV2Contract[] = [
     v2RequiredOperations: [
       { method: "GET", path: "/health", security: "public", expectedErrors: [] },
       { method: "GET", path: "/api/v1/system/health", security: "bearerAuth", expectedErrors: [401, 403] },
-      { method: "POST", path: "/internal/v1/auth/cache-invalidate", security: "internalToken", requiredHeaders: ["X-Internal-Token"], expectedErrors: [400, 401] }
     ]
   },
   {

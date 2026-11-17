@@ -435,7 +435,7 @@ app.use((err: unknown, _req: express.Request, res: express.Response, _next: expr
 });
 
 if (process.env.NODE_ENV !== "test") {
-  app.listen(port, () => {
+  app.listen(port, process.env.HOST ?? "0.0.0.0", () => {
     logServiceEvent("user-service", "info", "service.started", { port });
   });
 }

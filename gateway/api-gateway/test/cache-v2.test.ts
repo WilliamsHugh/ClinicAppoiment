@@ -358,69 +358,20 @@ describe("Gateway PENDING_MFA and LOCKED Allowlists (3e)", () => {
   });
 });
 
-describe("Gateway Cache Invalidation Signal Route (3f)", () => {
-  it("POST /internal/v1/auth/cache-invalidate requires internal token and invalidates cache", async () => {
-    const upstream = await startUpstream((req, res) => {
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ success: true, data: { status: "ok" } }));
-    });
-    const config = configFor(upstream.url);
-
-    let cachedIdentity: VerifiedIdentity | null = {
-      id: "target-user",
-      userId: "target-user",
-      sessionId: "target-session",
-      role: "PATIENT",
-      status: "ACTIVE",
-      sessionVersion: 1
-    };
-
-    const verifier: AccessTokenVerifier = vi.fn().mockImplementation(async () => cachedIdentity);
-
+describe("Gateway internal boundary", () => {
+  it("does not expose cache invalidation on the public listener", async () => {
     const app = createGatewayApp({
-      config,
-      authVerifier: verifier,
+      config: configFor("http://127.0.0.1:1"),
+      authVerifier: async () => null,
       logger: { info: vi.fn(), error: vi.fn() }
     });
 
-    const token = jwtWithExp(3600);
-
-    // First request primes cache
-    await request(app)
-      .get("/api/v1/system/health")
-      .set("Authorization", `Bearer ${token}`);
-    expect(verifier).toHaveBeenCalledTimes(1);
-
-    // Second request hits cache
-    await request(app)
-      .get("/api/v1/system/health")
-      .set("Authorization", `Bearer ${token}`);
-    expect(verifier).toHaveBeenCalledTimes(1); // cache hit!
-
-    // Signal without internal token -> 401
-    const unauthRes = await request(app)
+    const response = await request(app)
       .post("/internal/v1/auth/cache-invalidate")
+      .set("X-Internal-Token", "synthetic-internal-token-that-is-not-valid")
       .send({ userId: "target-user", scope: "ALL" });
-    expect(unauthRes.status).toBe(401);
-    expect(unauthRes.body.error.code).toBe("INTERNAL_AUTH_REQUIRED");
 
-    // Signal with valid internal token
-    const validSignalRes = await request(app)
-      .post("/internal/v1/auth/cache-invalidate")
-      .set("X-Internal-Token", config.userGatewayInternalApiToken!)
-      .send({
-        userId: "target-user",
-        sessionId: "target-session",
-        scope: "ALL",
-        reason: "LOGOUT_ALL"
-      });
-    expect(validSignalRes.status).toBe(200);
-    expect(validSignalRes.body.data.invalidated).toBe(true);
-
-    // Subsequent request must be a cache miss -> calls verifier again
-    await request(app)
-      .get("/api/v1/system/health")
-      .set("Authorization", `Bearer ${token}`);
-    expect(verifier).toHaveBeenCalledTimes(2);
+    expect(response.status).toBe(404);
+    expect(response.body.error.code).toBe("ROUTE_NOT_FOUND");
   });
 });

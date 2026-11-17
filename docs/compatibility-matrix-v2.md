@@ -84,7 +84,7 @@
 | Operation | Method | Path | Caller -> Owner | Status | Breaking Fields | Blocker |
 |---|---|---|---|---|---|---|
 | Verify Access Token | GET | `/internal/v1/auth/verify` | Gateway -> User (TV2) | THAY_ĐỔI | Bổ sung session metadata: sessionId, sessionVersion, idleExpiresAt, absoluteExpiresAt, lockAt, status ACTIVE/PENDING_MFA/LOCKED | TV2 Session Verify DTO |
-| Cache Invalidation Signal | POST | `/internal/v1/auth/cache-invalidate` | User -> Gateway (TV1) | MỚI | Endpoint mới; nhận userId/sessionId/sessionVersion để xóa cache | TV2 Invalidation Signal Spec |
+| Gateway Identity Cache Invalidation | — | No public or service-facing endpoint | Gateway-local after successful MFA verification, logout, or session revocation | IMPLEMENTED | Gateway invalidates by token/session/user after proxy success; internal cache control is not exposed on the public listener | Gateway owns its in-memory cache lifecycle |
 | Verify MFA Proof | POST | `/internal/v1/auth/mfa/proofs/verify` | Medical Record / Services -> User (TV2) | MỚI | Endpoint mới; xác minh proof_token, purpose, context | TV2 MFA Proof Contract |
 | Verify Clinical Grant | POST | `/internal/v1/medical-records/access-grants/verify` | User / Appointment -> Medical Record (TV4) | MỚI | Endpoint mới; kiểm tra grantId còn hiệu lực | TV4 Clinical Grant Contract |
 | Patient Lookup (Batch) | POST | `/internal/v1/patients/lookup` | Appointment / Medical Record -> User (TV2) | MỚI | Endpoint mới; batch tối đa 100 ID, trả PatientSummary | Không |

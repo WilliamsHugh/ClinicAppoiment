@@ -165,6 +165,40 @@ describe("Gateway authentication dependency handling", () => {
     expect(authVerifier).toHaveBeenCalledTimes(2);
   });
 
+  it("invalidates a revoked session after the User Service confirms session deletion", async () => {
+    const sessionId = "session-to-revoke";
+    const upstream = await startUpstream((req, res) => {
+      if (req.url === `/api/v1/auth/sessions/${sessionId}` && req.method === "DELETE") {
+        return sendJson(res, 200, { success: true, data: { revoked: true } });
+      }
+      return sendJson(res, 404, { success: false, error: { code: "ROUTE_NOT_FOUND", message: "Not found", details: [] } });
+    });
+    const identity: VerifiedIdentity = {
+      id: "verified-admin",
+      authUserId: "verified-auth-user",
+      role: "ADMIN",
+      status: "ACTIVE",
+      sessionId,
+    };
+    const authVerifier = vi.fn(async () => identity);
+    const app = createGatewayApp({
+      config: configFor(upstream.url),
+      authVerifier,
+      healthChecker: async () => "ok",
+      logger: { info: vi.fn(), error: vi.fn() },
+    });
+    const token = `header.${Buffer.from(JSON.stringify({ exp: Math.floor(Date.now() / 1000) + 60 })).toString("base64url")}.signature`;
+
+    await request(app).get("/api/v1/system/health").set("Authorization", `Bearer ${token}`).expect(200);
+    await request(app)
+      .delete(`/api/v1/auth/sessions/${sessionId}`)
+      .set("Authorization", `Bearer ${token}`)
+      .expect(200);
+    await request(app).get("/api/v1/system/health").set("Authorization", `Bearer ${token}`).expect(200);
+
+    expect(authVerifier).toHaveBeenCalledTimes(2);
+  });
+
   it("normalizes User Service verification failures", async () => {
     const app = createGatewayApp({
       config: configFor("http://127.0.0.1:1"),

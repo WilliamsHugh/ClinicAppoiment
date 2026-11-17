@@ -8,7 +8,7 @@ import type { GatewayConfig, ServiceName } from "./config.js";
 import { serviceNames } from "./config.js";
 import { createErrorHandler, notFoundHandler, requestContext, sendError, type GatewayLogger } from "./http.js";
 import { gatewayOpenApiDocument } from "./openapi.js";
-import type { AccessTokenVerifier, GatewayRequest, InvalidationPayload } from "./types.js";
+import type { AccessTokenVerifier, GatewayRequest } from "./types.js";
 
 type HealthState = "ok" | "unavailable";
 type HealthChecker = (service: ServiceName, target: string) => Promise<HealthState>;
@@ -168,36 +168,6 @@ export function createGatewayApp(options: CreateGatewayAppOptions) {
   app.use("/docs", swaggerUi.serve, swaggerUi.setup(gatewayOpenApiDocument));
   app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(gatewayOpenApiDocument));
 
-  // Route: POST /internal/v1/auth/cache-invalidate (3f)
-  app.post("/internal/v1/auth/cache-invalidate", express.json(), (req: GatewayRequest, res) => {
-    const internalToken = req.header("x-internal-token") ?? req.header("authorization")?.replace(/^Bearer\s+/i, "");
-    if (!config.userGatewayInternalApiToken || internalToken !== config.userGatewayInternalApiToken) {
-      return sendError(res, 401, "INTERNAL_AUTH_REQUIRED", "Valid internal token required", [], req.requestId);
-    }
-    const payload = req.body as Partial<InvalidationPayload>;
-    if (!payload || !payload.userId || typeof payload.userId !== "string") {
-      return sendError(res, 400, "VALIDATION_ERROR", "userId is required for cache invalidation", [], req.requestId);
-    }
-    authenticate.invalidate({
-      userId: payload.userId,
-      sessionId: payload.sessionId ?? null,
-      scope: payload.scope ?? "ALL",
-      reason: payload.reason ?? "SESSION_REVOKED",
-      sessionVersion: payload.sessionVersion,
-      invalidatedAt: payload.invalidatedAt ?? new Date().toISOString()
-    });
-    return res.status(200).json({
-      success: true,
-      data: {
-        invalidated: true,
-        userId: payload.userId,
-        sessionId: payload.sessionId ?? null,
-        scope: payload.scope ?? "ALL"
-      },
-      requestId: req.requestId
-    });
-  });
-
   app.get("/api/v1/system/health", authenticate, requireRoles("ADMIN"), async (req: GatewayRequest, res) => {
     const entries = await Promise.all(serviceNames.map(async (service) => [service, await checkHealth(service, config.serviceTargets[service])] as const));
     const services = Object.fromEntries(entries) as Record<ServiceName, HealthState>;
@@ -235,11 +205,19 @@ export function createGatewayApp(options: CreateGatewayAppOptions) {
         config.corsOrigins,
         (req) => {
           const path = req.originalUrl.split("?", 1)[0];
-          if (req.method === "POST" && (path === "/api/v1/auth/logout" || path === "/api/v1/auth/mfa/verify")) {
+          const revokedSessionMatch = path.match(/^\/api\/v1\/auth\/sessions\/([^/]+)$/);
+          if (
+            (req.method === "POST" && (path === "/api/v1/auth/logout" || path === "/api/v1/auth/mfa/verify")) ||
+            (req.method === "DELETE" && revokedSessionMatch)
+          ) {
             const token = req.header("authorization")?.match(/^Bearer\s+(.+)$/i)?.[1];
             if (token) authenticate.invalidateToken(token);
-            if (req.user?.id) authenticate.invalidateByUser(req.user.id);
-            if (req.user?.sessionId) authenticate.invalidateBySession(req.user.sessionId);
+            if (req.method === "DELETE" && revokedSessionMatch) {
+              authenticate.invalidateBySession(decodeURIComponent(revokedSessionMatch[1]));
+            } else {
+              if (req.user?.id) authenticate.invalidateByUser(req.user.id);
+              if (req.user?.sessionId) authenticate.invalidateBySession(req.user.sessionId);
+            }
           }
         },
       )

@@ -1076,5 +1076,5 @@ if (process.env.NODE_ENV !== "test") {
     void sendOutbox().catch(() => logServiceEvent("medical-record-service", "error", "outbox.poll_failed"));
   }, 5000);
   timer.unref();
-  app.listen(port, () => logServiceEvent("medical-record-service", "info", "service.started", { port }));
+  app.listen(port, process.env.HOST ?? "0.0.0.0", () => logServiceEvent("medical-record-service", "info", "service.started", { port }));
 }

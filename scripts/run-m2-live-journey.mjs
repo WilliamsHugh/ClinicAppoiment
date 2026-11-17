@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import crypto from "node:crypto";
+import { readFileSync } from "node:fs";
+import { resolve } from "node:path";
 import pg from "pg";
 import { generateTotpCode, getTotpCounter } from "../services/user-service/dist/totp.js";
+import { assertDatabaseIdentity, readM2E2EAccounts, readM2E2EConfig } from "./m2-e2e-config.mjs";
 
 // ============================================================================
 // Live E2E Cross-Service Clinical Journey Runner (Nhịp 2 & Nhịp 3)
@@ -11,44 +14,28 @@ import { generateTotpCode, getTotpCounter } from "../services/user-service/dist/
 // ============================================================================
 
 const GATEWAY_BASE = "http://127.0.0.1:8080";
-const DB_HOST = "127.0.0.1";
-const DB_PORT = 5433;
-const DB_USER = "postgres";
-const DB_PASS = "testpassword";
-
-const pools = {
-  user: new pg.Pool({ connectionString: `postgresql://${DB_USER}:${DB_PASS}@${DB_HOST}:${DB_PORT}/user_service_test` }),
-  doctor: new pg.Pool({ connectionString: `postgresql://${DB_USER}:${DB_PASS}@${DB_HOST}:${DB_PORT}/doctor_service_test` }),
-  appointment: new pg.Pool({ connectionString: `postgresql://${DB_USER}:${DB_PASS}@${DB_HOST}:${DB_PORT}/appointment_service_test` }),
-  record: new pg.Pool({ connectionString: `postgresql://${DB_USER}:${DB_PASS}@${DB_HOST}:${DB_PORT}/medical_record_service_test` }),
-  notification: new pg.Pool({ connectionString: `postgresql://${DB_USER}:${DB_PASS}@${DB_HOST}:${DB_PORT}/notification_service_test` })
-};
-
+if (process.env.M2_E2E_RUN_LIVE !== "1") {
+  throw new Error("Refusing live E2E writes; set M2_E2E_RUN_LIVE=1 after confirming the isolated test environment");
+}
+const config = readM2E2EConfig({ requireDatabaseWrites: true });
+const credentials = readM2E2EAccounts();
+const manifest = JSON.parse(readFileSync(resolve(".m2-e2e-seed-manifest.json"), "utf8"));
+const pools = Object.fromEntries(Object.entries(config.databases).map(([service, database]) => [
+  service,
+  new pg.Pool({ connectionString: database.connectionString, application_name: "clinic-m2-e2e-journey" }),
+]));
 const FIXTURES = {
-  patient: {
-    email: "patient.live.e2e@clinic.test",
-    password: "Password123!",
-    expectedRole: "PATIENT",
-    expectedPatientId: "d2f9a2e0-2413-4d1d-96b4-f3f0bbe9dcd0",
-    expectedUserId: "3fbc73cb-4b55-4aec-a0a4-b3122e20cc59"
-  },
-  staff: {
-    email: "staff.live.e2e@clinic.test",
-    password: "Password123!",
-    expectedRole: "STAFF",
-    totpSecret: "JBSWY3DPEHPK3PXP"
-  },
-  doctor: {
-    email: "doctor.live.e2e@clinic.test",
-    password: "Password123!",
-    expectedRole: "DOCTOR",
-    expectedDoctorId: "214fec14-aa56-4ac1-ba9d-4768a31cba3a",
-    expectedSpecialtyId: "18d8eede-8710-4ca7-93c0-90d16e82b999",
-    totpSecret: "JBSWY3DPEHPK3PXP"
-  }
+  patient: { ...credentials.patient, ...manifest.patient, expectedRole: "PATIENT", expectedPatientId: manifest.patient.patientId, expectedUserId: manifest.patient.userId },
+  staff: { ...credentials.staff, ...manifest.staff, expectedRole: "STAFF", totpSecret: credentials.staff.totpSecret },
+  doctor: { ...credentials.doctor, ...manifest.doctor, expectedRole: "DOCTOR", expectedDoctorId: manifest.doctor.doctorId, expectedSpecialtyId: manifest.doctor.specialtyId, totpSecret: credentials.doctor.totpSecret },
 };
 
 let passedAssertions = 0;
+
+function responseFailure(response) {
+  const code = response.data && typeof response.data === "object" ? response.data.error?.code : undefined;
+  return "status=" + response.status + (typeof code === "string" ? " code=" + code : "");
+}
 
 function logStep(step, desc) {
   console.log(`\n==================================================================`);
@@ -59,6 +46,13 @@ function logStep(step, desc) {
 function recordPass(desc) {
   passedAssertions++;
   console.log(`  ✓ ${desc}`);
+}
+
+function nextWeekdayDate(offsetDays = 1) {
+  const date = new Date();
+  date.setUTCDate(date.getUTCDate() + offsetDays);
+  while (date.getUTCDay() === 0 || date.getUTCDay() === 6) date.setUTCDate(date.getUTCDate() + 1);
+  return date.toISOString().slice(0, 10);
 }
 
 async function requestGateway(path, options = {}) {
@@ -97,8 +91,8 @@ async function loginUser(email, password) {
     method: "POST",
     body: { email, password }
   });
-  assert.equal(res.status, 200, `Login failed for ${email}`);
-  assert.ok(res.data.success, `Login response unsuccessful for ${email}`);
+  assert.equal(res.status, 200, `Login failed (${res.status})`);
+  assert.ok(res.data.success, "Login response was unsuccessful");
   return {
     token: res.data.data.accessToken,
     sessionId: res.data.data.session?.sessionId,
@@ -123,7 +117,7 @@ async function elevateMfaSession(token, totpSecret, factorId) {
     headers: { Authorization: `Bearer ${token}` },
     body: { challengeId, code }
   });
-  assert.equal(verRes.status, 200, `MFA challenge verification failed: ${JSON.stringify(verRes.data)}`);
+  assert.equal(verRes.status, 200, `MFA challenge verification failed (${responseFailure(verRes)})`);
   return verRes.data.data;
 }
 
@@ -164,7 +158,11 @@ async function cleanPreviousTestArtifacts() {
 async function runLiveJourney() {
   console.log("Starting Live E2E Cross-Service Clinical Journey...");
   console.log(`Target Gateway: ${GATEWAY_BASE}`);
-  console.log(`Disposable Database: ${DB_HOST}:${DB_PORT}`);
+  console.log("Database targets: five explicitly configured loopback test databases.");
+
+  for (const [service, database] of Object.entries(config.databases)) {
+    await assertDatabaseIdentity(pools[service], database.expectedName);
+  }
 
   // Clean previous synthetic run artifacts for deterministic state
   await cleanPreviousTestArtifacts();
@@ -207,7 +205,7 @@ async function runLiveJourney() {
   // STEP 3: PATIENT Slot Discovery
   // --------------------------------------------------------------------------
   logStep(3, "PATIENT Discovers Doctor Slots via Gateway");
-  const slotDate = "2026-11-18";
+  const slotDate = nextWeekdayDate(1);
   const slotsRes = await requestGateway(
     `/api/v1/doctors/${FIXTURES.doctor.expectedDoctorId}/available-slots?date=${slotDate}`,
     { headers: { Authorization: `Bearer ${patientAuth.token}` } }
@@ -239,7 +237,7 @@ async function runLiveJourney() {
     },
     body: bookingPayload
   });
-  assert.equal(bookRes.status, 201, `Booking failed: ${JSON.stringify(bookRes.data)}`);
+  assert.equal(bookRes.status, 201, `Booking failed: ${responseFailure(bookRes)}`);
   const appointmentId = bookRes.data.data.id;
   assert.ok(appointmentId, "Appointment ID missing in response");
   assert.equal(bookRes.data.data.status, "PENDING");
@@ -304,7 +302,7 @@ async function runLiveJourney() {
     assert.equal(unverifiedOp.data.error?.code, "MFA_VERIFICATION_REQUIRED");
     recordPass("Gateway strictly blocked operational access for PENDING_MFA session (403 MFA_VERIFICATION_REQUIRED)");
 
-    await elevateMfaSession(staffAuth.token, FIXTURES.staff.totpSecret);
+  await elevateMfaSession(staffAuth.token, FIXTURES.staff.totpSecret, FIXTURES.staff.factorId);
     recordPass("STAFF completed TOTP challenge verification -> session elevated to ACTIVE");
   } else {
     recordPass("STAFF session is already ACTIVE");
@@ -322,7 +320,7 @@ async function runLiveJourney() {
     },
     body: { reason: "Confirmed by reception staff" }
   });
-  assert.equal(confirmRes.status, 200, `Confirm failed: ${JSON.stringify(confirmRes.data)}`);
+  assert.equal(confirmRes.status, 200, `Confirm failed: ${responseFailure(confirmRes)}`);
   assert.equal(confirmRes.data.data.status, "CONFIRMED");
   recordPass(`STAFF confirmed appointment ${appointmentId} (status: CONFIRMED)`);
 
@@ -351,7 +349,7 @@ async function runLiveJourney() {
     },
     body: { reason: "Patient arrived at reception clinic desk" }
   });
-  assert.equal(checkInRes.status, 200, `Check-in failed: ${JSON.stringify(checkInRes.data)}`);
+  assert.equal(checkInRes.status, 200, `Check-in failed: ${responseFailure(checkInRes)}`);
   assert.equal(checkInRes.data.data.status, "CHECKED_IN");
   recordPass(`STAFF checked in patient for appointment ${appointmentId} (status: CHECKED_IN)`);
 
@@ -387,7 +385,7 @@ async function runLiveJourney() {
   assert.equal(doctorAuth.role, "DOCTOR");
 
   if (doctorAuth.state === "PENDING_MFA") {
-    await elevateMfaSession(doctorAuth.token, FIXTURES.doctor.totpSecret);
+    await elevateMfaSession(doctorAuth.token, FIXTURES.doctor.totpSecret, FIXTURES.doctor.factorId);
     recordPass("DOCTOR completed TOTP MFA login elevation -> session ACTIVE");
   } else {
     recordPass("DOCTOR session is already ACTIVE");
@@ -410,6 +408,7 @@ async function runLiveJourney() {
     method: "POST",
     headers: { Authorization: `Bearer ${doctorAuth.token}` },
     body: {
+      factorId: FIXTURES.doctor.factorId,
       purpose: "OPEN_CLINICAL_RECORDS",
       context: {
         appointmentId,
@@ -428,7 +427,7 @@ async function runLiveJourney() {
     headers: { Authorization: `Bearer ${doctorAuth.token}` },
     body: { challengeId: grantChallengeId, code: grantCode }
   });
-  assert.equal(grantVerifyRes.status, 200, `Failed to verify grant challenge: ${JSON.stringify(grantVerifyRes.data)}`);
+  assert.equal(grantVerifyRes.status, 200, `Failed to verify grant challenge: ${responseFailure(grantVerifyRes)}`);
   const grantProofId = grantVerifyRes.data.data.authorization?.proofId;
   assert.ok(grantProofId, "Verification proofId missing for clinical grant");
   recordPass(`DOCTOR verified TOTP proof ${grantProofId} for OPEN_CLINICAL_RECORDS`);
@@ -444,7 +443,7 @@ async function runLiveJourney() {
       patientId: FIXTURES.patient.expectedPatientId
     }
   });
-  assert.equal(grantRes.status, 201, `Failed to create clinical grant: ${JSON.stringify(grantRes.data)}`);
+  assert.equal(grantRes.status, 201, `Failed to create clinical grant: ${responseFailure(grantRes)}`);
   const grantId = grantRes.data.data.grantId;
   assert.ok(grantId, "Clinical grant ID missing");
   recordPass(`DOCTOR issued clinical grant ${grantId} for CURRENT_ENCOUNTER`);
@@ -490,7 +489,7 @@ async function runLiveJourney() {
     },
     body: recordPayload
   });
-  assert.equal(createRecRes.status, 201, `Failed to create draft record: ${JSON.stringify(createRecRes.data)}`);
+  assert.equal(createRecRes.status, 201, `Failed to create draft record: ${responseFailure(createRecRes)}`);
   const recordId = createRecRes.data.data.id;
   assert.ok(recordId, "Record ID missing");
   assert.equal(createRecRes.data.data.status, "DRAFT");
@@ -539,7 +538,7 @@ async function runLiveJourney() {
     headers: { Authorization: `Bearer ${doctorAuth.token}` },
     body: contextReqPayload
   });
-  assert.equal(contextRes.status, 201, `Context creation failed: ${JSON.stringify(contextRes.data)}`);
+  assert.equal(contextRes.status, 201, `Context creation failed: ${responseFailure(contextRes)}`);
   const contextId = contextRes.data.data.contextId;
   const contentDigest = contextRes.data.data.contentDigest;
   assert.ok(contextId, "Context ID missing");
@@ -563,6 +562,7 @@ async function runLiveJourney() {
     method: "POST",
     headers: { Authorization: `Bearer ${doctorAuth.token}` },
     body: {
+      factorId: FIXTURES.doctor.factorId,
       purpose: "FINALIZE_MEDICAL_RECORD",
       context: {
         contextId,
@@ -580,7 +580,7 @@ async function runLiveJourney() {
     headers: { Authorization: `Bearer ${doctorAuth.token}` },
     body: { challengeId: finalChallengeId, code: finalCode }
   });
-  assert.equal(finalVerifyRes.status, 200, `Failed to verify finalization challenge: ${JSON.stringify(finalVerifyRes.data)}`);
+  assert.equal(finalVerifyRes.status, 200, `Failed to verify finalization challenge: ${responseFailure(finalVerifyRes)}`);
   const finalProofId = finalVerifyRes.data.data.authorization?.proofId;
   assert.ok(finalProofId, "Finalization proofId missing");
   recordPass(`DOCTOR verified TOTP proof ${finalProofId} for FINALIZE_MEDICAL_RECORD`);
@@ -610,7 +610,7 @@ async function runLiveJourney() {
     },
     body: finalizePayload
   });
-  assert.equal(finalizeRes.status, 200, `Finalize failed: ${JSON.stringify(finalizeRes.data)}`);
+  assert.equal(finalizeRes.status, 200, `Finalize failed: ${responseFailure(finalizeRes)}`);
   assert.equal(finalizeRes.data.data.status, "FINAL");
   assert.equal(finalizeRes.data.data.version, 2);
   recordPass(`DOCTOR finalized medical record ${recordId} (status: FINAL, version: 2)`);
@@ -749,6 +749,13 @@ async function runLiveJourney() {
   assert.ok(internalRouteRes.status === 404 || internalRouteRes.status === 403, "Internal route not blocked!");
   recordPass("Security: Public access to /internal/* blocked at Gateway");
 
+  const publicCacheInvalidation = await requestGateway("/internal/v1/auth/cache-invalidate", {
+    method: "POST",
+    body: { userId: FIXTURES.patient.expectedUserId, scope: "ALL" }
+  });
+  assert.equal(publicCacheInvalidation.status, 404, "Cache invalidation must not be exposed on the public listener");
+  recordPass("Security: Public Gateway does not expose internal cache invalidation");
+
   // 3. Replay of consumed verification proof -> 409 PROOF_ALREADY_CONSUMED
   const proofReplayRes = await requestGateway(`/api/v1/medical-records/${recordId}/finalize`, {
     method: "POST",
@@ -799,7 +806,8 @@ runLiveJourney()
     process.exit(0);
   })
   .catch((err) => {
-    console.error("\n❌ LIVE E2E JOURNEY RUNNER FAILED:", err);
+    const code = typeof err?.code === "string" ? err.code : "RUN_FAILED";
+    console.error(`\n[m2-e2e] Live journey failed (${code}); details suppressed to avoid leaking credentials or patient data.`);
     Promise.all(Object.values(pools).map(p => p.end())).finally(() => {
       process.exit(1);
     });

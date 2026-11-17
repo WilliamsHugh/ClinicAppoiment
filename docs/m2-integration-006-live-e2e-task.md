@@ -1,9 +1,18 @@
 # M2-INTEGRATION-006 — Live E2E qua Gateway cho Web và Patient App
 
-**Trạng thái:** READY FOR BASELINE; chưa được giao agent và chưa chạy test
+**Trạng thái hiện tại (17/11/2026):** HARNESS HARDENED; chờ cấu hình môi trường E2E cô lập và chạy nghiệm thu có bằng chứng
 **Coordinator:** TV1 / Member 1
 **Mục tiêu:** chứng minh các luồng cốt lõi bằng client thật → API Gateway → business service thật → database disposable; phân biệt rõ code đã có với phần cần sửa.
 **Quy tắc:** chỉ commit local; không push, không mở PR, không merge; không reset/stash/ghi đè thay đổi chưa commit của người dùng.
+
+> **Cập nhật sau audit:** Các kết quả trong `m2-integration-006-live-e2e-report.md` trước
+> đây chưa có log/artifact tái lập gắn với SHA hiện tại nên không được xem là nghiệm thu.
+> Runner/seeder đã được gia cố để ngăn truy cập DB từ xa, yêu cầu opt-in cho reset/write,
+> không tạo tài khoản hosted Auth ngầm, bỏ credential hardcode và không mở cache-invalidate
+> nội bộ trên Gateway public. Unit/typecheck và chế độ mặc định không gọi live đã xác minh.
+> Việc chạy DB disposable/hosted test Auth vẫn chờ người vận hành cấu hình và xác nhận môi
+> trường riêng; Web browser thật và Flutter emulator/device vẫn là bằng chứng bắt buộc còn
+> thiếu theo Definition of Done.
 
 ## 1. Baseline và điều kiện bắt đầu
 

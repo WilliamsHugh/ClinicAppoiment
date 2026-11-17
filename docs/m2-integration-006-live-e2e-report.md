@@ -1,10 +1,95 @@
 # M2-INTEGRATION-006 — Live E2E via Gateway: Cross-Service Clinical Journey Report
 
+> **Audit correction — 17/11/2026:** The earlier “ACCEPTED” wording and checked DoD below
+> reflected a prior agent report, but the checkout did not contain reproducible run logs or
+> artifacts tying those claims to the current backend and frontend revisions. Treat the
+> detailed journey and test counts below as **historical reported results, not verified
+> acceptance evidence**. This task is currently **HARNESS HARDENED / LIVE ACCEPTANCE PENDING**.
+>
+> Remediation in this checkout removes public Gateway access to cache invalidation, makes
+> test services bind to loopback, requires explicit disposable-database/Auth configuration,
+> removes embedded test credentials, prevents seeding from creating hosted Auth accounts,
+> and makes live runners opt-in. Backend Gateway tests passed (56/56), E2E-config safety
+> tests passed (4/4), Web tests passed (283 passed; 5 live cases skipped by default), Web
+> typecheck passed, and Flutter live test files compiled and were skipped (4 skipped).
+> No database seed, live Gateway journey, or hosted Auth request was run during this audit.
+> The available Web and Flutter tests are API/widget integration tests, not a real-browser
+> Next.js or emulator/device end-to-end run. Do not mark M2-INTEGRATION-006 accepted until
+> the controlled live run and the remaining client-runtime evidence are recorded below.
+
 - **Task ID:** `M2-INTEGRATION-006` (also covering `M2-INTEGRATION-005`, `M2-PLATFORM-003`)
 - **Coordinator / Owner:** Member 1 (TV1 — API Gateway, platform harness, integration coordinator)
 - **Worktree:** `/home/Williams/Projects/ClinicAppoiment-worktrees/backend-openapi`
 - **Branch:** `test/m2-integration-006-live-e2e` (base `bec6e93`)
-- **Status:** **NHỊP 0 & NHỊP 2/3 LIVE CROSS-SERVICE INTEGRATION ACCEPTED**
+- **Status:** **HARNESS HARDENED / LIVE ACCEPTANCE PENDING**
+
+## 0. Current Acceptance Gate
+
+### Fixes now present
+
+- Gateway no longer publishes `POST /internal/v1/auth/cache-invalidate`; successful MFA
+  verification and session revocation invalidate the in-memory identity cache inside Gateway.
+- E2E database URLs must resolve to loopback and the exact five `*_service_test` database
+  names. Destructive seeding and live writes require separate explicit opt-in flags.
+- Hosted Supabase Auth requires an explicitly attested dedicated test project. The seeder
+  authenticates pre-provisioned test accounts before any reset and never silently signs up
+  users. It validates all five database identities before truncating fixture tables.
+- Daemon and test runners use configured environment values, bind services to loopback for
+  this harness, avoid printing credentials/tokens/response payloads, and are opt-in.
+- Live Web/Flutter client test files use environment credentials and the sanitized seed
+  manifest. The patient appointment client now forwards idempotency keys for cancel and
+  reschedule operations, matching the live-flow test contract.
+
+### Safety verification completed in this checkout
+
+| Check | Result |
+|---|---|
+| `node --check` on seed, config, daemon, journey and clinical runner scripts | PASS |
+| `node --test scripts/m2-e2e-config.test.mjs` | PASS — 4/4 |
+| `npm test --workspaces --if-present -- --reporter=dot` | PASS — 495 passed, 27 environment-dependent tests skipped |
+| `npm run build --workspaces --if-present` | PASS |
+| `npm test -w @clinic/api-gateway -- --reporter=dot` | PASS — 56/56 |
+| `npm test -w @clinic/openapi-contract-tests -- --reporter=dot` | PASS — 103/103 |
+| `npm test -w @clinic/clinic-management-web -- --reporter=dot` | PASS — 283 passed, 5 live tests skipped by default |
+| `npm run typecheck -w @clinic/clinic-management-web` | PASS |
+| Flutter live auth + booking files, with live opt-in absent | PASS compile; 4 live tests skipped |
+| Destructive seed / live service / hosted Auth journey | **NOT RUN** |
+
+### Remaining acceptance blockers
+
+1. An operator must configure `.env.m2-e2e` with five disposable loopback databases,
+   isolated pre-provisioned Auth accounts, matching internal tokens, and migrations; then
+   execute the documented live sequence and preserve redacted exit-code evidence.
+2. The current Web tests call Gateway APIs directly rather than driving the Next.js app in a
+   real browser. Flutter tests use repository/widget tests rather than an emulator/device
+   journey. These do not satisfy the original “real client” E2E Definition of Done.
+3. Re-run the integrated flows against the exact backend and frontend task SHAs after the
+   TV2/TV3/TV4 test changes are committed locally and assembled. Record skips as failures
+   for mandatory flows; do not reuse the historical counts below as current evidence.
+
+### Controlled local run sequence
+
+Copy `docs/m2-integration-006-e2e.env.example` to an ignored `.env.m2-e2e`, fill only
+dedicated test values, and verify all Supabase accounts are pre-provisioned. Do not use
+real users or production data. From the backend worktree:
+
+```sh
+set -a
+source .env.m2-e2e
+set +a
+npm run build --workspaces --if-present
+M2_E2E_ALLOW_DATABASE_RESET=1 node scripts/seed-m2-e2e-data.mjs
+```
+
+In a second backend terminal, load the same ignored env file and start
+`node scripts/live-services-daemon.mjs`. In a third terminal, run
+`M2_E2E_ALLOW_DATABASE_WRITES=1 M2_E2E_RUN_LIVE=1 node scripts/run-m2-live-journey.mjs`.
+For client API/widget tests, load the same env in the frontend task worktree and set
+`M2_E2E_SEED_MANIFEST` to the backend worktree's `.m2-e2e-seed-manifest.json`; run the
+specific live test files with the Gateway pointed at loopback. The standalone clinical
+runner also requires `M2_E2E_ALLOW_DATABASE_WRITES=1`,
+`M2_E2E_AUTH_PROJECT_ISOLATED=1`, and the matching Supabase project reference. Keep all
+live switches unset or `0` for routine unit-test runs.
 
 ---
 
@@ -42,13 +127,18 @@ All public requests from clients strictly pass through the single public entrypo
 
 ## 2. Test Execution & Evidence Matrix
 
-### Comprehensive Team Deliverables Summary
+### Historical team claims — not verified against the current task revisions
+
+The following rows were copied from the prior handoff. They identify reported work only;
+the runs, client runtime, and exact revision pairing have not been independently reproduced.
+Status in every row is therefore `REPORTED / UNVERIFIED` until new evidence is attached.
+
 | Member / Role | Scope / Flow | Commits | Test Suites & Results | Status |
 |---|---|---|---|---|
-| **Member 1 (TV1)** | Gateway, Harness, Cross-Service Clinical Journey (Nhịp 0, 2, 3, 4) | `2df224c` | `live-openapi.mjs`: 18/18 PASS<br>`run-m2-live-journey.mjs`: 44/44 PASS<br>`openapi-contract-tests`: 104/104 PASS | **E2E ACCEPTED** |
-| **Member 2 (TV2)** | Auth, MFA, Session Lifecycle & Admin Step-Up (Flutter & Web) | `b6e5797`, `49d99e5` | `gateway_session_provider_live_test.dart`: 1/1 PASS<br>`auth-staff-mfa-live.test.ts`: 2/2 PASS<br>User Service: 82/82 PASS<br>Web: 289/289 PASS, Flutter: 103/103 PASS | **E2E ACCEPTED** |
-| **Member 3 (TV3)** | Patient Booking & Staff Appointments (Flutter & Web) | `663ddfb` | `live_gateway_patient_booking_e2e_test.dart`: 3/3 PASS<br>`live-gateway-staff-e2e.test.ts`: 3/3 PASS<br>Web: 283/283 PASS, Flutter: 98/98 PASS | **E2E ACCEPTED** |
-| **Member 4 (TV4)** | Medical Records & Notifications (Web DOCTOR & Flutter PATIENT) | `d60327a`, `d284776` | `live-e2e-clinical-notifications.mjs`: ALL PASS<br>Medical Record: 42/42 PASS<br>Notification: 30/30 PASS<br>Web: 287/287 PASS, Flutter: 100/100 PASS | **E2E ACCEPTED** |
+| **Member 1 (TV1)** | Gateway, Harness, Cross-Service Clinical Journey (Nhịp 0, 2, 3, 4) | `2df224c` | `live-openapi.mjs`: 18/18 reported<br>`run-m2-live-journey.mjs`: 44/44 reported<br>`openapi-contract-tests`: 104/104 reported | **REPORTED / UNVERIFIED** |
+| **Member 2 (TV2)** | Auth, MFA, Session Lifecycle & Admin Step-Up (Flutter & Web) | `b6e5797`, `49d99e5` | Prior Web/Flutter/Auth counts reported; current default run skips live cases | **REPORTED / UNVERIFIED** |
+| **Member 3 (TV3)** | Patient Booking & Staff Appointments (Flutter & Web) | `663ddfb` | Prior booking/staff flow counts reported; current default run skips live cases | **REPORTED / UNVERIFIED** |
+| **Member 4 (TV4)** | Medical Records & Notifications (Web DOCTOR & Flutter PATIENT) | `d60327a`, `d284776` | Prior clinical runner/service counts reported; current default run skips live cases | **REPORTED / UNVERIFIED** |
 
 ---
 
@@ -186,13 +276,15 @@ The following boundary conditions were asserted:
 
 ---
 
-## 6. Definition of Done Checklist
+## 6. Definition of Done Checklist — current status
 
-- [x] All 5 backend services and API Gateway running live with disposable PostgreSQL connections (port 5433).
-- [x] Zero access to production Supabase or real patient PHI.
-- [x] 18/18 live OpenAPI contract tests passing across Gateway and all 5 services.
-- [x] 104/104 openapi-contract-tests vitest suite passing.
-- [x] 44/44 assertions passed in live cross-service clinical journey runner (`scripts/run-m2-live-journey.mjs`).
-- [x] Database state transitions asserted in PostgreSQL after every side effect.
-- [x] Privacy boundaries, role boundaries, idempotency replay, and failure cases verified.
-- [x] Local commits only on `test/m2-integration-006-live-e2e` without remote push or main merge.
+- [ ] All 5 backend services and API Gateway running live with disposable PostgreSQL connections.
+- [ ] Isolated Auth project and synthetic accounts verified for the current run.
+- [ ] Required cross-service journey passes through Gateway and persists in owning databases.
+- [ ] Actual Next.js browser and Flutter emulator/device client flows pass; no mandatory flow skipped.
+- [ ] Current revision SHAs, commands, exit codes, and redacted run artifacts are attached.
+- [ ] Privacy boundaries, role boundaries, idempotency/replay, and failure cases verified on current revisions.
+- [ ] Local commits only; no push or merge performed.
+
+The checked counts and acceptance labels from the earlier report are historical claims and
+are intentionally not carried as current completion evidence.

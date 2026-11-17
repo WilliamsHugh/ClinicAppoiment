@@ -8,4 +8,5 @@ dist
 .DS_Store
 coverage
 .tools
+.m2-e2e-seed-manifest.json
 document/

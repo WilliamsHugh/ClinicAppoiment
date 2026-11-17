@@ -21,7 +21,7 @@ type ApiDocument = {
 
 const documents: Array<{ name: string; document: ApiDocument; expectedOperations: string[] }> = [
   { name: "API Gateway", document: gatewayOpenApiDocument as ApiDocument, expectedOperations: [
-    "GET /health", "GET /api/v1/system/health", "POST /internal/v1/auth/cache-invalidate",
+    "GET /health", "GET /api/v1/system/health",
   ] },
   { name: "User Service", document: userOpenApi as ApiDocument, expectedOperations: [
     "GET /health", "POST /api/v1/auth/register", "POST /api/v1/auth/login", "POST /api/v1/auth/refresh",
@@ -75,7 +75,6 @@ const publicAuthExceptions = new Set([
   "POST /api/v1/auth/password/forgot", "POST /api/v1/auth/password/recovery/exchange", "POST /api/v1/auth/password/reset",
 ]);
 const operationsWithRequestBodies = new Set([
-  "POST /internal/v1/auth/cache-invalidate",
   "POST /api/v1/auth/register", "POST /api/v1/auth/login", "POST /api/v1/auth/refresh", "POST /api/v1/auth/logout",
   "POST /api/v1/auth/mfa/challenges", "POST /api/v1/auth/mfa/verify",
   "POST /api/v1/auth/password/forgot", "POST /api/v1/auth/password/reset", "POST /api/v1/auth/password/change",

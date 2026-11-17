@@ -868,7 +868,7 @@ if (process.env.NODE_ENV !== "test") {
   const pollMs = Number.isFinite(configuredPollMs) ? Math.max(1000, configuredPollMs) : 5000;
   setInterval(() => void worker.dispatchBatch().catch(() => logServiceEvent("appointment-service", "error", "outbox.poll_failed")),
     pollMs);
-  app.listen(port, () => {
+  app.listen(port, process.env.HOST ?? "0.0.0.0", () => {
     logServiceEvent("appointment-service", "info", "service.started", { port });
   });
 }

@@ -51,7 +51,7 @@ Tài liệu này định nghĩa phân công và thứ tự triển khai contract
 - [x] Gateway prefix-route an toàn: Bóc tách triệt để các headers giả mạo (`x-user-id`, `x-role`, `x-session-id`, `x-internal-token`); chặn toàn bộ `/internal/*` trả `404 ROUTE_NOT_FOUND`.
 - [x] Quản lý session metadata: Tiếp nhận trạng thái từ User Service (`ACTIVE`, `PENDING_MFA`, `LOCKED`, `EXPIRED`, `REVOKED`); áp dụng allowlist cho `PENDING_MFA` và `LOCKED`.
 - [x] Thiết kế cache RAM `VerifiedIdentityCache`: TTL tự co theo JWT/session deadline; key là SHA-256 token digest; giới hạn bound LRU; hỗ trợ invalidation tức thì.
-- [x] Invalidation Signal: Xử lý endpoint nội bộ `/internal/v1/auth/cache-invalidate` bảo vệ bằng `X-Internal-Token`.
+- [x] Gateway cache invalidation is owned inside Gateway after successful MFA verification, logout, and session revocation. The former `/internal/v1/auth/cache-invalidate` listener route was removed; never expose cache control as a public Gateway API.
 - [x] Mở rộng Contract Test Suite: Xây dựng `v2-contract-spec.test.ts` (80 tests) và cập nhật `openapi.test.ts` (18 tests), đạt **104/104 tests PASS**.
 - [x] Integration Harness: Xây dựng `test/integration-harness.test.ts` mô phỏng toàn trình 6 flows lớn (**6/6 PASS**).
 
