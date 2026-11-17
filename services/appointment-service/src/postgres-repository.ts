@@ -360,7 +360,7 @@ export class PostgresAppointmentRepository {
       const before = appointment(current.rows[0]);
       if (!canReschedule(before.status)) throw new RescheduleStateError();
       if (before.scheduledStartAt === startAt && before.scheduledEndAt === endAt && reason === undefined) {
-        return { appointment: before, eventId: null };
+        return { appointment: before, eventId: null, replayed: false };
       }
       const updated = await client.query(
         `UPDATE appointment_service.appointments SET scheduled_start_at = $2,
@@ -374,7 +374,7 @@ export class PostgresAppointmentRepository {
          VALUES ($1, $2, $2, $3, $4)`,
         [id, before.status, actorId, reason ?? null]);
       const eventId = await queueEvent(client, "appointment.rescheduled", item);
-      return { appointment: item, eventId };
+      return { appointment: item, eventId, replayed: false };
     });
   }
 
