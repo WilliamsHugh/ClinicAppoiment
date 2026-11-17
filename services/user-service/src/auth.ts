@@ -62,7 +62,7 @@ const logoutSchema = z.object({
 }).strict();
 
 const challengeCreateSchema = z.object({
-  factorId: z.string().uuid(),
+  factorId: z.string().uuid().optional(),
   purpose: z.enum([
     "ENROLL_TOTP",
     "OPEN_CLINICAL_RECORDS",
@@ -522,9 +522,17 @@ export function createAuthRouter(
       if (!sessionId) return fail(res, 401, "AUTH_SESSION_INVALID", "Active session required for MFA challenge");
     }
 
+    let factorId = parsed.data.factorId;
+    if (!factorId) {
+      const factors = await mfas.listFactors(actor.profile.id);
+      const verified = factors.find(f => f.status === "verified") ?? factors[0];
+      if (!verified) return fail(res, 404, "MFA_FACTOR_NOT_FOUND", "MFA factor not found");
+      factorId = verified.factorId;
+    }
+
     try {
       const challenge = await mfas.createChallenge({
-        factorId: parsed.data.factorId,
+        factorId,
         userId: actor.profile.id,
         sessionId,
         purpose: parsed.data.purpose,
