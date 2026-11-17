@@ -297,8 +297,10 @@ export class MedicalRecordRepository {
         await client.query("ROLLBACK");
         return { conflict: true as const, reason: "RECORD_VERSION_CONFLICT", record: before };
       }
-      const columns: Record<keyof RecordChanges, string> = { symptoms: "symptoms", diagnosis: "diagnosis", notes: "notes", treatmentPlan: "treatment_plan", prescription: "prescription", status: "status" };
-      const entries = Object.entries(changes) as [keyof RecordChanges, unknown][];
+      const columns: Record<string, string> = { symptoms: "symptoms", diagnosis: "diagnosis", notes: "notes", treatmentPlan: "treatment_plan", prescription: "prescription", status: "status" };
+      const entries = (Object.entries(changes) as [string, unknown][]).filter(
+        ([key, val]) => key in columns && val !== undefined
+      );
       if (entries.length === 0) { await client.query("ROLLBACK"); return { record: before }; }
       const values = entries.map(([key, value]) => key === "prescription" ? JSON.stringify(value) : value);
       const assignments = entries.map(([key], index) => `${columns[key]} = $${index + 1}`).join(", ");
@@ -319,7 +321,7 @@ export class MedicalRecordRepository {
       }
       await client.query(
         "INSERT INTO medical_record_service.medical_record_audit_logs (medical_record_id, actor_id, action, changes) VALUES ($1,$2,'UPDATE',$3)",
-        [id, actorId, JSON.stringify({ before: Object.fromEntries(entries.map(([key]) => [key, before[key]])), after: changes })]
+        [id, actorId, JSON.stringify({ before: Object.fromEntries(entries.map(([key]) => [key, before[key as keyof MedicalRecord]])), after: changes })]
       );
       if (before.status !== "FINAL" && record.status === "FINAL") await this.enqueue(client, record, recipientUserId);
       else if (before.status === "FINAL") await this.enqueueUpdate(client, record, recipientUserId);

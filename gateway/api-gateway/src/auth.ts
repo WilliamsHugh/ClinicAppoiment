@@ -368,7 +368,7 @@ export function createAuthenticate(config: GatewayConfig, verifier: AccessTokenV
     const promise = Promise.resolve()
       .then(() => verifier(token, requestId))
       .then((identity) => {
-        if (identity && verification.cacheAllowed && inFlight.get(key) === verification) {
+        if (identity && identity.status === "ACTIVE" && verification.cacheAllowed && inFlight.get(key) === verification) {
           cache.set(token, identity, startedAt);
         }
         return identity;

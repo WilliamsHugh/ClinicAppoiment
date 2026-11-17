@@ -234,11 +234,13 @@ export function createGatewayApp(options: CreateGatewayAppOptions) {
         config.proxyTimeoutMs,
         config.corsOrigins,
         (req) => {
-          if (req.method !== "POST" || req.originalUrl.split("?", 1)[0] !== "/api/v1/auth/logout") return;
-          const token = req.header("authorization")?.match(/^Bearer\s+(.+)$/i)?.[1];
-          if (token) authenticate.invalidateToken(token);
-          if (req.user?.id) authenticate.invalidateByUser(req.user.id);
-          if (req.user?.sessionId) authenticate.invalidateBySession(req.user.sessionId);
+          const path = req.originalUrl.split("?", 1)[0];
+          if (req.method === "POST" && (path === "/api/v1/auth/logout" || path === "/api/v1/auth/mfa/verify")) {
+            const token = req.header("authorization")?.match(/^Bearer\s+(.+)$/i)?.[1];
+            if (token) authenticate.invalidateToken(token);
+            if (req.user?.id) authenticate.invalidateByUser(req.user.id);
+            if (req.user?.sessionId) authenticate.invalidateBySession(req.user.sessionId);
+          }
         },
       )
   );
