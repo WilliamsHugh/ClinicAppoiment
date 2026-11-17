@@ -269,4 +269,233 @@ describe("Appointment Service v2 APIs", () => {
       expect(res.body.error.code).toBe("MEDICAL_RECORD_REQUIRED");
     });
   });
+
+  describe("End-to-end Idempotency on Reschedule and State Transitions (M2-BOOKING-006 & G07)", () => {
+    const futureStart = "2030-01-10T09:00:00.000Z";
+    const futureEnd = "2030-01-10T09:30:00.000Z";
+    const rescheduledStart = "2030-01-10T10:00:00.000Z";
+    const rescheduledEnd = "2030-01-10T10:30:00.000Z";
+
+    beforeEach(() => {
+      // Mock verify-slot to return true for doctor tests
+      const originalFetch = vi.mocked(fetch);
+      vi.stubGlobal("fetch", vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+        const url = String(input);
+        if (url.includes("/internal/v1/doctors/verify-slot")) {
+          return new Response(JSON.stringify({ success: true, data: { valid: true } }), { status: 200 });
+        }
+        return originalFetch(input, init);
+      }));
+    });
+
+    it("reschedules with idempotency key, replays on exact match, and returns 409 on mismatch", async () => {
+      const appt = repository.create({
+        patientId: patientOwnedId,
+        doctorId: doctorOwnedId,
+        scheduledStartAt: futureStart,
+        scheduledEndAt: futureEnd,
+        status: "PENDING",
+        createdBy: patientUserId
+      });
+
+      const body = { scheduledStartAt: rescheduledStart, scheduledEndAt: rescheduledEnd, reason: "Busy morning" };
+      const res1 = await request(app)
+        .patch(`/api/v1/appointments/${appt.id}/reschedule`)
+        .set(patientHeaders)
+        .set("Idempotency-Key", "resched-key-101")
+        .send(body);
+      expect(res1.status).toBe(200);
+      expect(res1.body.data.scheduledStartAt).toBe(rescheduledStart);
+
+      // Replay with exact same key and payload -> 200 replayed
+      const res2 = await request(app)
+        .patch(`/api/v1/appointments/${appt.id}/reschedule`)
+        .set(patientHeaders)
+        .set("Idempotency-Key", "resched-key-101")
+        .send(body);
+      expect(res2.status).toBe(200);
+      expect(res2.body.data.id).toBe(appt.id);
+
+      // Replay with different payload -> 409 IDEMPOTENCY_KEY_REUSED
+      const resMismatch = await request(app)
+        .patch(`/api/v1/appointments/${appt.id}/reschedule`)
+        .set(patientHeaders)
+        .set("Idempotency-Key", "resched-key-101")
+        .send({ scheduledStartAt: "2030-01-10T14:00:00.000Z", scheduledEndAt: "2030-01-10T14:30:00.000Z", reason: "Afternoon" });
+      expect(resMismatch.status).toBe(409);
+      expect(resMismatch.body.error.code).toBe("IDEMPOTENCY_KEY_REUSED");
+    });
+
+    it("cancels with idempotency key, replays on exact match, and returns 409 on mismatch", async () => {
+      const appt = repository.create({
+        patientId: patientOwnedId,
+        doctorId: doctorOwnedId,
+        scheduledStartAt: futureStart,
+        scheduledEndAt: futureEnd,
+        status: "PENDING",
+        createdBy: patientUserId
+      });
+
+      const body = { reason: "Cannot make it" };
+      const res1 = await request(app)
+        .patch(`/api/v1/appointments/${appt.id}/cancel`)
+        .set(patientHeaders)
+        .set("Idempotency-Key", "cancel-key-202")
+        .send(body);
+      expect(res1.status).toBe(200);
+      expect(res1.body.data.status).toBe("CANCELLED");
+
+      // Replay with exact same key and payload -> 200 replayed
+      const res2 = await request(app)
+        .patch(`/api/v1/appointments/${appt.id}/cancel`)
+        .set(patientHeaders)
+        .set("Idempotency-Key", "cancel-key-202")
+        .send(body);
+      expect(res2.status).toBe(200);
+      expect(res2.body.data.status).toBe("CANCELLED");
+
+      // Replay with different payload -> 409 IDEMPOTENCY_KEY_REUSED
+      const resMismatch = await request(app)
+        .patch(`/api/v1/appointments/${appt.id}/cancel`)
+        .set(patientHeaders)
+        .set("Idempotency-Key", "cancel-key-202")
+        .send({ reason: "Different reason" });
+      expect(resMismatch.status).toBe(409);
+      expect(resMismatch.body.error.code).toBe("IDEMPOTENCY_KEY_REUSED");
+    });
+
+    it("confirms with idempotency key, replays on exact match, and returns 409 on mismatch", async () => {
+      const appt = repository.create({
+        patientId: patientOwnedId,
+        doctorId: doctorOwnedId,
+        scheduledStartAt: futureStart,
+        scheduledEndAt: futureEnd,
+        status: "PENDING",
+        createdBy: patientUserId
+      });
+
+      const body = { reason: "Staff verified insurance" };
+      const res1 = await request(app)
+        .patch(`/api/v1/appointments/${appt.id}/confirm`)
+        .set(staffHeaders)
+        .set("Idempotency-Key", "confirm-key-303")
+        .send(body);
+      expect(res1.status).toBe(200);
+      expect(res1.body.data.status).toBe("CONFIRMED");
+
+      // Replay with exact same key and payload -> 200 replayed
+      const res2 = await request(app)
+        .patch(`/api/v1/appointments/${appt.id}/confirm`)
+        .set(staffHeaders)
+        .set("Idempotency-Key", "confirm-key-303")
+        .send(body);
+      expect(res2.status).toBe(200);
+      expect(res2.body.data.status).toBe("CONFIRMED");
+
+      // Replay with different payload -> 409 IDEMPOTENCY_KEY_REUSED
+      const resMismatch = await request(app)
+        .patch(`/api/v1/appointments/${appt.id}/confirm`)
+        .set(staffHeaders)
+        .set("Idempotency-Key", "confirm-key-303")
+        .send({ reason: "Different notes" });
+      expect(resMismatch.status).toBe(409);
+      expect(resMismatch.body.error.code).toBe("IDEMPOTENCY_KEY_REUSED");
+    });
+
+    it("checks in with idempotency key, replays on exact match, and returns 409 on mismatch", async () => {
+      const appt = repository.create({
+        patientId: patientOwnedId,
+        doctorId: doctorOwnedId,
+        scheduledStartAt: futureStart,
+        scheduledEndAt: futureEnd,
+        status: "CONFIRMED",
+        createdBy: patientUserId
+      });
+
+      const body = { reason: "Arrived at clinic counter" };
+      const res1 = await request(app)
+        .patch(`/api/v1/appointments/${appt.id}/check-in`)
+        .set(staffHeaders)
+        .set("Idempotency-Key", "checkin-key-404")
+        .send(body);
+      expect(res1.status).toBe(200);
+      expect(res1.body.data.status).toBe("CHECKED_IN");
+
+      // Replay with exact same key and payload -> 200 replayed
+      const res2 = await request(app)
+        .patch(`/api/v1/appointments/${appt.id}/check-in`)
+        .set(staffHeaders)
+        .set("Idempotency-Key", "checkin-key-404")
+        .send(body);
+      expect(res2.status).toBe(200);
+      expect(res2.body.data.status).toBe("CHECKED_IN");
+
+      // Replay with different payload -> 409 IDEMPOTENCY_KEY_REUSED
+      const resMismatch = await request(app)
+        .patch(`/api/v1/appointments/${appt.id}/check-in`)
+        .set(staffHeaders)
+        .set("Idempotency-Key", "checkin-key-404")
+        .send({ reason: "Different checkin notes" });
+      expect(resMismatch.status).toBe(409);
+      expect(resMismatch.body.error.code).toBe("IDEMPOTENCY_KEY_REUSED");
+    });
+
+    it("records no-show with idempotency key, replays on exact match, and returns 409 on mismatch", async () => {
+      const appt = repository.create({
+        patientId: patientOwnedId,
+        doctorId: doctorOwnedId,
+        scheduledStartAt: futureStart,
+        scheduledEndAt: futureEnd,
+        status: "CONFIRMED",
+        createdBy: patientUserId
+      });
+
+      const body = { reason: "Did not arrive after 30m" };
+      const res1 = await request(app)
+        .patch(`/api/v1/appointments/${appt.id}/no-show`)
+        .set(staffHeaders)
+        .set("Idempotency-Key", "noshow-key-505")
+        .send(body);
+      expect(res1.status).toBe(200);
+      expect(res1.body.data.status).toBe("NO_SHOW");
+
+      // Replay with exact same key and payload -> 200 replayed
+      const res2 = await request(app)
+        .patch(`/api/v1/appointments/${appt.id}/no-show`)
+        .set(staffHeaders)
+        .set("Idempotency-Key", "noshow-key-505")
+        .send(body);
+      expect(res2.status).toBe(200);
+      expect(res2.body.data.status).toBe("NO_SHOW");
+
+      // Replay with different payload -> 409 IDEMPOTENCY_KEY_REUSED
+      const resMismatch = await request(app)
+        .patch(`/api/v1/appointments/${appt.id}/no-show`)
+        .set(staffHeaders)
+        .set("Idempotency-Key", "noshow-key-505")
+        .send({ reason: "Other reason" });
+      expect(resMismatch.status).toBe(409);
+      expect(resMismatch.body.error.code).toBe("IDEMPOTENCY_KEY_REUSED");
+    });
+
+    it("rejects an idempotency key longer than 255 characters with 400 VALIDATION_ERROR", async () => {
+      const appt = repository.create({
+        patientId: patientOwnedId,
+        doctorId: doctorOwnedId,
+        scheduledStartAt: futureStart,
+        scheduledEndAt: futureEnd,
+        status: "CONFIRMED",
+        createdBy: patientUserId
+      });
+
+      const oversizedKey = "k".repeat(256);
+      const res = await request(app)
+        .patch(`/api/v1/appointments/${appt.id}/check-in`)
+        .set(staffHeaders)
+        .set("Idempotency-Key", oversizedKey)
+        .send({});
+      expect(res.status).toBe(400);
+      expect(res.body.error.code).toBe("VALIDATION_ERROR");
+    });
+  });
 });

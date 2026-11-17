@@ -12,6 +12,12 @@ export type BookingFingerprint = {
   patientId: string; doctorId: string; specialtyId: string | null;
   scheduledStartAt: string; scheduledEndAt: string; reason: string | null;
 };
+export type RescheduleFingerprint = {
+  appointmentId: string; scheduledStartAt: string; scheduledEndAt: string; reason: string | null;
+};
+export type TransitionFingerprint = {
+  appointmentId: string; toStatus: AppointmentStatus; reason: string | null;
+};
 export type BookingInput = BookingFingerprint & { createdBy: string };
 export type AppointmentFilters = {
   patientId?: string;
@@ -273,13 +279,16 @@ export class PostgresAppointmentRepository {
     return result.rows[0] ? appointment(result.rows[0]) : null;
   }
 
-  async findReplay(actorId: string, key: string, fingerprint: BookingFingerprint) {
+  async findReplay(actorId: string, operationOrKey: string, keyOrFingerprint: string | unknown, fingerprint?: unknown) {
+    const operation = fingerprint !== undefined ? operationOrKey : "CREATE";
+    const key = fingerprint !== undefined ? (keyOrFingerprint as string) : operationOrKey;
+    const fp = fingerprint !== undefined ? fingerprint : keyOrFingerprint;
     const result = await this.pool.query(
       `SELECT ${columns}, (r.request_fingerprint = $4::jsonb) AS "fingerprintMatches"
        FROM appointment_service.idempotency_requests r
        JOIN appointment_service.appointments a ON a.id = r.appointment_id
        WHERE r.actor_id = $1 AND r.operation = $2 AND r.idempotency_key = $3`,
-      [actorId, "CREATE", key, JSON.stringify(fingerprint)]);
+      [actorId, operation, key, JSON.stringify(fp)]);
     if (!result.rows[0]) return null;
     if (!result.rows[0].fingerprintMatches) throw new IdempotencyMismatchError();
     return appointment(result.rows[0]);
@@ -325,8 +334,26 @@ export class PostgresAppointmentRepository {
     });
   }
 
-  async rescheduleBooking(id: string, startAt: string, endAt: string, actorId: string, reason?: string) {
+  async rescheduleBooking(id: string, startAt: string, endAt: string, actorId: string, reason?: string, key?: string, fingerprint?: unknown) {
     return inTransaction(this.pool, async (client) => {
+      if (key && fingerprint) {
+        const claim = await client.query(
+          `INSERT INTO appointment_service.idempotency_requests
+            (actor_id, operation, idempotency_key, request_fingerprint, appointment_id)
+           VALUES ($1, 'RESCHEDULE', $2, $3::jsonb, $4)
+           ON CONFLICT (actor_id, operation, idempotency_key) DO NOTHING RETURNING actor_id`,
+          [actorId, key, JSON.stringify(fingerprint), id]);
+        if (claim.rowCount === 0) {
+          const existing = await client.query(
+            `SELECT ${columns}, (r.request_fingerprint = $3::jsonb) AS "fingerprintMatches"
+             FROM appointment_service.idempotency_requests r
+             JOIN appointment_service.appointments a ON a.id = r.appointment_id
+             WHERE r.actor_id = $1 AND r.operation = 'RESCHEDULE' AND r.idempotency_key = $2`,
+            [actorId, key, JSON.stringify(fingerprint)]);
+          if (!existing.rows[0]?.fingerprintMatches) throw new IdempotencyMismatchError();
+          return { appointment: appointment(existing.rows[0]), replayed: true, eventId: null };
+        }
+      }
       const current = await client.query(
         `SELECT ${columns} FROM appointment_service.appointments a WHERE id = $1 FOR UPDATE`, [id]);
       if (!current.rows[0]) return null;
@@ -352,8 +379,27 @@ export class PostgresAppointmentRepository {
   }
 
   async transition(id: string, toStatus: AppointmentStatus, changedBy: string, reason?: string,
-    expectedStatus?: AppointmentStatus) {
+    expectedStatus?: AppointmentStatus, key?: string, fingerprint?: unknown, operationName?: string) {
+    const op = operationName ?? toStatus;
     return inTransaction(this.pool, async (client) => {
+      if (key && fingerprint) {
+        const claim = await client.query(
+          `INSERT INTO appointment_service.idempotency_requests
+            (actor_id, operation, idempotency_key, request_fingerprint, appointment_id)
+           VALUES ($1, $2, $3, $4::jsonb, $5)
+           ON CONFLICT (actor_id, operation, idempotency_key) DO NOTHING RETURNING actor_id`,
+          [changedBy, op, key, JSON.stringify(fingerprint), id]);
+        if (claim.rowCount === 0) {
+          const existing = await client.query(
+            `SELECT ${columns}, (r.request_fingerprint = $4::jsonb) AS "fingerprintMatches"
+             FROM appointment_service.idempotency_requests r
+             JOIN appointment_service.appointments a ON a.id = r.appointment_id
+             WHERE r.actor_id = $1 AND r.operation = $2 AND r.idempotency_key = $3`,
+            [changedBy, op, key, JSON.stringify(fingerprint)]);
+          if (!existing.rows[0]?.fingerprintMatches) throw new IdempotencyMismatchError();
+          return appointment(existing.rows[0]);
+        }
+      }
       const current = await client.query(
         `SELECT ${columns} FROM appointment_service.appointments a WHERE id = $1 FOR UPDATE`, [id]);
       if (!current.rows[0]) return null;

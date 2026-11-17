@@ -266,7 +266,7 @@ async function canAccessAppointment(req: express.Request, appointment: { patient
   return currentRole(req) === "STAFF" || currentRole(req) === "ADMIN";
 }
 
-function transition(toStatus: AppointmentStatus) {
+function transition(toStatus: AppointmentStatus, operationName: string) {
   return async (req: express.Request, res: express.Response) => {
     const id = String(req.params.id);
     if (!appointmentIdSchema.safeParse(id).success)
@@ -274,17 +274,36 @@ function transition(toStatus: AppointmentStatus) {
     const parsed = transitionBodySchema.safeParse(req.body ?? {});
     if (!parsed.success)
       return res.status(400).json(error("VALIDATION_ERROR", "Invalid request body", parsed.error.issues));
+    const idempotencyKey = req.header("idempotency-key")?.trim();
+    if (idempotencyKey !== undefined && (idempotencyKey.length === 0 || idempotencyKey.length > 255))
+      return res.status(400).json(error("VALIDATION_ERROR", "Idempotency-Key must be at most 255 characters"));
+
     const appointment = await store.findById(id);
     if (!appointment) return res.status(404).json(error("APPOINTMENT_NOT_FOUND", "Appointment not found"));
     if (!(await canAccessAppointment(req, appointment))) {
       return res.status(403).json(error("ACCESS_DENIED", "Appointment access denied"));
     }
+
+    const fingerprint = idempotencyKey ? {
+      appointmentId: id,
+      toStatus,
+      reason: parsed.data.reason ?? null
+    } : undefined;
+
+    if (idempotencyKey && fingerprint) {
+      try {
+        const existing = await store.findReplay(currentUserId(req), operationName, idempotencyKey, fingerprint);
+        if (existing) return res.status(200).json(success(existing));
+      } catch (caught) { return bookingError(res, caught); }
+    }
+
     if (!canTransition(appointment.status, toStatus)) {
       return res.status(409).json(error("APPOINTMENT_INVALID_STATUS_TRANSITION", "Invalid appointment status transition"));
     }
     let updated;
-    try { updated = await store.transition(id, toStatus, currentUserId(req), parsed.data.reason, appointment.status); }
-    catch (caught) { return bookingError(res, caught); }
+    try {
+      updated = await store.transition(id, toStatus, currentUserId(req), parsed.data.reason, appointment.status, idempotencyKey, fingerprint, operationName);
+    } catch (caught) { return bookingError(res, caught); }
     if (!updated) return res.status(404).json(error("APPOINTMENT_NOT_FOUND", "Appointment not found"));
     return res.json(success(updated));
   };
@@ -659,11 +678,30 @@ app.patch("/api/v1/appointments/:id/reschedule", requireRoles("PATIENT", "STAFF"
     return res.status(422).json(error("APPOINTMENT_SLOT_INVALID", "End time must follow start time"));
   if (Date.parse(parsed.data.scheduledStartAt) <= Date.now())
     return res.status(422).json(error("APPOINTMENT_SLOT_INVALID", "Rescheduled slot must be in the future"));
+  const idempotencyKey = req.header("idempotency-key")?.trim();
+  if (idempotencyKey !== undefined && (idempotencyKey.length === 0 || idempotencyKey.length > 255))
+    return res.status(400).json(error("VALIDATION_ERROR", "Idempotency-Key must be at most 255 characters"));
+
   const appointment = await store.findById(id);
   if (!appointment) return res.status(404).json(error("APPOINTMENT_NOT_FOUND", "Appointment not found"));
   if (!(await patientCanAccess(req, appointment.patientId))) {
     return res.status(403).json(error("ACCESS_DENIED", "Appointment access denied"));
   }
+
+  const fingerprint = idempotencyKey ? {
+    appointmentId: id,
+    scheduledStartAt: normalized(parsed.data.scheduledStartAt),
+    scheduledEndAt: normalized(parsed.data.scheduledEndAt),
+    reason: parsed.data.reason ?? null
+  } : undefined;
+
+  if (idempotencyKey && fingerprint) {
+    try {
+      const existing = await store.findReplay(currentUserId(req), "RESCHEDULE", idempotencyKey, fingerprint);
+      if (existing) return res.status(200).json(success(existing));
+    } catch (caught) { return bookingError(res, caught); }
+  }
+
   if (!canReschedule(appointment.status))
     return res.status(409).json(error("APPOINTMENT_INVALID_STATUS_TRANSITION", "Appointment cannot be rescheduled in this status"));
   const slotValid = await verifyDoctorSlot(appointment.doctorId, parsed.data.scheduledStartAt,
@@ -673,20 +711,20 @@ app.patch("/api/v1/appointments/:id/reschedule", requireRoles("PATIENT", "STAFF"
   try {
     const result = await store.rescheduleBooking(appointment.id,
       normalized(parsed.data.scheduledStartAt), normalized(parsed.data.scheduledEndAt),
-      currentUserId(req), parsed.data.reason);
+      currentUserId(req), parsed.data.reason, idempotencyKey, fingerprint);
     if (!result) return res.status(404).json(error("APPOINTMENT_NOT_FOUND", "Appointment not found"));
     return res.json(success(result.appointment));
   } catch (caught) { return bookingError(res, caught); }
 });
-app.patch("/api/v1/appointments/:id/cancel", requireRoles("PATIENT", "STAFF", "ADMIN"), transition("CANCELLED"));
-app.patch("/api/v1/appointments/:id/confirm", requireRoles("STAFF", "ADMIN"), transition("CONFIRMED"));
-app.patch("/api/v1/appointments/:id/check-in", requireRoles("STAFF", "ADMIN"), transition("CHECKED_IN"));
+app.patch("/api/v1/appointments/:id/cancel", requireRoles("PATIENT", "STAFF", "ADMIN"), transition("CANCELLED", "CANCEL"));
+app.patch("/api/v1/appointments/:id/confirm", requireRoles("STAFF", "ADMIN"), transition("CONFIRMED", "CONFIRM"));
+app.patch("/api/v1/appointments/:id/check-in", requireRoles("STAFF", "ADMIN"), transition("CHECKED_IN", "CHECK_IN"));
 // Completion is reserved for the authenticated Medical Record callback below.
 app.patch("/api/v1/appointments/:id/complete", requireRoles("DOCTOR"), (_req, res) =>
   res.status(409).json(error("MEDICAL_RECORD_REQUIRED", "Complete a final medical record first")));
 app.get("/api/v1/appointments/:id/complete", requireRoles("DOCTOR"), (_req, res) =>
   res.status(409).json(error("MEDICAL_RECORD_REQUIRED", "Complete a final medical record first")));
-app.patch("/api/v1/appointments/:id/no-show", requireRoles("STAFF", "ADMIN"), transition("NO_SHOW"));
+app.patch("/api/v1/appointments/:id/no-show", requireRoles("STAFF", "ADMIN"), transition("NO_SHOW", "NO_SHOW"));
 app.get("/internal/v1/appointments/occupied-slots", requireInternalToken("DOCTOR_INTERNAL_API_TOKEN"), async (req, res) => {
   const parsed = occupiedSlotsQuerySchema.safeParse(req.query);
   if (!parsed.success || (parsed.data.to && Date.parse(parsed.data.to) <= Date.parse(parsed.data.from))) {

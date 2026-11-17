@@ -11,9 +11,10 @@ const failure = { description: "Standard API error", content: { "application/jso
 const errors = { "400": failure, "401": failure, "403": failure, "404": failure,
   "409": failure, "422": failure, "503": failure };
 const id = parameter("id", "path", true, uuid);
+const idempotencyKeyParam = parameter("Idempotency-Key", "header", false, { type: "string", minLength: 1, maxLength: 255 });
 const transitionBody = json(ref("TransitionRequest"), false);
 const transition = (summary: string, roles: string[]) => ({ summary, "x-roles": roles,
-  parameters: [id], requestBody: transitionBody, responses: { "200": response(ref("Appointment")), ...errors } });
+  parameters: [id, idempotencyKeyParam], requestBody: transitionBody, responses: { "200": response(ref("Appointment")), ...errors } });
 const pagination = [parameter("page", "query", false, { type: "integer", minimum: 1, maximum: 1_000_000 }),
   parameter("limit", "query", false, { type: "integer", minimum: 1, maximum: 100 })];
 
@@ -51,7 +52,7 @@ export const appointmentOpenApi = {
         parameter("include", "query", false, { type: "string", enum: ["names"] })],
       responses: { "200": response(ref("Appointment")), ...errors } } },
     "/api/v1/appointments/{id}/reschedule": { patch: { summary: "Reschedule a future PENDING or CONFIRMED booking",
-      "x-roles": ["PATIENT", "STAFF", "ADMIN"], parameters: [id],
+      "x-roles": ["PATIENT", "STAFF", "ADMIN"], parameters: [id, idempotencyKeyParam],
       requestBody: json(ref("RescheduleRequest")), responses: { "200": response(ref("Appointment")), ...errors } } },
     "/api/v1/appointments/{id}/cancel": { patch: transition("Cancel a PENDING or CONFIRMED booking", ["PATIENT", "STAFF", "ADMIN"]) },
     "/api/v1/appointments/{id}/confirm": { patch: transition("Confirm a PENDING booking", ["STAFF", "ADMIN"]) },

@@ -277,4 +277,38 @@ suite("Appointment PostgreSQL integration (disposable database only)", () => {
     expect((await pool.query(`SELECT status FROM appointment_service.appointment_outbox_events WHERE id = $1`,
       [pending.rows[0].id])).rows[0].status).toBe("SENT");
   });
+
+  it("persists idempotent reschedule and transitions in PostgreSQL", async () => {
+    const interval = { ...base, scheduledStartAt: "2030-01-07T08:00:00.000Z",
+      scheduledEndAt: "2030-01-07T08:30:00.000Z" };
+    const made = await repo.createBooking({ ...interval, createdBy: actorId }, "lifecycle-key", interval);
+
+    // Reschedule with key
+    const reschedTarget = "2030-01-07T08:30:00.000Z";
+    const reschedEnd = "2030-01-07T09:00:00.000Z";
+    const reschedFp = { appointmentId: made.appointment.id, scheduledStartAt: reschedTarget, scheduledEndAt: reschedEnd, reason: null };
+    const resched1 = await repo.rescheduleBooking(made.appointment.id, reschedTarget, reschedEnd, actorId, undefined, "resched-pg-key", reschedFp);
+    expect(resched1?.replayed).toBe(false);
+
+    // Exact replay
+    const resched2 = await repo.rescheduleBooking(made.appointment.id, reschedTarget, reschedEnd, actorId, undefined, "resched-pg-key", reschedFp);
+    expect(resched2?.replayed).toBe(true);
+
+    // Mismatched fingerprint throws IdempotencyMismatchError
+    await expect(repo.rescheduleBooking(made.appointment.id, "2030-01-07T09:00:00.000Z", "2030-01-07T09:30:00.000Z", actorId, undefined, "resched-pg-key",
+      { ...reschedFp, scheduledStartAt: "2030-01-07T09:00:00.000Z" })).rejects.toBeInstanceOf(IdempotencyMismatchError);
+
+    // Confirm with key
+    const confirmFp = { appointmentId: made.appointment.id, toStatus: "CONFIRMED" as const, reason: "Confirmed by staff" };
+    const confirm1 = await repo.transition(made.appointment.id, "CONFIRMED", actorId, "Confirmed by staff", undefined, "confirm-pg-key", confirmFp, "CONFIRM");
+    expect(confirm1?.status).toBe("CONFIRMED");
+
+    // Exact replay
+    const confirm2 = await repo.transition(made.appointment.id, "CONFIRMED", actorId, "Confirmed by staff", undefined, "confirm-pg-key", confirmFp, "CONFIRM");
+    expect(confirm2?.status).toBe("CONFIRMED");
+
+    // Mismatched fingerprint throws IdempotencyMismatchError
+    await expect(repo.transition(made.appointment.id, "CONFIRMED", actorId, "Other reason", undefined, "confirm-pg-key",
+      { ...confirmFp, reason: "Other reason" }, "CONFIRM")).rejects.toBeInstanceOf(IdempotencyMismatchError);
+  });
 });

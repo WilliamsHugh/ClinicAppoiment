@@ -183,15 +183,18 @@ export class AppointmentRepository {
     });
   }
 
-  findReplay(actorId: string, key: string, fingerprint: BookingFingerprint) {
-    const value = this.requests.get(`${actorId}\u0000CREATE\u0000${key}`);
+  findReplay(actorId: string, operationOrKey: string, keyOrFingerprint: string | unknown, fingerprint?: unknown): Appointment | null {
+    const operation = fingerprint !== undefined ? operationOrKey : "CREATE";
+    const key = fingerprint !== undefined ? (keyOrFingerprint as string) : operationOrKey;
+    const fp = fingerprint !== undefined ? fingerprint : keyOrFingerprint;
+    const value = this.requests.get(`${actorId}\u0000${operation}\u0000${key}`);
     if (!value) return null;
-    if (value.fingerprint !== JSON.stringify(fingerprint)) throw new IdempotencyMismatchError();
+    if (value.fingerprint !== JSON.stringify(fp)) throw new IdempotencyMismatchError();
     return this.findById(value.id) ?? null;
   }
 
   createBooking(input: BookingInput, key: string, fingerprint: BookingFingerprint) {
-    const replay = this.findReplay(input.createdBy, key, fingerprint);
+    const replay = this.findReplay(input.createdBy, "CREATE", key, fingerprint);
     if (replay) return { appointment: replay, replayed: true, eventId: null };
     if (this.overlaps(input.doctorId, input.scheduledStartAt, input.scheduledEndAt)) throw new SlotConflictError();
     const appointment = this.create({ ...input, specialtyId: input.specialtyId ?? undefined,
@@ -207,7 +210,11 @@ export class AppointmentRepository {
       Date.parse(item.scheduledEndAt) > Date.parse(start));
   }
 
-  rescheduleBooking(id: string, start: string, end: string, actorId: string, reason?: string) {
+  rescheduleBooking(id: string, start: string, end: string, actorId: string, reason?: string, key?: string, fingerprint?: unknown) {
+    if (key && fingerprint) {
+      const replay = this.findReplay(actorId, "RESCHEDULE", key, fingerprint);
+      if (replay) return { appointment: replay, replayed: true, eventId: null };
+    }
     const item = this.findById(id);
     if (!item) return null;
     if (!canReschedule(item.status)) throw new RescheduleStateError();
@@ -221,6 +228,10 @@ export class AppointmentRepository {
     item.updatedAt = new Date().toISOString();
     this.history.push({ id: randomUUID(), appointmentId: id, fromStatus: item.status,
       toStatus: item.status, changedBy: actorId, reason, createdAt: new Date().toISOString() });
+    if (key && fingerprint) {
+      this.requests.set(`${actorId}\u0000RESCHEDULE\u0000${key}`,
+        { fingerprint: JSON.stringify(fingerprint), id: item.id });
+    }
     return { appointment: item, eventId: randomUUID() };
   }
 
@@ -242,7 +253,12 @@ export class AppointmentRepository {
   }
 
   transition(id: string, toStatus: AppointmentStatus, changedBy: string, reason?: string,
-    expectedStatus?: AppointmentStatus) {
+    expectedStatus?: AppointmentStatus, key?: string, fingerprint?: unknown, operationName?: string) {
+    const op = operationName ?? toStatus;
+    if (key && fingerprint) {
+      const replay = this.findReplay(changedBy, op, key, fingerprint);
+      if (replay) return replay;
+    }
     const appointment = this.findById(id);
     if (!appointment) return null;
     if (expectedStatus && appointment.status !== expectedStatus) throw new ConcurrentChangeError();
@@ -259,6 +275,10 @@ export class AppointmentRepository {
       reason,
       createdAt: new Date().toISOString()
     });
+    if (key && fingerprint) {
+      this.requests.set(`${changedBy}\u0000${op}\u0000${key}`,
+        { fingerprint: JSON.stringify(fingerprint), id: appointment.id });
+    }
     return appointment;
   }
 
