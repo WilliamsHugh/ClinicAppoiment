@@ -37,6 +37,7 @@ const response = (schema: object) => ({
 
 const id = { name: "id", in: "path", required: true, schema: { type: "string", format: "uuid" } };
 const clinicalGrantHeader = { name: "X-Clinical-Grant", in: "header", required: false, schema: { type: "string", format: "uuid" } };
+const idempotencyKeyHeader = { name: "Idempotency-Key", in: "header", required: false, schema: { type: "string", maxLength: 255 } };
 const publicErrors = { "400": error, "401": error, "403": error, "404": error, "409": error, "422": error, "503": error };
 
 export const openapi = {
@@ -250,6 +251,7 @@ export const openapi = {
       post: {
         summary: "Create a draft or final record for an eligible appointment",
         security: [{ bearerAuth: [] }],
+        parameters: [idempotencyKeyHeader],
         requestBody: {
           required: true,
           content: {
@@ -293,7 +295,7 @@ export const openapi = {
       patch: {
         summary: "Update clinical fields or finalize a draft record",
         security: [{ bearerAuth: [] }],
-        parameters: [id],
+        parameters: [id, idempotencyKeyHeader],
         requestBody: {
           required: true,
           content: {
@@ -325,7 +327,7 @@ export const openapi = {
       post: {
         summary: "Finalize a draft record using TOTP verification proof",
         security: [{ bearerAuth: [] }],
-        parameters: [id],
+        parameters: [id, idempotencyKeyHeader],
         requestBody: {
           required: true,
           content: {

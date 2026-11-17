@@ -2,6 +2,13 @@ import type { PoolClient } from "pg";
 
 type Pool = InstanceType<typeof import("pg").Pool>;
 
+export class IdempotencyMismatchError extends Error {
+  constructor(message = "Idempotency key was used for another request") {
+    super(message);
+    this.name = "IdempotencyMismatchError";
+  }
+}
+
 export type PrescriptionItem = { medicineName: string; dosage: string; frequency: string; duration: string };
 
 export type MedicalRecord = {
@@ -148,10 +155,51 @@ export class MedicalRecordRepository {
     );
   }
 
-  async create(input: RecordInput, recipientUserId: string, finalization?: { proofId: string; contextId: string }) {
+  async findReplay(actorId: string, operation: string, idempotencyKey: string, fingerprint: Record<string, unknown>) {
+    const result = await this.pool.query<{ record_id: string | null; fingerprintMatches: boolean } & MedicalRecord>(
+      `SELECT r.record_id, (r.request_fingerprint = $4::jsonb) AS "fingerprintMatches", ${select}
+       FROM medical_record_service.idempotency_requests r
+       LEFT JOIN medical_record_service.medical_records ON medical_record_service.medical_records.id = r.record_id
+       WHERE r.actor_id = $1 AND r.operation = $2 AND r.idempotency_key = $3`,
+      [actorId, operation, idempotencyKey, JSON.stringify(fingerprint)]
+    );
+    if (!result.rows[0]) return null;
+    if (!result.rows[0].fingerprintMatches) throw new IdempotencyMismatchError();
+    if (!result.rows[0].id) return null;
+    return result.rows[0] as MedicalRecord;
+  }
+
+  async create(input: RecordInput, recipientUserId: string, idempotencyKey?: string, fingerprint?: Record<string, unknown>, finalization?: { proofId: string; contextId: string }) {
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN");
+      if (idempotencyKey && fingerprint) {
+        const claim = await client.query(
+          `INSERT INTO medical_record_service.idempotency_requests
+             (actor_id, operation, idempotency_key, request_fingerprint)
+           VALUES ($1, 'CREATE', $2, $3::jsonb)
+           ON CONFLICT (actor_id, operation, idempotency_key) DO NOTHING
+           RETURNING actor_id`,
+          [input.createdBy, idempotencyKey, JSON.stringify(fingerprint)]
+        );
+        if (claim.rowCount === 0) {
+          const existing = await client.query<{ fingerprintMatches: boolean } & MedicalRecord>(
+            `SELECT (r.request_fingerprint = $3::jsonb) AS "fingerprintMatches", ${select}
+             FROM medical_record_service.idempotency_requests r
+             JOIN medical_record_service.medical_records ON medical_record_service.medical_records.id = r.record_id
+             WHERE r.actor_id = $1 AND r.operation = 'CREATE' AND r.idempotency_key = $2`,
+            [input.createdBy, idempotencyKey, JSON.stringify(fingerprint)]
+          );
+          if (existing.rows[0]) {
+            if (!existing.rows[0].fingerprintMatches) {
+              await client.query("ROLLBACK");
+              throw new IdempotencyMismatchError();
+            }
+            await client.query("ROLLBACK");
+            return existing.rows[0];
+          }
+        }
+      }
       const appointmentCompletion = input.status === "FINAL" ? "PENDING" : (input.appointmentCompletion ?? "NOT_REQUESTED");
       const result = await client.query<MedicalRecord>(
         `INSERT INTO medical_record_service.medical_records
@@ -168,6 +216,14 @@ export class MedicalRecordRepository {
           [finalization.proofId, record.id, finalization.contextId]
         );
         if (!consumed.rows[0]) throw new Error("PROOF_ALREADY_CONSUMED");
+      }
+      if (idempotencyKey && fingerprint) {
+        await client.query(
+          `UPDATE medical_record_service.idempotency_requests
+           SET record_id = $3
+           WHERE actor_id = $1 AND operation = 'CREATE' AND idempotency_key = $2`,
+          [input.createdBy, idempotencyKey, record.id]
+        );
       }
       // Logging safety: metadata only, no PHI or drug names
       await client.query(
@@ -187,10 +243,37 @@ export class MedicalRecordRepository {
     finally { client.release(); }
   }
 
-  async update(id: string, changes: RecordChanges, actorId: string, recipientUserId: string, expectedVersion?: number) {
+  async update(id: string, changes: RecordChanges, actorId: string, recipientUserId: string, expectedVersion?: number, idempotencyKey?: string, fingerprint?: Record<string, unknown>) {
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN");
+      if (idempotencyKey && fingerprint) {
+        const claim = await client.query(
+          `INSERT INTO medical_record_service.idempotency_requests
+             (actor_id, operation, idempotency_key, request_fingerprint)
+           VALUES ($1, 'UPDATE', $2, $3::jsonb)
+           ON CONFLICT (actor_id, operation, idempotency_key) DO NOTHING
+           RETURNING actor_id`,
+          [actorId, idempotencyKey, JSON.stringify(fingerprint)]
+        );
+        if (claim.rowCount === 0) {
+          const existing = await client.query<{ fingerprintMatches: boolean } & MedicalRecord>(
+            `SELECT (r.request_fingerprint = $3::jsonb) AS "fingerprintMatches", ${select}
+             FROM medical_record_service.idempotency_requests r
+             JOIN medical_record_service.medical_records ON medical_record_service.medical_records.id = r.record_id
+             WHERE r.actor_id = $1 AND r.operation = 'UPDATE' AND r.idempotency_key = $2`,
+            [actorId, idempotencyKey, JSON.stringify(fingerprint)]
+          );
+          if (existing.rows[0]) {
+            if (!existing.rows[0].fingerprintMatches) {
+              await client.query("ROLLBACK");
+              throw new IdempotencyMismatchError();
+            }
+            await client.query("ROLLBACK");
+            return { record: existing.rows[0], replayed: true };
+          }
+        }
+      }
       const locked = await client.query<MedicalRecord>(`SELECT ${select} FROM medical_record_service.medical_records WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`, [id]);
       const before = locked.rows[0];
       if (!before) { await client.query("ROLLBACK"); return null; }
@@ -211,6 +294,14 @@ export class MedicalRecordRepository {
         [...values, actorId, id]
       );
       const record = result.rows[0];
+      if (idempotencyKey && fingerprint) {
+        await client.query(
+          `UPDATE medical_record_service.idempotency_requests
+           SET record_id = $3
+           WHERE actor_id = $1 AND operation = 'UPDATE' AND idempotency_key = $2`,
+          [actorId, idempotencyKey, record.id]
+        );
+      }
       await client.query(
         "INSERT INTO medical_record_service.medical_record_audit_logs (medical_record_id, actor_id, action, changes) VALUES ($1,$2,'UPDATE',$3)",
         [id, actorId, JSON.stringify({ before: Object.fromEntries(entries.map(([key]) => [key, before[key]])), after: changes })]
@@ -231,14 +322,43 @@ export class MedicalRecordRepository {
     actorId: string;
     recipientUserId: string;
     updates?: RecordChanges;
+    idempotencyKey?: string;
+    fingerprint?: Record<string, unknown>;
   }): Promise<
-    | { success: true; record: MedicalRecord }
+    | { success: true; record: MedicalRecord; replayed?: boolean }
     | { notFound: true }
-    | { conflict: "ALREADY_FINAL" | "VERSION_CONFLICT" | "PROOF_ALREADY_CONSUMED"; record?: MedicalRecord }
+    | { conflict: "ALREADY_FINAL" | "VERSION_CONFLICT" | "PROOF_ALREADY_CONSUMED" | "IDEMPOTENCY_MISMATCH"; record?: MedicalRecord }
   > {
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN");
+      if (params.idempotencyKey && params.fingerprint) {
+        const claim = await client.query(
+          `INSERT INTO medical_record_service.idempotency_requests
+             (actor_id, operation, idempotency_key, request_fingerprint)
+           VALUES ($1, 'FINALIZE', $2, $3::jsonb)
+           ON CONFLICT (actor_id, operation, idempotency_key) DO NOTHING
+           RETURNING actor_id`,
+          [params.actorId, params.idempotencyKey, JSON.stringify(params.fingerprint)]
+        );
+        if (claim.rowCount === 0) {
+          const existing = await client.query<{ fingerprintMatches: boolean } & MedicalRecord>(
+            `SELECT (r.request_fingerprint = $3::jsonb) AS "fingerprintMatches", ${select}
+             FROM medical_record_service.idempotency_requests r
+             JOIN medical_record_service.medical_records ON medical_record_service.medical_records.id = r.record_id
+             WHERE r.actor_id = $1 AND r.operation = 'FINALIZE' AND r.idempotency_key = $2`,
+            [params.actorId, params.idempotencyKey, JSON.stringify(params.fingerprint)]
+          );
+          if (existing.rows[0]) {
+            if (!existing.rows[0].fingerprintMatches) {
+              await client.query("ROLLBACK");
+              throw new IdempotencyMismatchError();
+            }
+            await client.query("ROLLBACK");
+            return { success: true, record: existing.rows[0], replayed: true };
+          }
+        }
+      }
       const locked = await client.query<MedicalRecord>(
         `SELECT ${select} FROM medical_record_service.medical_records WHERE id = $1 AND deleted_at IS NULL FOR UPDATE`,
         [params.recordId]
@@ -294,6 +414,15 @@ export class MedicalRecordRepository {
          JSON.stringify(prescription), params.actorId, params.recordId]
       );
       const record = result.rows[0];
+
+      if (params.idempotencyKey && params.fingerprint) {
+        await client.query(
+          `UPDATE medical_record_service.idempotency_requests
+           SET record_id = $3
+           WHERE actor_id = $1 AND operation = 'FINALIZE' AND idempotency_key = $2`,
+          [params.actorId, params.idempotencyKey, record.id]
+        );
+      }
 
       // Audit log: metadata only (safe logging)
       await client.query(

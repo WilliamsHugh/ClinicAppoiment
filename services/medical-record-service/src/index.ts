@@ -5,7 +5,7 @@ import { Pool } from "pg";
 import swaggerUi from "swagger-ui-express";
 import { z } from "zod";
 import { createRequestLoggingMiddleware, logServiceEvent } from "@clinic/request-logging";
-import { MedicalRecordRepository, type PrescriptionItem, type RecordChanges } from "./repository.js";
+import { MedicalRecordRepository, IdempotencyMismatchError, type PrescriptionItem, type RecordChanges } from "./repository.js";
 import { openapi } from "./openapi.js";
 
 const port = Number(process.env.MEDICAL_RECORD_SERVICE_PORT ?? 3004);
@@ -57,7 +57,7 @@ const updateSchema = z.object({
   treatmentPlan: z.string().optional(),
   prescription: z.array(prescription).optional(),
   status: z.enum(["DRAFT", "FINAL"]).optional(),
-  expectedVersion: z.number().int().min(1).optional(),
+  expectedVersion: z.number().int().min(1),
   verificationProofId: z.string().optional(),
   contextId: z.string().uuid().optional()
 }).strict();
@@ -631,9 +631,36 @@ app.post("/api/v1/medical-records/:id/finalize", async (req, res, next) => {
   const parsed = finalizeSchema.safeParse(req.body);
   if (!parsed.success) return fail(res, 400, "VALIDATION_ERROR", "Invalid finalize request payload");
 
+  const idempotencyKey = req.header("idempotency-key")?.trim();
+  if (idempotencyKey && idempotencyKey.length > 255) {
+    return fail(res, 400, "VALIDATION_ERROR", "Idempotency-Key must be at most 255 characters");
+  }
+
   try {
     const doctor = await doctorByUser(who.userId);
     if (!doctor || !doctor.isActive) return fail(res, 403, "ACCESS_DENIED", "Active doctor profile required");
+
+    const fingerprint = {
+      recordId: req.params.id,
+      expectedVersion: parsed.data.expectedVersion,
+      contextId: parsed.data.contextId,
+      verificationProofId: parsed.data.verificationProofId,
+      record: parsed.data.record
+    };
+
+    if (idempotencyKey) {
+      try {
+        const replay = await repository.findReplay(who.userId, "FINALIZE", idempotencyKey, fingerprint);
+        if (replay) {
+          return res.status(200).json({ success: true, data: replay });
+        }
+      } catch (error) {
+        if (error instanceof IdempotencyMismatchError) {
+          return fail(res, 409, "IDEMPOTENCY_KEY_REUSED", "Idempotency key was used for another request");
+        }
+        throw error;
+      }
+    }
 
     const existing = await repository.findById(req.params.id);
     if (!existing) return fail(res, 404, "MEDICAL_RECORD_NOT_FOUND", "Record not found");
@@ -690,10 +717,15 @@ app.post("/api/v1/medical-records/:id/finalize", async (req, res, next) => {
       contextId: context.id,
       actorId: who.userId,
       recipientUserId: patient.userId,
-      updates: parsed.data.record
+      updates: parsed.data.record,
+      idempotencyKey,
+      fingerprint
     });
 
     if ("conflict" in finalResult) {
+      if (finalResult.conflict === "IDEMPOTENCY_MISMATCH") {
+        return fail(res, 409, "IDEMPOTENCY_KEY_REUSED", "Idempotency key was used for another request");
+      }
       if (finalResult.conflict === "PROOF_ALREADY_CONSUMED") {
         return fail(res, 409, "PROOF_ALREADY_CONSUMED", "Verification proof has already been used");
       }
@@ -706,6 +738,9 @@ app.post("/api/v1/medical-records/:id/finalize", async (req, res, next) => {
 
     return res.json({ success: true, data: finalResult.record });
   } catch (error) {
+    if (error instanceof IdempotencyMismatchError) {
+      return fail(res, 409, "IDEMPOTENCY_KEY_REUSED", "Idempotency key was used for another request");
+    }
     next(error);
   }
 });
@@ -773,6 +808,37 @@ app.post("/api/v1/medical-records", async (req, res, next) => {
   const parsed = createSchema.safeParse(req.body);
   if (!parsed.success) return fail(res, 400, "VALIDATION_ERROR", "Invalid medical record");
 
+  const idempotencyKey = req.header("idempotency-key")?.trim();
+  if (idempotencyKey && idempotencyKey.length > 255) {
+    return fail(res, 400, "VALIDATION_ERROR", "Idempotency-Key must be at most 255 characters");
+  }
+
+  const fingerprint = {
+    appointmentId: parsed.data.appointmentId,
+    patientId: parsed.data.patientId,
+    doctorId: parsed.data.doctorId,
+    symptoms: parsed.data.symptoms,
+    diagnosis: parsed.data.diagnosis,
+    notes: parsed.data.notes,
+    treatmentPlan: parsed.data.treatmentPlan,
+    prescription: parsed.data.prescription,
+    status: parsed.data.status
+  };
+
+  if (idempotencyKey) {
+    try {
+      const replay = await repository.findReplay(who.userId, "CREATE", idempotencyKey, fingerprint);
+      if (replay) {
+        return res.status(200).json({ success: true, data: replay });
+      }
+    } catch (error) {
+      if (error instanceof IdempotencyMismatchError) {
+        return fail(res, 409, "IDEMPOTENCY_KEY_REUSED", "Idempotency key was used for another request");
+      }
+      throw error;
+    }
+  }
+
   try {
     const booking = await appointmentEligibility(parsed.data.appointmentId);
     if (!booking || !["CHECKED_IN", "COMPLETED"].includes(booking.status)) {
@@ -811,18 +877,24 @@ app.post("/api/v1/medical-records", async (req, res, next) => {
       if (!proof.valid) return fail(res, 403, "CLINICAL_VERIFICATION_REQUIRED", "Valid proof required");
     }
 
-    const record = await repository.create({
+    const recordData = {
       ...parsed.data,
       createdBy: who.userId,
       version: 1,
-      appointmentCompletion: parsed.data.status === "FINAL" ? "PENDING" : "NOT_REQUESTED"
-    }, patient.userId, parsed.data.status === "FINAL" ? {
+      appointmentCompletion: (parsed.data.status === "FINAL" ? "PENDING" : "NOT_REQUESTED") as "PENDING" | "NOT_REQUESTED"
+    };
+    const finalization = parsed.data.status === "FINAL" ? {
       proofId: parsed.data.verificationProofId!, contextId: parsed.data.contextId!
-    } : undefined);
+    } : undefined;
+    const record = await repository.create(recordData, patient.userId, idempotencyKey, fingerprint, finalization);
     return res.status(201).json({ success: true, data: record });
   } catch (error) {
+    if (error instanceof IdempotencyMismatchError) {
+      return fail(res, 409, "IDEMPOTENCY_KEY_REUSED", "Idempotency key was used for another request");
+    }
     if (error instanceof Error && error.message === "PROOF_ALREADY_CONSUMED") {
       return fail(res, 409, "PROOF_ALREADY_CONSUMED", "Verification proof has already been used");
+    }
     }
     if (typeof error === "object" && error !== null && "code" in error && error.code === "23505") {
       return fail(res, 409, "MEDICAL_RECORD_ALREADY_EXISTS", "Record already exists for appointment");
@@ -840,6 +912,11 @@ app.patch("/api/v1/medical-records/:id", async (req, res, next) => {
   const parsed = updateSchema.safeParse(req.body);
   if (!parsed.success) return fail(res, 400, "VALIDATION_ERROR", "Invalid update");
 
+  const idempotencyKey = req.header("idempotency-key")?.trim();
+  if (idempotencyKey && idempotencyKey.length > 255) {
+    return fail(res, 400, "VALIDATION_ERROR", "Idempotency-Key must be at most 255 characters");
+  }
+
   try {
     const existing = await repository.findById(req.params.id);
     if (!existing) return fail(res, 404, "MEDICAL_RECORD_NOT_FOUND", "Record not found");
@@ -850,6 +927,35 @@ app.patch("/api/v1/medical-records/:id", async (req, res, next) => {
       if (!parsed.data.verificationProofId || !parsed.data.contextId || parsed.data.expectedVersion === undefined) {
         return fail(res, 400, "VALIDATION_ERROR", "Finalizing via PATCH requires verificationProofId, contextId, and expectedVersion");
       }
+
+      const finalizeFingerprint = {
+        recordId: req.params.id,
+        expectedVersion: parsed.data.expectedVersion,
+        contextId: parsed.data.contextId,
+        verificationProofId: parsed.data.verificationProofId,
+        record: {
+          symptoms: parsed.data.symptoms,
+          diagnosis: parsed.data.diagnosis,
+          notes: parsed.data.notes,
+          treatmentPlan: parsed.data.treatmentPlan,
+          prescription: parsed.data.prescription
+        }
+      };
+
+      if (idempotencyKey) {
+        try {
+          const replay = await repository.findReplay(who.userId, "FINALIZE", idempotencyKey, finalizeFingerprint);
+          if (replay) {
+            return res.status(200).json({ success: true, data: replay });
+          }
+        } catch (error) {
+          if (error instanceof IdempotencyMismatchError) {
+            return fail(res, 409, "IDEMPOTENCY_KEY_REUSED", "Idempotency key was used for another request");
+          }
+          throw error;
+        }
+      }
+
       const context = await repository.findFinalizationContext(parsed.data.contextId);
       if (!context) return fail(res, 409, "FINALIZATION_CONTEXT_CHANGED", "Finalization context not found or expired");
       const sessionId = req.header("x-session-id");
@@ -891,10 +997,13 @@ app.patch("/api/v1/medical-records/:id", async (req, res, next) => {
         contextId: context.id,
         actorId: who.userId,
         recipientUserId: patient.userId,
-        updates: parsed.data
+        updates: parsed.data,
+        idempotencyKey,
+        fingerprint: finalizeFingerprint
       });
 
       if ("conflict" in finalResult) {
+        if (finalResult.conflict === "IDEMPOTENCY_MISMATCH") return fail(res, 409, "IDEMPOTENCY_KEY_REUSED", "Idempotency key was used for another request");
         if (finalResult.conflict === "PROOF_ALREADY_CONSUMED") return fail(res, 409, "PROOF_ALREADY_CONSUMED", "Proof already used");
         if (finalResult.conflict === "VERSION_CONFLICT") return fail(res, 409, "RECORD_VERSION_CONFLICT", "Version conflict");
         return fail(res, 409, "MEDICAL_RECORD_FINAL", "Record already FINAL");
@@ -904,10 +1013,34 @@ app.patch("/api/v1/medical-records/:id", async (req, res, next) => {
     }
 
     // Normal draft update
+    const updateFingerprint = {
+      recordId: req.params.id,
+      expectedVersion: parsed.data.expectedVersion,
+      symptoms: parsed.data.symptoms,
+      diagnosis: parsed.data.diagnosis,
+      notes: parsed.data.notes,
+      treatmentPlan: parsed.data.treatmentPlan,
+      prescription: parsed.data.prescription
+    };
+
+    if (idempotencyKey) {
+      try {
+        const replay = await repository.findReplay(who.userId, "UPDATE", idempotencyKey, updateFingerprint);
+        if (replay) {
+          return res.status(200).json({ success: true, data: replay });
+        }
+      } catch (error) {
+        if (error instanceof IdempotencyMismatchError) {
+          return fail(res, 409, "IDEMPOTENCY_KEY_REUSED", "Idempotency key was used for another request");
+        }
+        throw error;
+      }
+    }
+
     const patient = await patientById(existing.patientId);
     if (!patient) return fail(res, 422, "PATIENT_NOT_FOUND", "Patient profile does not exist");
 
-    const result = await repository.update(existing.id, parsed.data, who.userId, patient.userId, parsed.data.expectedVersion);
+    const result = await repository.update(existing.id, parsed.data, who.userId, patient.userId, parsed.data.expectedVersion, idempotencyKey, updateFingerprint);
     if (result && "conflict" in result) {
       if (result.reason === "RECORD_VERSION_CONFLICT") {
         return fail(res, 409, "RECORD_VERSION_CONFLICT", "Record version conflict");
@@ -917,6 +1050,9 @@ app.patch("/api/v1/medical-records/:id", async (req, res, next) => {
     if (!result || !("record" in result)) return fail(res, 404, "MEDICAL_RECORD_NOT_FOUND", "Record not found");
     return res.json({ success: true, data: result.record });
   } catch (error) {
+    if (error instanceof IdempotencyMismatchError) {
+      return fail(res, 409, "IDEMPOTENCY_KEY_REUSED", "Idempotency key was used for another request");
+    }
     next(error);
   }
 });

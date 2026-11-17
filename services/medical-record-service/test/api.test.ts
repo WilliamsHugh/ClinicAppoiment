@@ -13,17 +13,30 @@ const mocks = vi.hoisted(() => ({
   findById: vi.fn(), findAll: vi.fn(), create: vi.fn(), update: vi.fn(), findByAppointmentId: vi.fn(),
   claimOutbox: vi.fn(), markOutboxSent: vi.fn(), deferOutbox: vi.fn(), outboxStatusCounts: vi.fn(),
   createGrant: vi.fn(), findGrantById: vi.fn(), createFinalizationContext: vi.fn(),
-  findFinalizationContext: vi.fn(), finalizeRecord: vi.fn(), markAppointmentCompletion: vi.fn()
+  findFinalizationContext: vi.fn(), finalizeRecord: vi.fn(), markAppointmentCompletion: vi.fn(),
+  findReplay: vi.fn()
 }));
 vi.mock("pg", () => ({ Pool: class { query = vi.fn() } }));
-vi.mock("../src/repository.js", () => ({ MedicalRecordRepository: class {
-  findById = mocks.findById; findAll = mocks.findAll; create = mocks.create; update = mocks.update;
-  findByAppointmentId = mocks.findByAppointmentId; claimOutbox = mocks.claimOutbox;
-  markOutboxSent = mocks.markOutboxSent; deferOutbox = mocks.deferOutbox; outboxStatusCounts = mocks.outboxStatusCounts;
-  createGrant = mocks.createGrant; findGrantById = mocks.findGrantById;
-  createFinalizationContext = mocks.createFinalizationContext; findFinalizationContext = mocks.findFinalizationContext;
-  finalizeRecord = mocks.finalizeRecord; markAppointmentCompletion = mocks.markAppointmentCompletion;
-} }));
+vi.mock("../src/repository.js", () => {
+  class MockIdempotencyMismatchError extends Error {
+    constructor(message = "Idempotency key was used for another request") {
+      super(message);
+      this.name = "IdempotencyMismatchError";
+    }
+  }
+  return {
+    IdempotencyMismatchError: MockIdempotencyMismatchError,
+    MedicalRecordRepository: class {
+      findById = mocks.findById; findAll = mocks.findAll; create = mocks.create; update = mocks.update;
+      findByAppointmentId = mocks.findByAppointmentId; claimOutbox = mocks.claimOutbox;
+      markOutboxSent = mocks.markOutboxSent; deferOutbox = mocks.deferOutbox; outboxStatusCounts = mocks.outboxStatusCounts;
+      createGrant = mocks.createGrant; findGrantById = mocks.findGrantById;
+      createFinalizationContext = mocks.createFinalizationContext; findFinalizationContext = mocks.findFinalizationContext;
+      finalizeRecord = mocks.finalizeRecord; markAppointmentCompletion = mocks.markAppointmentCompletion;
+      findReplay = mocks.findReplay;
+    }
+  };
+});
 
 vi.stubEnv("DATABASE_URL", "postgresql://fixture:fixture@localhost:5432/fixture");
 const internalToken = "record-appointment-boundary-test-token-123456";
@@ -55,7 +68,7 @@ function lookup(doctorId = ids.doctor, bookingValid = true, proofValid = true, b
   return fetcher;
 }
 
-beforeEach(() => { vi.clearAllMocks(); lookup(); });
+beforeEach(() => { vi.clearAllMocks(); mocks.findReplay.mockResolvedValue(null); lookup(); });
 
 describe("Medical Record API authorization", () => {
   it("rejects a request without trusted identity", async () => {
@@ -546,5 +559,167 @@ describe("Clinical Grants and Finalization", () => {
 
     expect(mocks.markAppointmentCompletion).toHaveBeenCalledWith(ids.record, "COMPLETED");
     expect(mocks.markOutboxSent).toHaveBeenCalledWith("event-comp");
+  });
+
+  it("replays a create record request when matching Idempotency-Key is provided", async () => {
+    const existing = {
+      id: ids.record,
+      appointmentId: ids.appointment,
+      patientId: ids.patient,
+      doctorId: ids.doctor,
+      status: "DRAFT",
+      version: 1
+    };
+    mocks.findReplay.mockResolvedValue(existing);
+
+    const response = await request(app)
+      .post("/api/v1/medical-records")
+      .set("X-User-Id", "doctor-user")
+      .set("X-Role", "DOCTOR")
+      .set("Idempotency-Key", "idemp-key-create-1")
+      .send({
+        appointmentId: ids.appointment,
+        patientId: ids.patient,
+        doctorId: ids.doctor,
+        symptoms: "Cough",
+        diagnosis: "Cold"
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.id).toBe(ids.record);
+    expect(mocks.create).not.toHaveBeenCalled();
+  });
+
+  it("returns 409 IDEMPOTENCY_KEY_REUSED when create request fingerprint mismatches", async () => {
+    const { IdempotencyMismatchError } = await import("../src/repository.js");
+    mocks.findReplay.mockRejectedValue(new IdempotencyMismatchError());
+
+    const response = await request(app)
+      .post("/api/v1/medical-records")
+      .set("X-User-Id", "doctor-user")
+      .set("X-Role", "DOCTOR")
+      .set("Idempotency-Key", "idemp-key-create-1")
+      .send({
+        appointmentId: ids.appointment,
+        patientId: ids.patient,
+        doctorId: ids.doctor,
+        symptoms: "Different symptoms",
+        diagnosis: "Different diagnosis"
+      });
+
+    expect(response.status).toBe(409);
+    expect(response.body.error.code).toBe("IDEMPOTENCY_KEY_REUSED");
+  });
+
+  it("replays a finalize request when matching Idempotency-Key is provided without re-verifying", async () => {
+    const existingFinal = {
+      id: ids.record,
+      appointmentId: ids.appointment,
+      patientId: ids.patient,
+      doctorId: ids.doctor,
+      status: "FINAL",
+      version: 2
+    };
+    mocks.findReplay.mockResolvedValue(existingFinal);
+
+    const response = await request(app)
+      .post(`/api/v1/medical-records/${ids.record}/finalize`)
+      .set("X-User-Id", "doctor-user")
+      .set("X-Role", "DOCTOR")
+      .set("Idempotency-Key", "idemp-key-finalize-1")
+      .send({
+        contextId: "ctx-1",
+        verificationProofId: "proof-already-consumed",
+        expectedVersion: 1
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.id).toBe(ids.record);
+    expect(response.body.data.status).toBe("FINAL");
+    expect(mocks.finalizeRecord).not.toHaveBeenCalled();
+  });
+
+  it("updates a draft record with optimistic concurrency expectedVersion check", async () => {
+    mocks.findById.mockResolvedValue({
+      id: ids.record,
+      appointmentId: ids.appointment,
+      patientId: ids.patient,
+      doctorId: ids.doctor,
+      status: "DRAFT",
+      version: 1
+    });
+    mocks.update.mockResolvedValue({
+      record: {
+        id: ids.record,
+        appointmentId: ids.appointment,
+        patientId: ids.patient,
+        doctorId: ids.doctor,
+        status: "DRAFT",
+        version: 2,
+        notes: "Updated draft notes"
+      }
+    });
+
+    const response = await request(app)
+      .patch(`/api/v1/medical-records/${ids.record}`)
+      .set("X-User-Id", "doctor-user")
+      .set("X-Role", "DOCTOR")
+      .set("Idempotency-Key", "idemp-patch-1")
+      .send({
+        expectedVersion: 1,
+        notes: "Updated draft notes"
+      });
+
+    expect(response.status).toBe(200);
+    expect(response.body.data.version).toBe(2);
+    expect(mocks.update).toHaveBeenCalledWith(
+      ids.record,
+      expect.objectContaining({ notes: "Updated draft notes" }),
+      "doctor-user",
+      "patient-user",
+      1,
+      "idemp-patch-1",
+      expect.any(Object)
+    );
+  });
+
+  it("rejects PATCH draft update without expectedVersion", async () => {
+    const response = await request(app)
+      .patch(`/api/v1/medical-records/${ids.record}`)
+      .set("X-User-Id", "doctor-user")
+      .set("X-Role", "DOCTOR")
+      .send({
+        notes: "Missing expectedVersion"
+      });
+
+    expect(response.status).toBe(400);
+    expect(response.body.error.code).toBe("VALIDATION_ERROR");
+  });
+
+  it("rejects PATCH draft update when expectedVersion conflict occurs", async () => {
+    mocks.findById.mockResolvedValue({
+      id: ids.record,
+      appointmentId: ids.appointment,
+      patientId: ids.patient,
+      doctorId: ids.doctor,
+      status: "DRAFT",
+      version: 2
+    });
+    mocks.update.mockResolvedValue({
+      conflict: true,
+      reason: "RECORD_VERSION_CONFLICT"
+    });
+
+    const response = await request(app)
+      .patch(`/api/v1/medical-records/${ids.record}`)
+      .set("X-User-Id", "doctor-user")
+      .set("X-Role", "DOCTOR")
+      .send({
+        expectedVersion: 1,
+        notes: "Stale edit"
+      });
+
+    expect(response.status).toBe(409);
+    expect(response.body.error.code).toBe("RECORD_VERSION_CONFLICT");
   });
 });

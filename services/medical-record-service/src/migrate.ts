@@ -18,7 +18,8 @@ const pool = new Pool({ connectionString: databaseUrl,
 const migrations = [
   { version: "001_m2_record_completion_outbox", file: "../../../infrastructure/supabase/medical-record-service/schema.sql" },
   { version: "002_m2_clinical_grants_and_finalization", file: "../migrations/002_m2_clinical_grants_and_finalization.sql" },
-  { version: "003_m2_grant_proof_consumption", file: "../migrations/003_m2_grant_proof_consumption.sql" }
+  { version: "003_m2_grant_proof_consumption", file: "../migrations/003_m2_grant_proof_consumption.sql" },
+  { version: "004_m2_idempotency_requests", file: "../migrations/003_m2_idempotency_requests.sql" }
 ];
 
 const client = await pool.connect();
