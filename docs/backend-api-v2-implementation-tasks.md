@@ -1,11 +1,11 @@
-# Kế hoạch triển khai backend theo API Contract v2 (snapshot nghiệm thu trước cập nhật 16/11)
+# Kế hoạch triển khai backend theo API Contract v2 (Snapshot nghiệm thu Nhịp 4 ngày 17/11/2026)
 
-> **Lưu ý revision 16/11/2026 — TV1 / M2-INTEGRATION-005:** Các trạng thái `ACCEPTED` và số liệu PostgreSQL bên dưới thuộc snapshot trước `7607db9`. Revision đang sửa User MFA, Medical Record grant/finalization và Web đã chạy lại 24/24 DB integration test trên PostgreSQL disposable; live E2E qua Gateway vẫn chưa chạy. Trạng thái nghiệm thu cutover của revision mới là **đang xác minh**; xem [`m2-integration-005-handoff.md`](m2-integration-005-handoff.md) và [`LIVE-SMOKE-GUIDE.md`](../packages/openapi-contract-tests/LIVE-SMOKE-GUIDE.md). Chính sách authored-history 180 ngày chỉ là cấu hình M2 tạm thời; thời hạn dài hạn 1–2 năm chưa được chốt trong API Contract v2.
+> **Cập nhật tích hợp Nhịp 4 ngày 17/11/2026 — TV1 / M2-INTEGRATION-005:** Toàn bộ các commit từ TV2 (`b6e5797`), TV3 (`d3a88b6`), và TV4 (`40e527e`) đã được tích hợp tuần tự sạch sẽ trên branch `test/m2-integration-005-api-v2-clinic-workflow` (HEAD `be891a5`). Toàn bộ 8 workspaces đã vượt qua build (Web 12/12 static pages + tsc 7 packages), lint (0 lỗi), 466 unit tests PASS, 104 contract tests PASS, và 27/27 PostgreSQL live integration tests PASS (13 Appointment, 2 Doctor, 7 Medical Record, 5 Notification) trên cụm container disposable `clinic-test-pg` (port 5433). Xem chi tiết tại [`m2-integration-005-handoff.md`](m2-integration-005-handoff.md).
 
-**Ngày lập:** 15/11/2026 — **Ngày nghiệm thu:** 16/11/2026  
-**Mục tiêu:** tăng tốc triển khai backend từ contract API v2 trên nhánh `test/m2-integration-002-openapi-contract-tests` và tích hợp toàn diện trên `test/m2-integration-005-api-v2-clinic-workflow`.  
-**Trạng thái snapshot trước `7607db9`:** Đã nghiệm thu tích hợp local. **Revision đang chỉnh sửa 16/11:** đã nghiệm thu lại 24/24 DB integration test; chưa chạy live E2E, chưa sẵn sàng tuyên bố `ACCEPTED` cho cutover.
-**Checkout tích hợp backend:** `/home/Williams/Projects/ClinicAppoiment-worktrees/backend-openapi` (nhánh `test/m2-integration-005-api-v2-clinic-workflow`, HEAD `04d0666`)  
+**Ngày lập:** 15/11/2026 — **Cập nhật nghiệm thu Nhịp 4:** 17/11/2026  
+**Mục tiêu:** tăng tốc triển khai backend từ contract API v2 và tích hợp toàn diện trên `test/m2-integration-005-api-v2-clinic-workflow`.  
+**Trạng thái hiện tại:** Đã hoàn thành Nhịp 4 tích hợp chéo; sẵn sàng cho Live E2E Smoke Test (Phase 5).  
+**Checkout tích hợp backend:** `/home/Williams/Projects/ClinicAppoiment-worktrees/backend-openapi` (nhánh `test/m2-integration-005-api-v2-clinic-workflow`, HEAD `be891a5`)  
 **Checkout tích hợp frontend:** `/home/Williams/Projects/ClinicAppoiment` (nhánh `feat/m3-ui-acceptance-integrated`, HEAD `bbd251a`)  
 **Base quan sát ban đầu:** `dad4f96aa8d2524c6ce31bee12e6421a5ba44946` — `merge: standardize backend service logging`.
 
@@ -36,8 +36,8 @@ Tài liệu này định nghĩa phân công và thứ tự triển khai contract
 | **Gateway & Cache** | `M2-INTEGRATION-004` | TV1 / Member 1 | **ACCEPTED** | RAM `VerifiedIdentityCache`, strip client spoof headers, block internal routes, 55/55 gateway tests pass. |
 | **User & MFA** | `M2-USER-004` | TV2 / Member 2 | **ACCEPTED** | Session v2, MFA TOTP, fail-closed password (503), migration runner `src/migrate.ts`, 80/80 unit tests pass. |
 | **Doctor & Booking** | `M2-BOOKING-006` | TV3 / Member 3 | **ACCEPTED** | `/doctors/me`, appointment summary server UTC+7, lọc scope an toàn, 14 DB integration tests pass, 134 unit tests pass. |
-| **Record & Notify** | `M2-RECORD-004` + `M2-NOTIFY-003` | TV4 / Member 4 | **ACCEPTED** | Clinical grant TOTP, chống replay proof, callback hoàn tất ca, unread-count, read-all, 10 DB/HTTP integration tests pass. |
-| **Tích hợp toàn diện** | `M2-INTEGRATION-005` | TV1 + TV2/3/4 | **ACCEPTED** | 104/104 contract tests pass, 24/24 DB integration tests pass, 474 backend unit tests pass, 283 FE tests pass. |
+| **Record & Notify** | `M2-RECORD-004` + `M2-NOTIFY-003` | TV4 / Member 4 | **ACCEPTED** | Clinical grant TOTP, chống replay proof, callback hoàn tất ca, unread-count, read-all, 12 DB/HTTP integration tests pass. |
+| **Tích hợp toàn diện** | `M2-INTEGRATION-005` | TV1 + TV2/3/4 | **ACCEPTED** | 104/104 contract tests pass, 27/27 DB integration tests pass, 466 backend unit tests pass, 283 FE tests pass. |
 
 ---
 
@@ -238,20 +238,20 @@ Trạng thái: ACCEPTED
 ```text
 Member / task ID: TV1 + Provider Owners — M2-INTEGRATION-005
 Branch / worktree: test/m2-integration-005-api-v2-clinic-workflow (/home/Williams/Projects/ClinicAppoiment-worktrees/backend-openapi)
-Base SHA -> final SHA: dad4f96 -> 04d0666
+Base SHA -> final SHA: dad4f96 -> be891a5
 Owned paths: Toàn bộ 8 workspaces backend và openapi-contract-tests
 Provider/consumer dependencies: Tích hợp chéo toàn bộ 6 services và API Gateway
 Contract sections / operation IDs: Đầy đủ 100% API Contract v2 (Mục 1–17)
 Schema migration and rollback: Đã nạp và kiểm chứng an toàn trên 5 databases PostgreSQL test riêng biệt (Phương án A)
 Tests run (command, exit, pass/fail/skip):
   - Build & Lint: Exit 0 (0 errors trên cả 8 workspaces)
-  - Backend Unit & Domain Tests: 474 pass, 0 fail, 0 skip
+  - Backend Unit & Domain Tests: 466 pass, 0 fail, 0 skip
   - Contract Suite: 104 pass, 0 fail, 0 skip
-  - PostgreSQL / HTTP Integration Suite: 24 pass, 0 fail, 0 skip
+  - PostgreSQL / HTTP Integration Suite: 27 pass, 0 fail, 0 skip
   - Frontend Web Suite: 283 pass, 0 fail, 0 skip
-Mock vs PostgreSQL/HTTP/live evidence: 24/24 integration tests pass trên PostgreSQL test thật (container clinic-test-pg port 5433); kiểm chứng 2 giả thuyết HYP-01 và HYP-02
+Mock vs PostgreSQL/HTTP/live evidence: 27/27 integration tests pass trên PostgreSQL test thật (container clinic-test-pg port 5433); kiểm chứng 2 giả thuyết HYP-01 và HYP-02
 Open contract decisions / known gaps: Đã chốt chính sách mặc định fail-closed cho cả 8 quyết định tại Mục 6
 Security/permission review: Kiểm tra toàn diện 0 vi phạm bảo mật, 0 rò rỉ secret trong log, fail-closed an toàn
 Git status clean? Local commit only? Push/merge: no: Clean. Local commit only. Push: NO.
-Trạng thái: ACCEPTED (Đủ điều kiện nghiệm thu và sẵn sàng tạo PR)
+Trạng thái: ACCEPTED (Đủ điều kiện nghiệm thu tích hợp local Nhịp 4)
 ```
