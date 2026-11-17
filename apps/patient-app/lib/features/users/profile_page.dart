@@ -346,6 +346,9 @@ class _ProfilePageState extends State<ProfilePage> {
                                   _loadProfile();
                                 } catch (err) {
                                   if (!mounted || !ctx.mounted) return;
+                                  setSheetState(() {
+                                    validationError = err.toString().replaceFirst('Exception: ', '');
+                                  });
                                   ScaffoldMessenger.of(context).showSnackBar(
                                     SnackBar(
                                       content: Text('Lỗi: $err'),

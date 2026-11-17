@@ -111,7 +111,11 @@ export class ApiClient {
     return this.request<T>("PATCH", path, options);
   }
 
-  private async request<T>(method: "GET" | "POST" | "PATCH", path: string, options: RequestOptions = {}): Promise<ApiResult<T>> {
+  delete<T>(path: string, options?: RequestOptions) {
+    return this.request<T>("DELETE", path, options);
+  }
+
+  private async request<T>(method: "GET" | "POST" | "PATCH" | "DELETE", path: string, options: RequestOptions = {}): Promise<ApiResult<T>> {
     let token: string | null;
     try {
       token = await this.options.session.getAccessToken();

@@ -409,6 +409,54 @@ export function RouteGuard({ children }: { children: ReactNode }) {
   if (session.status === "unauthenticated") {
     return <LoadingState message="Đang chuyển hướng đến trang đăng nhập..." />;
   }
+  if (session.status === "locked") {
+    return (
+      <div className="page-stack" aria-live="assertive">
+        <PageHeader pathname={pathname} />
+        <section
+          role="alert"
+          style={{
+            maxWidth: 520,
+            margin: "40px auto",
+            padding: "32px",
+            background: "var(--surface)",
+            borderRadius: "var(--radius-lg)",
+            border: "1px solid var(--line)",
+            boxShadow: "var(--shadow-md)",
+            textAlign: "center",
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            gap: 16,
+          }}
+        >
+          <div
+            style={{
+              width: 56,
+              height: 56,
+              borderRadius: "50%",
+              background: "var(--warning-light, #FEF3C7)",
+              color: "var(--warning, #D97706)",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <ShieldAlert size={28} />
+          </div>
+          <Badge variant="warning" size="md">
+            PHIÊN LÀM VIỆC ĐANG KHÓA
+          </Badge>
+          <h2 style={{ fontSize: "1.25rem", fontWeight: 700, margin: 0, color: "var(--ink)" }}>
+            Phiên đăng nhập đã bị khóa do không hoạt động
+          </h2>
+          <p style={{ margin: 0, color: "var(--muted)", lineHeight: 1.5, fontSize: "0.9rem" }}>
+            Hệ thống tự động khóa phiên sau 15 phút không thao tác để bảo vệ thông tin bệnh nhân. Vui lòng mở khóa bằng mã TOTP để tiếp tục thao tác.
+          </p>
+        </section>
+      </div>
+    );
+  }
   if (canAccessRoute(route, session)) return <>{children}</>;
 
   return (

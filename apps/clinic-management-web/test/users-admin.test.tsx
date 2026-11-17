@@ -209,6 +209,32 @@ describe("Users & Roles Admin Components (M3-WEB-021)", () => {
       expect(html).toContain("Cảnh báo quyền hạn:");
       expect(html).toContain("toàn quyền cấu hình hệ thống");
     });
+
+    it("renders TOTP step-up verification field and hint when role is changed", () => {
+      const host = document.createElement("div");
+      const root = createRoot(host);
+      act(() => {
+        root.render(
+          <UserRoleModal
+            isOpen={true}
+            user={{ id: "u-2", fullName: "Bác Sĩ Hoàng", email: "doctor@clinic.local", role: "DOCTOR" }}
+            onClose={vi.fn()}
+            onConfirm={vi.fn()}
+          />
+        );
+      });
+
+      const select = host.querySelector("select") as HTMLSelectElement;
+      act(() => {
+        const setter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, "value")?.set;
+        setter?.call(select, "STAFF");
+        select.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+
+      expect(host.textContent).toContain("Mã xác thực TOTP (6 chữ số)");
+      expect(host.textContent).toContain("Thao tác phân quyền yêu cầu xác thực hai lớp (Step-up MFA).");
+      act(() => root.unmount());
+    });
   });
 
   describe("UserStatusModal", () => {
@@ -259,6 +285,26 @@ describe("Users & Roles Admin Components (M3-WEB-021)", () => {
       expect(html).toContain("Không được phép:");
       expect(html).toContain("Bạn không thể tự khóa tài khoản của chính mình.");
       expect(html).toContain("disabled=\"\"");
+    });
+
+    it("renders TOTP step-up verification field when status is changed", () => {
+      const host = document.createElement("div");
+      const root = createRoot(host);
+      act(() => {
+        root.render(
+          <UserStatusModal
+            isOpen={true}
+            user={{ id: "u-3", fullName: "Lễ Tân Mai", email: "staff@clinic.local", status: "INACTIVE" }}
+            targetStatus="ACTIVE"
+            onClose={vi.fn()}
+            onConfirm={vi.fn()}
+          />
+        );
+      });
+
+      expect(host.textContent).toContain("Mã xác thực TOTP (6 chữ số)");
+      expect(host.textContent).toContain("yêu cầu xác thực hai lớp (Step-up MFA)");
+      act(() => root.unmount());
     });
   });
 
@@ -401,6 +447,86 @@ describe("Users & Roles Admin Components (M3-WEB-021)", () => {
 
       // API PATCH should NOT have been called
       expect(patchSpy).not.toHaveBeenCalled();
+    });
+
+    it("initiates step-up challenge and sends verificationProofId on role change when TOTP code is provided", async () => {
+      currentSession = makeSession("ADMIN", "u-1");
+      const calls: { url: string; method: string; body: any }[] = [];
+
+      vi.spyOn(globalThis, "fetch").mockImplementation(async (input, options) => {
+        const url = new URL(String(input));
+        const method = options?.method ?? "GET";
+        const body = options?.body ? JSON.parse(String(options.body)) : undefined;
+        calls.push({ url: url.pathname, method, body });
+
+        if (url.pathname === "/api/v1/users") {
+          return envelope({ items: mockUsers }, { page: 1, limit: 10, total: 3 });
+        }
+        if (url.pathname === "/api/v1/auth/mfa/challenges" && method === "POST") {
+          return envelope({ challengeId: "ch-sensitive-1" });
+        }
+        if (url.pathname === "/api/v1/auth/mfa/verify" && method === "POST") {
+          return envelope({
+            purpose: "AUTHORIZE_SENSITIVE_OPERATION",
+            authorization: { proofId: "proof-uuid-123" },
+          });
+        }
+        if (url.pathname.includes("/role") && method === "PATCH") {
+          return envelope({ ...mockUsers[1], role: body.role });
+        }
+        return envelope({});
+      });
+
+      await act(async () => {
+        root.render(<UsersPanel />);
+      });
+
+      const rows = Array.from(host.querySelectorAll("tbody tr"));
+      const docRow = rows.find((r) => r.textContent?.includes("Bác Sĩ Hoàng"))!;
+      const editRoleBtn = Array.from(docRow.querySelectorAll("button")).find(
+        (b) => b.textContent?.trim() === "Đổi vai trò"
+      )!;
+
+      await act(async () => {
+        editRoleBtn.click();
+      });
+
+      const roleSelect = host.querySelector("#user-role-select") as HTMLSelectElement;
+      await act(async () => {
+        const setter = Object.getOwnPropertyDescriptor(window.HTMLSelectElement.prototype, "value")?.set;
+        setter?.call(roleSelect, "STAFF");
+        roleSelect.dispatchEvent(new Event("change", { bubbles: true }));
+      });
+
+      const totpInput = host.querySelector("#user-role-totp") as HTMLInputElement;
+      expect(totpInput).toBeTruthy();
+      await act(async () => {
+        changeInput(totpInput, "654321");
+      });
+
+      const confirmBtn = Array.from(host.querySelectorAll("button")).find(
+        (b) => b.textContent?.trim() === "Xác nhận thay đổi" && !!b.closest("[role='dialog']")
+      )!;
+
+      await act(async () => {
+        confirmBtn.click();
+      });
+
+      const chCall = calls.find((c) => c.url === "/api/v1/auth/mfa/challenges");
+      expect(chCall).toBeTruthy();
+      expect(chCall?.body.purpose).toBe("AUTHORIZE_SENSITIVE_OPERATION");
+      expect(chCall?.body.context.operation).toBe("UPDATE_USER_ROLE");
+      expect(chCall?.body.context.role).toBe("STAFF");
+
+      const verifyCall = calls.find((c) => c.url === "/api/v1/auth/mfa/verify");
+      expect(verifyCall).toBeTruthy();
+      expect(verifyCall?.body.challengeId).toBe("ch-sensitive-1");
+      expect(verifyCall?.body.code).toBe("654321");
+
+      const patchCall = calls.find((c) => c.url === "/api/v1/users/u-2/role");
+      expect(patchCall).toBeTruthy();
+      expect(patchCall?.body.verificationProofId).toBe("proof-uuid-123");
+      expect(patchCall?.body.role).toBe("STAFF");
     });
   });
 });

@@ -16,7 +16,7 @@ export interface UserStatusModalProps {
   targetStatus?: UserStatus;
   currentUserId?: string;
   onClose: () => void;
-  onConfirm: (userId: string, newStatus: UserStatus) => Promise<void>;
+  onConfirm: (userId: string, newStatus: UserStatus, totpCode?: string) => Promise<void>;
   isLoading?: boolean;
 }
 
@@ -32,12 +32,15 @@ export function UserStatusModal({
   const [selectedStatus, setSelectedStatus] = useState<UserStatus>(
     () => targetStatus ?? user?.status ?? "ACTIVE"
   );
+  const [totpCode, setTotpCode] = useState("");
 
   useEffect(() => {
     if (targetStatus) {
       setSelectedStatus(targetStatus);
+      setTotpCode("");
     } else if (user) {
       setSelectedStatus(user.status);
+      setTotpCode("");
     }
   }, [user, targetStatus]);
 
@@ -56,7 +59,7 @@ export function UserStatusModal({
       onClose();
       return;
     }
-    await onConfirm(user.id, selectedStatus);
+    await onConfirm(user.id, selectedStatus, totpCode.trim());
   };
 
   const modalTitle = isLocking
@@ -134,6 +137,30 @@ export function UserStatusModal({
               <strong>Lưu ý:</strong>
             </span>{" "}
             Tài khoản ở trạng thái chưa kích hoạt sẽ cần xác thực hoặc kích hoạt lại để sử dụng.
+          </div>
+        )}
+
+        {!isUnchanged && !cannotLockSelf && (
+          <div className={styles.modalField}>
+            <label htmlFor="user-status-totp" className={styles.modalLabel}>
+              Mã xác thực TOTP (6 chữ số)
+            </label>
+            <input
+              id="user-status-totp"
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              maxLength={6}
+              className={styles.searchInput}
+              value={totpCode}
+              onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, ""))}
+              placeholder="Nhập mã 6 chữ số từ ứng dụng xác thực"
+              disabled={isLoading}
+              autoComplete="one-time-code"
+            />
+            <p className={styles.fieldHint}>
+              Thao tác cập nhật trạng thái tài khoản yêu cầu xác thực hai lớp (Step-up MFA).
+            </p>
           </div>
         )}
       </div>

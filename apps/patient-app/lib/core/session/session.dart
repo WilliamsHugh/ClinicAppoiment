@@ -35,9 +35,17 @@ abstract interface class CredentialSessionProvider {
 }
 
 class SessionException implements Exception {
-  const SessionException(this.message);
+  const SessionException(
+    this.message, {
+    this.statusCode,
+    this.code,
+    this.isNetworkError = false,
+  });
 
   final String message;
+  final int? statusCode;
+  final String? code;
+  final bool isNetworkError;
 
   @override
   String toString() => message;

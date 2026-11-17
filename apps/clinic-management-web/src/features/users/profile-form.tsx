@@ -3,7 +3,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
 import { createBrowserApiClient } from "../../lib/api/client";
 import { useSession } from "../../lib/session/session-context";
-import { Button, Input, Alert, ConfirmModal, Skeleton } from "../../components/ui";
+import { Button, Input, Alert, ConfirmModal, Skeleton, Badge } from "../../components/ui";
 import { PageHeader } from "../../components/page-header";
 import styles from "./profile.module.css";
 
@@ -14,6 +14,20 @@ export interface OwnProfile {
   phone?: string | null;
   role: "DOCTOR" | "STAFF" | "ADMIN";
   status: "ACTIVE" | "INACTIVE" | "LOCKED";
+}
+
+export interface SessionItem {
+  sessionId: string;
+  isCurrent?: boolean;
+  role: string;
+  state: "ACTIVE" | "PENDING_MFA" | "LOCKED" | "EXPIRED" | "REVOKED";
+  startedAt: string;
+  lastActiveAt: string;
+  idleExpiresAt?: string | null;
+  absoluteExpiresAt?: string | null;
+  lockAt?: string | null;
+  deviceInfo?: string | null;
+  createdAt?: string;
 }
 
 function validateFullName(value: string): string | undefined {
@@ -63,6 +77,11 @@ export function ProfileForm() {
   const [notice, setNotice] = useState<string | null>(null);
   const [confirmSave, setConfirmSave] = useState(false);
   const [confirmLogout, setConfirmLogout] = useState(false);
+  const [sessions, setSessions] = useState<SessionItem[]>([]);
+  const [loadingSessions, setLoadingSessions] = useState(false);
+  const [sessionError, setSessionError] = useState<string | null>(null);
+  const [revokingSessionId, setRevokingSessionId] = useState<string | null>(null);
+  const [confirmRevokeSession, setConfirmRevokeSession] = useState<SessionItem | null>(null);
   const fullNameError = touched.fullName ? validateFullName(fullName) : undefined;
   const phoneError = touched.phone ? validatePhone(phone) : undefined;
 
@@ -85,6 +104,20 @@ export function ProfileForm() {
     }
   }, [client]);
 
+  const loadSessions = useCallback(async () => {
+    setLoadingSessions(true);
+    setSessionError(null);
+    try {
+      const result = await client.get<{ items: SessionItem[] }>("/api/v1/auth/sessions");
+      const list = Array.isArray(result.data?.items) ? result.data.items : [];
+      setSessions(list);
+    } catch (cause) {
+      setSessionError(cause instanceof Error ? cause.message : "Không thể tải danh sách phiên đăng nhập.");
+    } finally {
+      setLoadingSessions(false);
+    }
+  }, [client]);
+
   useEffect(() => {
     setProfile(null);
     setFullName("");
@@ -94,10 +127,31 @@ export function ProfileForm() {
     setNotice(null);
     setConfirmSave(false);
     setConfirmLogout(false);
-    if (session.status === "authenticated" && accountId) void loadProfile();
-    else setLoading(session.status === "loading");
+    setConfirmRevokeSession(null);
+    if (session.status === "authenticated" && accountId) {
+      void loadProfile();
+      void loadSessions();
+    } else {
+      setLoading(session.status === "loading");
+    }
     return () => { request.current?.abort(); };
-  }, [accountId, session.status, loadProfile]);
+  }, [accountId, session.status, loadProfile, loadSessions]);
+
+  async function executeRevokeSession() {
+    if (!confirmRevokeSession) return;
+    const target = confirmRevokeSession;
+    setRevokingSessionId(target.sessionId);
+    try {
+      await client.delete(`/api/v1/auth/sessions/${target.sessionId}`);
+      setSessions((prev) => prev.filter((s) => s.sessionId !== target.sessionId));
+      setNotice("Đã thu hồi phiên đăng nhập thành công.");
+    } catch (cause) {
+      setSessionError(cause instanceof Error ? cause.message : "Không thể thu hồi phiên đăng nhập.");
+    } finally {
+      setRevokingSessionId(null);
+      setConfirmRevokeSession(null);
+    }
+  }
 
   function handleSave(event: FormEvent) {
     event.preventDefault();
@@ -186,8 +240,62 @@ export function ProfileForm() {
       <section className={styles.section} aria-labelledby="profile-security-title">
         <div className={styles.sectionHeading}>
           <h2 id="profile-security-title">Bảo mật và phiên đăng nhập</h2>
-          <p className={styles.description}>Đăng xuất sẽ kết thúc các phiên đăng nhập của tài khoản trên tất cả thiết bị.</p>
+          <p className={styles.description}>
+            Quản lý các phiên đăng nhập đang hoạt động của tài khoản trên các thiết bị.
+          </p>
         </div>
+
+        {sessionError && (
+          <Alert variant="danger" title="Lỗi phiên đăng nhập">
+            <p>{sessionError}</p>
+            <Button variant="outline" size="sm" type="button" onClick={() => void loadSessions()}>Thử lại</Button>
+          </Alert>
+        )}
+
+        <div className={styles.sessionList} role="region" aria-label="Danh sách phiên đăng nhập">
+          {loadingSessions && sessions.length === 0 ? (
+            <Skeleton height={60} width="100%" />
+          ) : sessions.length === 0 ? (
+            <p className={styles.description}>Không có phiên đăng nhập nào khác.</p>
+          ) : (
+            sessions.map((item) => {
+              const isCurrent = item.isCurrent || (session.sessionId && item.sessionId === session.sessionId);
+              const deviceLabel = item.deviceInfo || "Thiết bị không xác định";
+              const lastActive = item.lastActiveAt ? new Date(item.lastActiveAt).toLocaleString("vi-VN") : "Chưa ghi nhận";
+
+              return (
+                <div key={item.sessionId} className={styles.sessionItem}>
+                  <div className={styles.sessionInfo}>
+                    <div className={styles.sessionHeader}>
+                      <span className={styles.sessionTitle}>{deviceLabel}</span>
+                      {isCurrent && <Badge variant="info" size="sm">Phiên hiện tại</Badge>}
+                      {item.state === "ACTIVE" && <Badge variant="success" size="sm">Hoạt động</Badge>}
+                      {item.state === "LOCKED" && <Badge variant="warning" size="sm">Tạm khóa</Badge>}
+                      {item.state === "EXPIRED" && <Badge variant="neutral" size="sm">Hết hạn</Badge>}
+                      {item.state === "REVOKED" && <Badge variant="danger" size="sm">Đã thu hồi</Badge>}
+                    </div>
+                    <p className={styles.sessionMeta}>
+                      <span>Hoạt động gần nhất: {lastActive}</span>
+                    </p>
+                  </div>
+                  {!isCurrent && item.state !== "REVOKED" && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      type="button"
+                      disabled={revokingSessionId === item.sessionId}
+                      loading={revokingSessionId === item.sessionId}
+                      onClick={() => setConfirmRevokeSession(item)}
+                    >
+                      Thu hồi
+                    </Button>
+                  )}
+                </div>
+              );
+            })
+          )}
+        </div>
+
         <div className={styles.actions}>
           <Button variant="danger" type="button" disabled={signingOut} onClick={() => setConfirmLogout(true)}>
             Đăng xuất tất cả thiết bị
@@ -204,6 +312,17 @@ export function ProfileForm() {
         }}
         title="Xác nhận đăng xuất" description="Đăng xuất tài khoản trên tất cả thiết bị? Những thay đổi chưa lưu sẽ bị mất."
         confirmLabel="Đăng xuất tất cả thiết bị" cancelLabel="Quay lại" variant="danger" loading={signingOut} />
+      <ConfirmModal
+        isOpen={Boolean(confirmRevokeSession)}
+        onCancel={() => setConfirmRevokeSession(null)}
+        onConfirm={executeRevokeSession}
+        title="Xác nhận thu hồi phiên đăng nhập"
+        description={`Bạn có chắc chắn muốn kết thúc phiên đăng nhập trên thiết bị "${confirmRevokeSession?.deviceInfo || "này"}"? Thiết bị sẽ bị đăng xuất ngay lập tức.`}
+        confirmLabel="Thu hồi phiên"
+        cancelLabel="Hủy"
+        variant="danger"
+        loading={Boolean(revokingSessionId)}
+      />
     </div>
   );
 }

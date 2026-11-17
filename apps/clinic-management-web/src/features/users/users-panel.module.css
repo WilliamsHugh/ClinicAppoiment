@@ -230,3 +230,10 @@
   font-size: 0.8125rem;
   line-height: 1.45;
 }
+
+.fieldHint {
+  font-size: 0.75rem;
+  color: var(--muted);
+  margin: 0;
+  line-height: 1.4;
+}

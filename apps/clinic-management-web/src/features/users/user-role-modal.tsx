@@ -14,7 +14,7 @@ export interface UserRoleModalProps {
   } | null;
   currentUserId?: string;
   onClose: () => void;
-  onConfirm: (userId: string, newRole: ClinicRole) => Promise<void>;
+  onConfirm: (userId: string, newRole: ClinicRole, totpCode?: string) => Promise<void>;
   isLoading?: boolean;
 }
 
@@ -27,10 +27,12 @@ export function UserRoleModal({
   isLoading = false,
 }: UserRoleModalProps) {
   const [selectedRole, setSelectedRole] = useState<ClinicRole>(() => user?.role ?? "PATIENT");
+  const [totpCode, setTotpCode] = useState("");
 
   useEffect(() => {
     if (user) {
       setSelectedRole(user.role);
+      setTotpCode("");
     }
   }, [user]);
 
@@ -44,7 +46,7 @@ export function UserRoleModal({
       onClose();
       return;
     }
-    await onConfirm(user.id, selectedRole);
+    await onConfirm(user.id, selectedRole, totpCode.trim());
   };
 
   return (
@@ -108,6 +110,30 @@ export function UserRoleModal({
               <strong>Lưu ý:</strong>
             </span>{" "}
             Bác sĩ cần được phân công chuyên khoa và lịch trực tại Doctor Service để có thể nhận lịch khám.
+          </div>
+        )}
+
+        {!isUnchanged && (
+          <div className={styles.modalField}>
+            <label htmlFor="user-role-totp" className={styles.modalLabel}>
+              Mã xác thực TOTP (6 chữ số)
+            </label>
+            <input
+              id="user-role-totp"
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              maxLength={6}
+              className={styles.searchInput}
+              value={totpCode}
+              onChange={(e) => setTotpCode(e.target.value.replace(/\D/g, ""))}
+              placeholder="Nhập mã 6 chữ số từ ứng dụng xác thực"
+              disabled={isLoading}
+              autoComplete="one-time-code"
+            />
+            <p className={styles.fieldHint}>
+              Thao tác phân quyền yêu cầu xác thực hai lớp (Step-up MFA).
+            </p>
           </div>
         )}
       </div>
