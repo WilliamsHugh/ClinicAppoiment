@@ -26,6 +26,7 @@ export function QueueActionDialog({ item, action, api, onClose, onUpdated, onSta
   const [revision, setRevision] = useState(0);
   const busyRef = useRef(false);
   const alive = useRef(true);
+  const idempotencyKeyRef = useRef<string>(typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `queue-${Date.now()}-${Math.random().toString(36).slice(2)}`);
   useEffect(() => { alive.current = true; return () => { alive.current = false; }; }, []);
   useEffect(() => {
     if (action !== "reschedule" || !date) return;
@@ -52,7 +53,7 @@ export function QueueActionDialog({ item, action, api, onClose, onUpdated, onSta
     }
     busyRef.current = true; setBusy(true); setError("");
     try {
-      const updated = await api.mutate(item, action, reason, slot);
+      const updated = await api.mutate(item, action, reason, slot, idempotencyKeyRef.current);
       if (alive.current) onUpdated(updated);
     } catch (caught) {
       if (!alive.current) return;

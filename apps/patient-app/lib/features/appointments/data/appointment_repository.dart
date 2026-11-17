@@ -111,10 +111,12 @@ class AppointmentRepository {
   }
 
   Future<PatientAppointment> _change(
-      String id, String action, Map<String, Object?> body) async {
+      String id, String action, Map<String, Object?> body,
+      {String? idempotencyKey}) async {
     final response = await _api.patch(
         '/api/v1/appointments/${Uri.encodeComponent(id)}/$action',
-        body: body);
+        body: body,
+        idempotencyKey: idempotencyKey);
     final item =
         PatientAppointment.fromJson(response.data as Map<String, dynamic>);
     if (item.id != id) throw const FormatException('Mismatched appointment');
@@ -176,11 +178,13 @@ class AppointmentRepository {
         .toList(growable: false);
   }
 
-  Future<PatientAppointment> cancel(String id, {String? reason}) =>
-      _change(id, 'cancel', {if (reason != null) 'reason': reason.trim()});
+  Future<PatientAppointment> cancel(String id,
+          {String? reason, String? idempotencyKey}) =>
+      _change(id, 'cancel', {if (reason != null) 'reason': reason.trim()},
+          idempotencyKey: idempotencyKey);
 
   Future<PatientAppointment> reschedule(String id, DateTime start, DateTime end,
-      {String? reason}) async {
+      {String? reason, String? idempotencyKey}) async {
     if (!start.isAfter(DateTime.now().toUtc()) || !end.isAfter(start)) {
       throw const ApiException(
           code: 'APPOINTMENT_SLOT_INVALID', message: 'Khung giờ không hợp lệ.');
@@ -189,7 +193,7 @@ class AppointmentRepository {
       'scheduledStartAt': start.toUtc().toIso8601String(),
       'scheduledEndAt': end.toUtc().toIso8601String(),
       if (reason != null) 'reason': reason.trim(),
-    });
+    }, idempotencyKey: idempotencyKey);
   }
 }
 

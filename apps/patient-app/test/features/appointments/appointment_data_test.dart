@@ -136,23 +136,28 @@ void main() {
     await expectLater(AppointmentRepository(expired.api).fetchAll(),
         throwsA(isA<Exception>()));
   });
-  test('cancel and reschedule use owner endpoints with exact UTC payloads',
+  test('cancel and reschedule use owner endpoints with exact UTC payloads and idempotency keys',
       () async {
     final gateway = AppointmentGateway();
     final repo = AppointmentRepository(gateway.api);
     final start = DateTime.parse('${clinicDay(2)}T10:00:00+07:00');
     final end = start.add(const Duration(minutes: 30));
-    await repo.reschedule(appointmentId, start, end, reason: ' Đổi giờ ');
+    await repo.reschedule(appointmentId, start, end,
+        reason: ' Đổi giờ ', idempotencyKey: 'test-resched-key');
     expect(jsonDecode(gateway.writes.single.body), {
       'scheduledStartAt': start.toUtc().toIso8601String(),
       'scheduledEndAt': end.toUtc().toIso8601String(),
       'reason': 'Đổi giờ'
     });
-    await repo.cancel(appointmentId, reason: ' Hủy theo yêu cầu ');
+    expect(gateway.writes.single.headers['Idempotency-Key'], 'test-resched-key');
+
+    await repo.cancel(appointmentId,
+        reason: ' Hủy theo yêu cầu ', idempotencyKey: 'test-cancel-key');
     expect(
         jsonDecode(gateway.writes.last.body), {'reason': 'Hủy theo yêu cầu'});
     expect(
         gateway.writes.last.headers['Authorization'], 'Bearer synthetic-token');
+    expect(gateway.writes.last.headers['Idempotency-Key'], 'test-cancel-key');
   });
   test('rescheduling refuses past or inverted slots without sending a write',
       () async {

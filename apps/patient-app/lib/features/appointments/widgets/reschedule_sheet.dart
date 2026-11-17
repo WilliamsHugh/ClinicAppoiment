@@ -1,3 +1,6 @@
+import 'dart:convert';
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 
 import '../../../core/api/api_models.dart';
@@ -58,6 +61,8 @@ class _RescheduleSheetState extends State<RescheduleSheet> {
   bool _finished = false;
   int _request = 0;
   RequestCancellation? _cancellation;
+  String? _fingerprint;
+  String? _idempotencyKey;
 
   @override
   void initState() {
@@ -154,17 +159,31 @@ class _RescheduleSheetState extends State<RescheduleSheet> {
       return;
     }
     FocusScope.of(context).unfocus();
+    final fingerprint = widget.cancel
+        ? jsonEncode(['cancel', widget.appointment.id, _reason.text.trim()])
+        : jsonEncode([
+            'reschedule',
+            widget.appointment.id,
+            _selected!.startAt.toUtc().toIso8601String(),
+            _selected!.endAt.toUtc().toIso8601String(),
+            _reason.text.trim()
+          ]);
+    if (_fingerprint != fingerprint) {
+      _fingerprint = fingerprint;
+      _idempotencyKey =
+          'm-appt-${widget.cancel ? "cancel" : "resched"}-${DateTime.now().microsecondsSinceEpoch}-${Random().nextInt(999999)}';
+    }
     setState(() {
       _busy = true;
       _error = null;
     });
     try {
       final item = widget.cancel
-          ? await widget.repository
-              .cancel(widget.appointment.id, reason: _reason.text)
+          ? await widget.repository.cancel(widget.appointment.id,
+              reason: _reason.text, idempotencyKey: _idempotencyKey)
           : await widget.repository.reschedule(
               widget.appointment.id, _selected!.startAt, _selected!.endAt,
-              reason: _reason.text);
+              reason: _reason.text, idempotencyKey: _idempotencyKey);
       if (!mounted) return;
       setState(() {
         _busy = false;

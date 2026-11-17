@@ -79,8 +79,9 @@ function AuthenticatedQueue({ session, PatientLookup, hideHeader = false }: Queu
   async function quickAction(item: QueueAppointment, action: QueueAction) {
     if (busyRef.current || !canAct || !allowedActions(role, item.status).includes(action)) return;
     busyRef.current = true; setBusyId(item.id); setNotice(""); setError("");
+    const idempotencyKey = typeof crypto !== "undefined" && crypto.randomUUID ? crypto.randomUUID() : `quick-${Date.now()}-${Math.random().toString(36).slice(2)}`;
     try {
-      const result = await api.mutate(item, action);
+      const result = await api.mutate(item, action, undefined, undefined, idempotencyKey);
       if (alive.current) updated(result, actionLabels[action]);
     } catch (caught) {
       if (alive.current) { setError(queueError(caught)); setConfirmation(null); }

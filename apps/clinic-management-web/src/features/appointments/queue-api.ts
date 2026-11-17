@@ -142,7 +142,7 @@ export function appointmentApi(client: ApiClient, role: ClinicRole) {
         Date.parse(slot.startAt) >= Date.parse(from) && Date.parse(slot.startAt) < Date.parse(to))
         .sort((a, b) => Date.parse(a.startAt) - Date.parse(b.startAt));
     },
-    async mutate(item: Appointment, action: QueueAction, reason = "", slot?: Slot): Promise<Appointment> {
+    async mutate(item: Appointment, action: QueueAction, reason = "", slot?: Slot, idempotencyKey?: string): Promise<Appointment> {
       if (!allowedActions(role, item.status).includes(action)) {
         throw new ApiClientError("Thao tác không được phép với lịch hẹn này.", 403, "ACCESS_DENIED");
       }
@@ -160,6 +160,7 @@ export function appointmentApi(client: ApiClient, role: ClinicRole) {
           ...(action === "reschedule" && slot ? {
             scheduledStartAt: new Date(slot.startAt).toISOString(), scheduledEndAt: new Date(slot.endAt).toISOString(),
           } : {}) },
+        idempotencyKey,
       });
       parseAppointment(data);
       if (data.id !== item.id) invalidResponse();

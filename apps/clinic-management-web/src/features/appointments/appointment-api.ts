@@ -59,24 +59,28 @@ export const appointmentApi = (client: ApiClient) => ({
 
   get: (id: string) => client.get<Appointment>(`/api/v1/appointments/${id}`),
 
-  confirm: (id: string, reason?: string) =>
+  confirm: (id: string, reason?: string, idempotencyKey?: string) =>
     client.patch<Appointment>(`/api/v1/appointments/${id}/confirm`, {
       body: reason ? { reason } : {},
+      idempotencyKey,
     }),
 
-  cancel: (id: string, reason?: string) =>
+  cancel: (id: string, reason?: string, idempotencyKey?: string) =>
     client.patch<Appointment>(`/api/v1/appointments/${id}/cancel`, {
       body: reason ? { reason } : {},
+      idempotencyKey,
     }),
 
-  checkIn: (id: string, reason?: string) =>
+  checkIn: (id: string, reason?: string, idempotencyKey?: string) =>
     client.patch<Appointment>(`/api/v1/appointments/${id}/check-in`, {
       body: reason ? { reason } : {},
+      idempotencyKey,
     }),
 
-  noShow: (id: string, reason?: string) =>
+  noShow: (id: string, reason?: string, idempotencyKey?: string) =>
     client.patch<Appointment>(`/api/v1/appointments/${id}/no-show`, {
       body: reason ? { reason } : {},
+      idempotencyKey,
     }),
 
   getPatient: (patientId: string, appointmentId?: string) =>

@@ -30,6 +30,7 @@ interface ConfirmDialogState {
   description: string;
   confirmLabel: string;
   variant: "primary" | "danger";
+  idempotencyKey?: string;
 }
 
 export function AppointmentsPanel({ onOpenQueue }: { onOpenQueue?: () => void } = {}) {
@@ -245,6 +246,9 @@ export function AppointmentsPanel({ onOpenQueue }: { onOpenQueue?: () => void } 
     });
   }, [appointments, loadedQuery, queryKey, searchQuery, patientsMap, doctorsMap]);
 
+  const createIdempotencyKey = (prefix: string) =>
+    `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+
   // Handlers for status transitions
   const handleExecuteConfirm = async () => {
     const appointment = confirmDialog.appointment;
@@ -260,7 +264,7 @@ export function AppointmentsPanel({ onOpenQueue }: { onOpenQueue?: () => void } 
     });
 
     try {
-      const updated = await api.confirm(appointment.id);
+      const updated = await api.confirm(appointment.id, undefined, confirmDialog.idempotencyKey);
       setAppointments((prev) =>
         prev.map((a) => (a.id === appointment.id ? updated.data : a))
       );
@@ -295,7 +299,7 @@ export function AppointmentsPanel({ onOpenQueue }: { onOpenQueue?: () => void } 
     });
 
     try {
-      const updated = await api.checkIn(appointment.id);
+      const updated = await api.checkIn(appointment.id, undefined, confirmDialog.idempotencyKey);
       setAppointments((prev) =>
         prev.map((a) => (a.id === appointment.id ? updated.data : a))
       );
@@ -326,6 +330,7 @@ export function AppointmentsPanel({ onOpenQueue }: { onOpenQueue?: () => void } 
       description: `Bạn có chắc chắn muốn xác nhận lịch hẹn khám cho ${pName}? ${reviewContext(appointment)} Trạng thái sẽ chuyển từ Chờ xác nhận sang Đã xác nhận.`,
       confirmLabel: "Xác nhận lịch hẹn",
       variant: "primary",
+      idempotencyKey: createIdempotencyKey("confirm"),
     });
   };
 
@@ -339,6 +344,7 @@ export function AppointmentsPanel({ onOpenQueue }: { onOpenQueue?: () => void } 
       description: `Ghi nhận ${pName} đã có mặt tại phòng khám và chuyển vào hàng đợi chờ bác sĩ khám? ${reviewContext(appointment)}`,
       confirmLabel: "Xác nhận Check-in",
       variant: "primary",
+      idempotencyKey: createIdempotencyKey("checkin"),
     });
   };
 
@@ -356,7 +362,7 @@ export function AppointmentsPanel({ onOpenQueue }: { onOpenQueue?: () => void } 
     });
 
     try {
-      const updated = await api.cancel(appointment.id, "Hủy bởi nhân viên quản trị");
+      const updated = await api.cancel(appointment.id, "Hủy bởi nhân viên quản trị", confirmDialog.idempotencyKey);
       setAppointments((prev) =>
         prev.map((a) => (a.id === appointment.id ? updated.data : a))
       );
@@ -391,7 +397,7 @@ export function AppointmentsPanel({ onOpenQueue }: { onOpenQueue?: () => void } 
     });
 
     try {
-      const updated = await api.noShow(appointment.id, "Bệnh nhân không đến theo lịch hẹn");
+      const updated = await api.noShow(appointment.id, "Bệnh nhân không đến theo lịch hẹn", confirmDialog.idempotencyKey);
       setAppointments((prev) =>
         prev.map((a) => (a.id === appointment.id ? updated.data : a))
       );
@@ -422,6 +428,7 @@ export function AppointmentsPanel({ onOpenQueue }: { onOpenQueue?: () => void } 
       description: `Bạn có chắc chắn muốn hủy lịch hẹn của ${pName}? ${reviewContext(appointment)} Thao tác này sẽ cập nhật trạng thái sang "Đã hủy" và không thể hoàn tác.`,
       confirmLabel: "Hủy lịch hẹn",
       variant: "danger",
+      idempotencyKey: createIdempotencyKey("cancel"),
     });
   };
 
@@ -435,6 +442,7 @@ export function AppointmentsPanel({ onOpenQueue }: { onOpenQueue?: () => void } 
       description: `Đánh dấu ${pName} không đến phòng khám theo giờ hẹn đã đăng ký? ${reviewContext(appointment)}`,
       confirmLabel: "Xác nhận vắng mặt",
       variant: "danger",
+      idempotencyKey: createIdempotencyKey("noshow"),
     });
   };
 
