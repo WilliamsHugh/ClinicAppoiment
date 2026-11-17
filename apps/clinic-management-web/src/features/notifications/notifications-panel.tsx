@@ -222,18 +222,36 @@ function NotificationsPanelWorkspace({ session }: { session: Session }) {
     setMarkingAllGlobal(true);
     setMutationError(null);
     try {
-      const nowIso = new Date().toISOString();
-      await client.patch<{ updatedCount: number }>("/api/v1/notifications/read-all", {
-        body: { readBefore: nowIso },
+      const res = await client.patch<{
+        updatedCount: number;
+        unreadCount: number;
+        readBefore: string;
+        readAt: string;
+      }>("/api/v1/notifications/read-all", {
+        body: {},
       });
-      setItems((prev) =>
-        filter === "UNREAD" ? [] : prev.map((item) => ({ ...item, status: "READ" }))
-      );
-      if (typeof unreadCount === "number") {
-        setUnreadCount(0);
+
+      const serverCutoff = res.data?.readBefore ? new Date(res.data.readBefore).getTime() : Date.now();
+      const serverUnreadCount = typeof res.data?.unreadCount === "number" ? res.data.unreadCount : 0;
+
+      setItems((prev) => {
+        if (filter === "UNREAD") {
+          return prev.filter((item) => new Date(item.createdAt).getTime() > serverCutoff);
+        }
+        return prev.map((item) => {
+          if (new Date(item.createdAt).getTime() <= serverCutoff) {
+            return { ...item, status: "READ" };
+          }
+          return item;
+        });
+      });
+
+      setUnreadCount(serverUnreadCount);
+      if (filter === "UNREAD") {
+        setTotal(serverUnreadCount);
+      } else if (typeof res.data?.unreadCount !== "number" && refreshUnreadCount) {
+        void refreshUnreadCount();
       }
-      if (filter === "UNREAD") setTotal(0);
-      if (refreshUnreadCount) void refreshUnreadCount();
     } catch (caught: unknown) {
       setMutationError(
         caught instanceof Error
