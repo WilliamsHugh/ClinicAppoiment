@@ -42,12 +42,13 @@ All public requests from clients strictly pass through the single public entrypo
 
 ## 2. Test Execution & Evidence Matrix
 
-### Summary of Test Suites
-| Test Suite / Runner | Target | Assertions / Tests | Exit Code | Status |
+### Comprehensive Team Deliverables Summary
+| Member / Role | Scope / Flow | Commits | Test Suites & Results | Status |
 |---|---|---|---|---|
-| `packages/openapi-contract-tests/test/live-openapi.mjs` | Live Gateway (8080) & 5 Services (3001–3005) | 18 / 18 | `0` | **PASS** |
-| `packages/openapi-contract-tests` (vitest run) | V2 Contract Spec, Integration Harness, OpenAPI Schema | 104 / 104 | `0` | **PASS** |
-| `scripts/run-m2-live-journey.mjs` | Full Live Cross-Service Journey + Database Assertions | 44 / 44 | `0` | **PASS** |
+| **Member 1 (TV1)** | Gateway, Harness, Cross-Service Clinical Journey (Nhịp 0, 2, 3, 4) | `2df224c` | `live-openapi.mjs`: 18/18 PASS<br>`run-m2-live-journey.mjs`: 44/44 PASS<br>`openapi-contract-tests`: 104/104 PASS | **E2E ACCEPTED** |
+| **Member 2 (TV2)** | Auth, MFA, Session Lifecycle & Admin Step-Up (Flutter & Web) | `b6e5797`, `49d99e5` | `gateway_session_provider_live_test.dart`: 1/1 PASS<br>`auth-staff-mfa-live.test.ts`: 2/2 PASS<br>User Service: 82/82 PASS<br>Web: 289/289 PASS, Flutter: 103/103 PASS | **E2E ACCEPTED** |
+| **Member 3 (TV3)** | Patient Booking & Staff Appointments (Flutter & Web) | `663ddfb` | `live_gateway_patient_booking_e2e_test.dart`: 3/3 PASS<br>`live-gateway-staff-e2e.test.ts`: 3/3 PASS<br>Web: 283/283 PASS, Flutter: 98/98 PASS | **E2E ACCEPTED** |
+| **Member 4 (TV4)** | Medical Records & Notifications (Web DOCTOR & Flutter PATIENT) | `d60327a`, `d284776` | `live-e2e-clinical-notifications.mjs`: ALL PASS<br>Medical Record: 42/42 PASS<br>Notification: 30/30 PASS<br>Web: 287/287 PASS, Flutter: 100/100 PASS | **E2E ACCEPTED** |
 
 ---
 
