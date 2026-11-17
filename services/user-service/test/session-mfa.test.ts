@@ -472,6 +472,7 @@ describe("MFA Challenges & Proofs", () => {
   it("handles step-up proof generation and validation for AUTHORIZE_SENSITIVE_OPERATION", async () => {
     const enroll = await mfaService.enrollTotp("admin-user-1", "admin@example.com");
     const factorId = enroll.factorId;
+    await mfaMockRepo.updateMfaFactorStatus(factorId, "verified");
 
     // Create challenge for sensitive operation
     const challenge = await mfaService.createChallenge({
