@@ -58,9 +58,10 @@ export const openapi = {
       MedicalRecord: record,
       ClinicalGrant: {
         type: "object",
-        required: ["id", "sessionId", "doctorId", "patientId", "appointmentId", "accessMode", "issuedAt", "expiresAt"],
+        required: ["id", "grantId", "sessionId", "doctorId", "patientId", "appointmentId", "accessMode", "issuedAt", "expiresAt"],
         properties: {
           id: { type: "string", format: "uuid" },
+          grantId: { type: "string", format: "uuid" },
           sessionId: { type: "string" },
           doctorId: { type: "string", format: "uuid" },
           patientId: { type: "string", format: "uuid" },

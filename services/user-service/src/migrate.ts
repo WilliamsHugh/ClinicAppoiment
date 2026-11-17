@@ -32,6 +32,10 @@ const migrations = [
     version: "003_session_mfa_schema",
     file: "../migrations/20261115_session_mfa_schema.up.sql",
   },
+  {
+    version: "004_mfa_challenge_backoff",
+    file: "../migrations/20261116_mfa_challenge_backoff.up.sql",
+  },
 ];
 
 const client = await pool.connect();

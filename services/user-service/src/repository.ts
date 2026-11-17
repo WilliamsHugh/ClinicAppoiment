@@ -69,6 +69,7 @@ export type MfaChallengeRecord = {
   verifiedAt: string | null;
   attemptCount: number;
   maxAttempts: number;
+  lastAttemptAt: string | null;
   createdAt: string;
 };
 
@@ -123,6 +124,7 @@ const mfaFactorSelect = `id, user_id AS "userId", type, status, secret_encrypted
 const mfaChallengeSelect = `id, factor_id AS "factorId", user_id AS "userId", session_id AS "sessionId",
   purpose, context, expires_at AS "expiresAt", verified_at AS "verifiedAt",
   attempt_count AS "attemptCount", max_attempts AS "maxAttempts",
+  last_attempt_at AS "lastAttemptAt",
   created_at AS "createdAt"`;
 
 const mfaProofSelect = `id, user_id AS "userId", session_id AS "sessionId", challenge_id AS "challengeId",
@@ -598,18 +600,21 @@ export class UserRepository {
   async incrementChallengeAttempt(challengeId: string): Promise<number> {
     const result = await this.pool.query<{ attemptCount: number }>(
       `UPDATE user_service.mfa_challenges
-       SET attempt_count = attempt_count + 1
-       WHERE id = $1 RETURNING attempt_count AS "attemptCount"`,
+       SET attempt_count = attempt_count + 1, last_attempt_at = now()
+       WHERE id = $1 AND verified_at IS NULL AND attempt_count < max_attempts
+         AND (last_attempt_at IS NULL OR last_attempt_at <= now() - interval '30 seconds')
+       RETURNING attempt_count AS "attemptCount"`,
       [challengeId],
     );
     return result.rows[0]?.attemptCount ?? 0;
   }
 
-  async markChallengeVerified(challengeId: string): Promise<void> {
-    await this.pool.query(
-      `UPDATE user_service.mfa_challenges SET verified_at = now() WHERE id = $1`,
+  async markChallengeVerified(challengeId: string): Promise<boolean> {
+    const result = await this.pool.query(
+      `UPDATE user_service.mfa_challenges SET verified_at = now() WHERE id = $1 AND verified_at IS NULL RETURNING id`,
       [challengeId],
     );
+    return (result.rowCount ?? 0) > 0;
   }
 
   async createMfaProof(input: {

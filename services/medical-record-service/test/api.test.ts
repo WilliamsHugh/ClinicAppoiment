@@ -37,11 +37,11 @@ vi.stubEnv("DOCTOR_INTERNAL_API_TOKEN", doctorToken);
 vi.stubEnv("USER_RECORD_INTERNAL_API_TOKEN", userRecordToken);
 const { app, sendOutbox, computeContentDigest } = await import("../src/index.js");
 
-function lookup(doctorId = ids.doctor, bookingValid = true, proofValid = true) {
+function lookup(doctorId = ids.doctor, bookingValid = true, proofValid = true, bookingStatus = "CHECKED_IN") {
   const fetcher = vi.fn(async (input: string, _init?: RequestInit) => {
     let data: unknown;
     if (input.includes("verify-for-medical-record") || input.includes("check-eligibility")) {
-      data = { valid: bookingValid, eligible: bookingValid, appointment: { id: ids.appointment, patientId: ids.patient, doctorId: ids.doctor, status: "CHECKED_IN" } };
+      data = { valid: bookingValid, eligible: bookingValid, appointment: { id: ids.appointment, patientId: ids.patient, doctorId: ids.doctor, status: bookingStatus } };
     } else if (input.includes("doctors/by-user")) {
       data = { id: doctorId, userId: "doctor-user", isActive: true };
     } else if (input.includes("patients/by-user") || input.includes("patients/")) {
@@ -87,6 +87,10 @@ describe("Medical Record API authorization", () => {
       .set("X-User-Id", "doctor-user").set("X-Role", "DOCTOR")
       .query({ scope: "patient-history", view: "detail", patientId: ids.patient });
     expect(noGrantRes.status).toBe(403);
+    const noGrantSummary = await request(app).get("/api/v1/medical-records")
+      .set("X-User-Id", "doctor-user").set("X-Role", "DOCTOR")
+      .query({ scope: "patient-history", view: "summary", patientId: ids.patient });
+    expect(noGrantSummary.status).toBe(403);
 
     // With invalid/expired grant
     mocks.findGrantById.mockResolvedValue(null);
@@ -101,12 +105,14 @@ describe("Medical Record API authorization", () => {
       id: "grant-good",
       doctorId: ids.doctor,
       patientId: ids.patient,
+      sessionId: "session-1",
       accessMode: "CURRENT_ENCOUNTER",
       expiresAt: new Date(Date.now() + 60000).toISOString()
     });
     mocks.findAll.mockResolvedValue({ items: [], page: 1, limit: 20, total: 0 });
     const goodGrantRes = await request(app).get("/api/v1/medical-records")
       .set("X-User-Id", "doctor-user").set("X-Role", "DOCTOR")
+      .set("X-Session-Id", "session-1")
       .set("X-Clinical-Grant", "grant-good")
       .query({ scope: "patient-history", view: "detail", patientId: ids.patient });
     expect(goodGrantRes.status).toBe(200);
@@ -118,6 +124,30 @@ describe("Medical Record API authorization", () => {
       }),
       1, 20, "detail"
     );
+  });
+
+  it("returns only metadata for an authored record until a session-bound grant is provided", async () => {
+    const clinicalRecord = { id: ids.record, appointmentId: ids.appointment, patientId: ids.patient,
+      doctorId: ids.doctor, status: "FINAL", version: 2, createdAt: new Date().toISOString(),
+      diagnosis: "Private diagnosis", prescription: [{ medicineName: "Private medicine" }] };
+    mocks.findById.mockResolvedValue(clinicalRecord);
+    const base = request(app).get(`/api/v1/medical-records/${ids.record}`)
+      .set("X-User-Id", "doctor-user").set("X-Role", "DOCTOR").set("X-Session-Id", "session-1");
+    const summary = await request(app).get(`/api/v1/medical-records/${ids.record}?view=summary`)
+      .set("X-User-Id", "doctor-user").set("X-Role", "DOCTOR");
+    expect(summary.status).toBe(200);
+    expect(summary.body.data.diagnosis).toBeUndefined();
+    expect(summary.body.data.prescription).toBeUndefined();
+    expect((await base).status).toBe(403);
+    mocks.findGrantById.mockResolvedValue({ doctorId: ids.doctor, patientId: ids.patient,
+      sessionId: "session-1", recordId: ids.record, accessMode: "AUTHORED_HISTORY" });
+    const wrongSession = await request(app).get(`/api/v1/medical-records/${ids.record}`)
+      .set("X-User-Id", "doctor-user").set("X-Role", "DOCTOR").set("X-Session-Id", "session-2").set("X-Clinical-Grant", "grant-1");
+    expect(wrongSession.status).toBe(403);
+    const detail = await request(app).get(`/api/v1/medical-records/${ids.record}`)
+      .set("X-User-Id", "doctor-user").set("X-Role", "DOCTOR").set("X-Session-Id", "session-1").set("X-Clinical-Grant", "grant-1");
+    expect(detail.status).toBe(200);
+    expect(detail.body.data.diagnosis).toBe("Private diagnosis");
   });
 
   it("rejects an invalid appointment", async () => {
@@ -141,7 +171,7 @@ describe("Medical Record API authorization", () => {
     const response = await request(app).post("/api/v1/medical-records").set("X-User-Id", "doctor-user").set("X-Role", "DOCTOR")
       .send({ appointmentId: ids.appointment, patientId: ids.patient, doctorId: ids.doctor, diagnosis: "Demo" });
     expect(response.status).toBe(201);
-    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ createdBy: "doctor-user" }), "patient-user");
+    expect(mocks.create).toHaveBeenCalledWith(expect.objectContaining({ createdBy: "doctor-user" }), "patient-user", undefined);
   });
 
   it("sends the Record-only User credential on both Patient lookups", async () => {
@@ -273,14 +303,50 @@ describe("Clinical Grants and Finalization", () => {
 
     expect(response.status).toBe(201);
     expect(response.body.data.accessMode).toBe("CURRENT_ENCOUNTER");
+    expect(response.body.data.grantId).toBe("grant-1");
     expect(mocks.createGrant).toHaveBeenCalledWith(expect.objectContaining({
       doctorId: ids.doctor,
       patientId: ids.patient,
       accessMode: "CURRENT_ENCOUNTER"
-    }));
+    }), "proof-totp-123");
     const proofCall = fetcher.mock.calls.find(([url]) => url.includes("/auth/mfa/proofs/verify"));
     expect(proofCall).toBeDefined();
     expect(JSON.parse(proofCall![1]?.body as string).purpose).toBe("OPEN_CLINICAL_RECORDS");
+  });
+
+  it("rejects a current encounter grant before check-in", async () => {
+    lookup(ids.doctor, true, true, "CONFIRMED");
+    const response = await request(app).post("/api/v1/medical-records/access-grants")
+      .set("X-User-Id", "doctor-user").set("X-Role", "DOCTOR").set("X-Session-Id", "session-1")
+      .send({ verificationProofId: "proof-1", accessMode: "CURRENT_ENCOUNTER",
+        appointmentId: ids.appointment, patientId: ids.patient });
+    expect(response.status).toBe(422);
+    expect(mocks.createGrant).not.toHaveBeenCalled();
+  });
+
+  it("issues an authored-history grant only for the doctor's recent record", async () => {
+    const fetcher = lookup(ids.doctor, true, true, "COMPLETED");
+    mocks.findById.mockResolvedValue({ id: ids.record, appointmentId: ids.appointment,
+      doctorId: ids.doctor, patientId: ids.patient, createdAt: new Date().toISOString() });
+    mocks.createGrant.mockResolvedValue({ id: "grant-authored", sessionId: "session-1",
+      doctorId: ids.doctor, patientId: ids.patient, appointmentId: ids.appointment,
+      recordId: ids.record, accessMode: "AUTHORED_HISTORY" });
+    const response = await request(app).post("/api/v1/medical-records/access-grants")
+      .set("X-User-Id", "doctor-user").set("X-Role", "DOCTOR").set("X-Session-Id", "session-1")
+      .send({ verificationProofId: "proof-1", accessMode: "AUTHORED_HISTORY",
+        appointmentId: ids.appointment, patientId: ids.patient, recordId: ids.record });
+    expect(response.status).toBe(201);
+    const verifyCall = fetcher.mock.calls.find(([url]) => url.includes("/auth/mfa/proofs/verify"));
+    expect(JSON.parse(verifyCall![1]?.body as string).context).toMatchObject({ recordId: ids.record,
+      accessMode: "AUTHORED_HISTORY" });
+
+    mocks.findById.mockResolvedValue({ id: ids.record, appointmentId: ids.appointment,
+      doctorId: ids.doctor, patientId: ids.patient, createdAt: "2020-01-01T00:00:00Z" });
+    const expired = await request(app).post("/api/v1/medical-records/access-grants")
+      .set("X-User-Id", "doctor-user").set("X-Role", "DOCTOR").set("X-Session-Id", "session-1")
+      .send({ verificationProofId: "proof-2", accessMode: "AUTHORED_HISTORY",
+        appointmentId: ids.appointment, patientId: ids.patient, recordId: ids.record });
+    expect(expired.status).toBe(403);
   });
 
   it("verifies internal clinical grant endpoint", async () => {
@@ -340,7 +406,7 @@ describe("Clinical Grants and Finalization", () => {
     };
 
     const response = await request(app).post("/api/v1/medical-records/finalization-contexts")
-      .set("X-User-Id", "doctor-user").set("X-Role", "DOCTOR")
+      .set("X-User-Id", "doctor-user").set("X-Role", "DOCTOR").set("X-Session-Id", "session-1")
       .send({
         appointmentId: ids.appointment,
         recordId: ids.record,
@@ -379,6 +445,8 @@ describe("Clinical Grants and Finalization", () => {
       appointmentId: ids.appointment,
       recordId: ids.record,
       doctorId: ids.doctor,
+      patientId: ids.patient,
+      sessionId: "session-1",
       expectedVersion: 2,
       contentDigest: digest,
       expiresAt: new Date(Date.now() + 60000).toISOString()
@@ -394,7 +462,7 @@ describe("Clinical Grants and Finalization", () => {
     });
 
     const response = await request(app).post(`/api/v1/medical-records/${ids.record}/finalize`)
-      .set("X-User-Id", "doctor-user").set("X-Role", "DOCTOR")
+      .set("X-User-Id", "doctor-user").set("X-Role", "DOCTOR").set("X-Session-Id", "session-1")
       .send({
         contextId: "context-valid",
         verificationProofId: "proof-final-123",

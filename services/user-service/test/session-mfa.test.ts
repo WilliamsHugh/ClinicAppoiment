@@ -315,6 +315,7 @@ describe("MFA Challenges & Proofs", () => {
         expiresAt: input.expiresAt.toISOString(),
         verifiedAt: null,
         attemptCount: 0,
+        lastAttemptAt: null,
         maxAttempts: input.maxAttempts ?? 5,
         createdAt: new Date().toISOString(),
       };
@@ -328,11 +329,14 @@ describe("MFA Challenges & Proofs", () => {
       const c = this.challenges.get(id);
       if (!c) return 0;
       c.attemptCount++;
+      c.lastAttemptAt = new Date().toISOString();
       return c.attemptCount;
     },
     async markChallengeVerified(id: string) {
       const c = this.challenges.get(id);
-      if (c) c.verifiedAt = new Date().toISOString();
+      if (!c || c.verifiedAt) return false;
+      c.verifiedAt = new Date().toISOString();
+      return true;
     },
     async createMfaProof(input: any) {
       const id = "proof-" + Math.random().toString(36).substring(2, 9);
@@ -370,6 +374,7 @@ describe("MFA Challenges & Proofs", () => {
     expect(enroll.factorId).toBeDefined();
     expect(enroll.secret).toBeDefined();
     expect(enroll.qrCode).toContain("otpauth://totp/");
+    await mfaMockRepo.updateMfaFactorStatus(enroll.factorId, "verified");
 
     const challenge = await mfaService.createChallenge({
       factorId: enroll.factorId,
@@ -383,6 +388,7 @@ describe("MFA Challenges & Proofs", () => {
 
   it("verifies challenge and generates purpose-bound proof for clinical operations", async () => {
     const enroll = await mfaService.enrollTotp("doc-1", "doc1@example.com");
+    await mfaMockRepo.updateMfaFactorStatus(enroll.factorId, "verified");
     const challenge = await mfaService.createChallenge({
       factorId: enroll.factorId,
       userId: "doc-1",
@@ -392,6 +398,8 @@ describe("MFA Challenges & Proofs", () => {
     });
 
     const validCode = generateTotpCode(enroll.secret, getTotpCounter());
+    const wrongSession = await mfaService.verifyChallenge({ challengeId: challenge.challengeId, code: validCode, sessionId: "another-session" });
+    expect(wrongSession.error).toBe("MFA_SESSION_MISMATCH");
     const verifyResult = await mfaService.verifyChallenge({
       challengeId: challenge.challengeId,
       code: validCode,
@@ -401,6 +409,8 @@ describe("MFA Challenges & Proofs", () => {
     expect(verifyResult.success).toBe(true);
     expect(verifyResult.purpose).toBe("FINALIZE_MEDICAL_RECORD");
     expect(verifyResult.proofId).toBeDefined();
+    const replay = await mfaService.verifyChallenge({ challengeId: challenge.challengeId, code: validCode, sessionId: "doc-session-1" });
+    expect(replay.error).toBe("MFA_CHALLENGE_USED");
 
     // Verify the issued proof
     const proofCheck = await mfaService.verifyProof({
@@ -410,6 +420,11 @@ describe("MFA Challenges & Proofs", () => {
       sessionId: "doc-session-1",
     });
     expect(proofCheck.valid).toBe(true);
+
+    const changedContext = await mfaService.verifyProof({ proofId: verifyResult.proofId!, purpose: "FINALIZE_MEDICAL_RECORD",
+      actorUserId: "doc-1", sessionId: "doc-session-1", context: { recordId: "another-record" } });
+    expect(changedContext.valid).toBe(false);
+    expect(changedContext.reason).toBe("PROOF_CONTEXT_MISMATCH");
 
     // Mismatched purpose rejected
     const mismatch = await mfaService.verifyProof({
@@ -437,14 +452,19 @@ describe("MFA Challenges & Proofs", () => {
       purpose: "ENROLL_TOTP",
     });
 
+    const baseTime = Date.now();
     for (let i = 0; i < 5; i++) {
-      const res = await mfaService.verifyChallenge({ challengeId: challenge.challengeId, code: "000000" });
+      const res = await mfaService.verifyChallenge({ challengeId: challenge.challengeId, code: "000000", now: new Date(baseTime + i * 31_000) });
       expect(res.success).toBe(false);
       expect(res.error).toBe("MFA_CODE_INVALID");
+      if (i === 0) {
+        const backoff = await mfaService.verifyChallenge({ challengeId: challenge.challengeId, code: "000000", now: new Date(baseTime + 1000) });
+        expect(backoff.error).toBe("MFA_RATE_LIMITED");
+      }
     }
 
     // 6th attempt is rate-limited
-    const rateLimited = await mfaService.verifyChallenge({ challengeId: challenge.challengeId, code: "000000" });
+    const rateLimited = await mfaService.verifyChallenge({ challengeId: challenge.challengeId, code: "000000", now: new Date(baseTime + 155_000) });
     expect(rateLimited.success).toBe(false);
     expect(rateLimited.error).toBe("MFA_RATE_LIMITED");
   });

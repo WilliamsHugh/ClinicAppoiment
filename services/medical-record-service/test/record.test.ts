@@ -26,6 +26,8 @@ function database(failAudit = false, proofConflict = false, currentRecord: Medic
       return { rows: [{ id: "ctx-1", appointmentId: currentRecord.appointmentId, recordId: currentRecord.id, doctorId: currentRecord.doctorId, patientId: currentRecord.patientId, sessionId: "sess-1", expectedVersion: 1, contentDigest: "dig-1", expiresAt: "2026-01-01T00:05:00Z", createdAt: "2026-01-01T00:00:00Z" }] };
     if (sql.includes("INSERT INTO medical_record_service.consumed_proofs"))
       return { rows: proofConflict ? [] : [{ proof_id: values?.[0] }] };
+    if (sql.includes("INSERT INTO medical_record_service.consumed_grant_proofs"))
+      return { rows: proofConflict ? [] : [{ proof_id: values?.[0] }] };
     if (sql.includes("INSERT INTO medical_record_service.medical_records")) return { rows: [currentRecord] };
     if (sql.includes("UPDATE medical_record_service.medical_records")) return { rows: [{ ...currentRecord, version: (currentRecord.version ?? 1) + 1, status: "FINAL", appointmentCompletion: "PENDING" }] };
     if (sql.includes("count(*)")) return { rows: [{ count: "1" }] };
@@ -52,6 +54,22 @@ describe("Medical Record PostgreSQL repository", () => {
     expect(db.client.release).toHaveBeenCalledOnce();
   });
 
+  it("consumes proof in the same transaction when creating a FINAL record", async () => {
+    const input = { appointmentId: record.appointmentId, patientId: record.patientId,
+      doctorId: record.doctorId, prescription: [], status: "FINAL" as const, createdBy: record.createdBy };
+    const db = database();
+    await db.repo.create(input, "recipient", { proofId: "proof-1", contextId: "context-1" });
+    expect(db.queries.find((item) => item.sql.includes("INSERT INTO medical_record_service.consumed_proofs"))?.values)
+      .toEqual(["proof-1", record.id, "context-1"]);
+    expect(db.queries.some((item) => item.sql === "COMMIT")).toBe(true);
+
+    const replay = database(false, true);
+    await expect(replay.repo.create(input, "recipient", { proofId: "proof-1", contextId: "context-1" }))
+      .rejects.toThrow("PROOF_ALREADY_CONSUMED");
+    expect(replay.queries.some((item) => item.sql === "ROLLBACK")).toBe(true);
+    expect(replay.queries.some((item) => item.sql === "COMMIT")).toBe(false);
+  });
+
   it("rolls back if audit insert fails", async () => {
     const db = database(true);
     await expect(db.repo.create({ appointmentId: record.appointmentId, patientId: record.patientId, doctorId: record.doctorId, prescription: [], status: "DRAFT", createdBy: record.createdBy }, "recipient")).rejects.toThrow("audit failed");
@@ -66,6 +84,15 @@ describe("Medical Record PostgreSQL repository", () => {
     const list = db.queries.find((item) => item.sql.includes("ORDER BY created_at"));
     expect(list?.sql).toContain("patient_id = $1");
     expect(list?.values).toEqual([record.patientId, 10, 10]);
+  });
+
+  it("limits current-encounter draft history to the checked-in appointment", async () => {
+    const db = database();
+    await db.repo.findAll({ patientId: record.patientId, currentDoctorId: record.doctorId,
+      currentAppointmentId: record.appointmentId, includeOtherDoctorsFinalForPatient: true }, 1, 20);
+    const list = db.queries.find((item) => item.sql.includes("ORDER BY created_at"));
+    expect(list?.sql).toContain("status = 'FINAL' OR (doctor_id = $2 AND appointment_id = $3)");
+    expect(list?.values?.slice(0, 3)).toEqual([record.patientId, record.doctorId, record.appointmentId]);
   });
 
   it("does not reopen a finalized record as draft", async () => {
@@ -109,12 +136,22 @@ describe("Medical Record PostgreSQL repository", () => {
       appointmentId: record.appointmentId,
       accessMode: "CURRENT_ENCOUNTER",
       expiresAt
-    });
+    }, "proof-grant-1");
     expect(grant.id).toBe("grant-1");
     expect(grant.accessMode).toBe("CURRENT_ENCOUNTER");
     const found = await db.repo.findGrantById("grant-1");
     expect(found?.id).toBe("grant-1");
     expect(db.queries.some((q) => q.sql.includes("FROM medical_record_service.clinical_grants"))).toBe(true);
+  });
+
+  it("rejects replay of a clinical grant proof and rolls back the new grant", async () => {
+    const db = database(false, true);
+    await expect(db.repo.createGrant({ sessionId: "sess-1", doctorId: record.doctorId,
+      patientId: record.patientId, appointmentId: record.appointmentId,
+      accessMode: "CURRENT_ENCOUNTER", expiresAt: new Date(Date.now() + 900000) }, "proof-used"))
+      .rejects.toThrow("PROOF_ALREADY_CONSUMED");
+    expect(db.queries.some((item) => item.sql === "ROLLBACK")).toBe(true);
+    expect(db.queries.some((item) => item.sql === "COMMIT")).toBe(false);
   });
 
   it("stores and retrieves finalization context", async () => {

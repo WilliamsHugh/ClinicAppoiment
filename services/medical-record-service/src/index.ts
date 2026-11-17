@@ -361,18 +361,28 @@ app.post("/api/v1/medical-records/access-grants", async (req, res, next) => {
     const doctor = await doctorByUser(who.userId);
     if (!doctor || !doctor.isActive) return fail(res, 403, "ACCESS_DENIED", "Active doctor profile required");
 
-    // Check appointment eligibility
+    if (parsed.data.accessMode === "AUTHORED_HISTORY") {
+      if (!parsed.data.recordId) return fail(res, 400, "VALIDATION_ERROR", "recordId is required for authored history grant");
+      const authored = await repository.findById(parsed.data.recordId);
+      if (!authored || authored.doctorId !== doctor.id || authored.patientId !== parsed.data.patientId ||
+        authored.appointmentId !== parsed.data.appointmentId ||
+        !(Date.parse(authored.createdAt) >= Date.now() - 180 * 24 * 60 * 60 * 1000)) {
+        return fail(res, 403, "CLINICAL_ACCESS_DENIED", "Authored record is outside the permitted history window");
+      }
+    }
+    // Current encounter grants require an active checked-in appointment.
     const booking = await appointmentEligibility(parsed.data.appointmentId);
     if (!booking) return fail(res, 422, "APPOINTMENT_NOT_ELIGIBLE", "Appointment not found or invalid");
     if (booking.doctorId !== doctor.id || booking.patientId !== parsed.data.patientId) {
       return fail(res, 403, "ACCESS_DENIED", "Doctor or patient does not match appointment assignment");
     }
-    if (!["CHECKED_IN", "CONFIRMED"].includes(booking.status)) {
+    if (parsed.data.accessMode === "CURRENT_ENCOUNTER" && booking.status !== "CHECKED_IN") {
       return fail(res, 422, "APPOINTMENT_NOT_ELIGIBLE", `Appointment status ${booking.status} is not eligible for encounter grant`);
     }
 
     // Verify MFA TOTP proof with User Service
-    const sessionId = req.header("x-session-id") ?? who.userId;
+    const sessionId = req.header("x-session-id");
+    if (!sessionId) return fail(res, 401, "AUTH_SESSION_INVALID", "Verified session required for clinical grant");
     const proof = await verifyMfaProof({
       proofId: parsed.data.verificationProofId,
       purpose: "OPEN_CLINICAL_RECORDS",
@@ -381,7 +391,8 @@ app.post("/api/v1/medical-records/access-grants", async (req, res, next) => {
       context: {
         appointmentId: parsed.data.appointmentId,
         patientId: parsed.data.patientId,
-        accessMode: parsed.data.accessMode
+        accessMode: parsed.data.accessMode,
+        ...(parsed.data.recordId ? { recordId: parsed.data.recordId } : {})
       }
     });
     if (!proof.valid) {
@@ -397,10 +408,13 @@ app.post("/api/v1/medical-records/access-grants", async (req, res, next) => {
       recordId: parsed.data.recordId ?? null,
       accessMode: parsed.data.accessMode,
       expiresAt: new Date(Date.now() + 15 * 60 * 1000)
-    });
+    }, parsed.data.verificationProofId);
 
-    return res.status(201).json({ success: true, data: grant });
+    return res.status(201).json({ success: true, data: { ...grant, grantId: grant.id } });
   } catch (error) {
+    if (error instanceof Error && error.message === "PROOF_ALREADY_CONSUMED") {
+      return fail(res, 409, "PROOF_ALREADY_CONSUMED", "Verification proof has already been used");
+    }
     next(error);
   }
 });
@@ -441,7 +455,8 @@ app.post("/api/v1/medical-records/finalization-contexts", async (req, res, next)
     }
 
     const contentDigest = computeContentDigest(parsed.data.record);
-    const sessionId = req.header("x-session-id") ?? who.userId;
+    const sessionId = req.header("x-session-id");
+    if (!sessionId) return fail(res, 401, "AUTH_SESSION_INVALID", "Verified session required for finalization context");
     const context = await repository.createFinalizationContext({
       appointmentId: parsed.data.appointmentId,
       recordId: parsed.data.recordId ?? null,
@@ -565,11 +580,13 @@ app.get("/api/v1/medical-records", async (req, res, next) => {
         if (parsed.data.doctorId && parsed.data.doctorId !== doctor.id) {
           return fail(res, 403, "ACCESS_DENIED", "Doctor cannot view authored records of another doctor");
         }
+        if (view === "detail") return fail(res, 403, "CLINICAL_VERIFICATION_REQUIRED", "Use a record-specific grant to read authored detail");
         const result = await repository.findAll({
           doctorId: doctor.id,
           patientId: parsed.data.patientId,
           appointmentId: parsed.data.appointmentId,
-          status: parsed.data.status
+          status: parsed.data.status,
+          createdAfter: new Date(Date.now() - 180 * 24 * 60 * 60 * 1000)
         }, parsed.data.page, parsed.data.limit, view);
         return res.json({ success: true, data: result });
       }
@@ -578,32 +595,24 @@ app.get("/api/v1/medical-records", async (req, res, next) => {
         if (!parsed.data.patientId) {
           return fail(res, 400, "VALIDATION_ERROR", "patientId is required for patient-history scope");
         }
-        if (view === "detail") {
-          const grantId = req.header("x-clinical-grant");
-          if (!grantId) {
-            return fail(res, 403, "CLINICAL_VERIFICATION_REQUIRED", "Clinical access grant required for patient history detail");
-          }
-          const grant = await repository.findGrantById(grantId);
-          if (!grant || grant.doctorId !== doctor.id || grant.patientId !== parsed.data.patientId || grant.accessMode !== "CURRENT_ENCOUNTER") {
-            return fail(res, 403, "CLINICAL_ACCESS_DENIED", "Valid and unexpired CURRENT_ENCOUNTER grant required");
-          }
-          const result = await repository.findAll({
-            patientId: parsed.data.patientId,
-            appointmentId: parsed.data.appointmentId,
-            includeOtherDoctorsFinalForPatient: true,
-            currentDoctorId: doctor.id
-          }, parsed.data.page, parsed.data.limit, "detail");
-          return res.json({ success: true, data: result });
-        } else {
-          // view=summary: history index
-          const result = await repository.findAll({
-            patientId: parsed.data.patientId,
-            appointmentId: parsed.data.appointmentId,
-            includeOtherDoctorsFinalForPatient: true,
-            currentDoctorId: doctor.id
-          }, parsed.data.page, parsed.data.limit, "summary");
-          return res.json({ success: true, data: result });
+        const grantId = req.header("x-clinical-grant");
+        if (!grantId) {
+          return fail(res, 403, "CLINICAL_VERIFICATION_REQUIRED", "Clinical access grant required for patient history");
         }
+        const grant = await repository.findGrantById(grantId);
+        if (!grant || grant.doctorId !== doctor.id || grant.patientId !== parsed.data.patientId ||
+          grant.sessionId !== req.header("x-session-id") || grant.accessMode !== "CURRENT_ENCOUNTER") {
+          return fail(res, 403, "CLINICAL_ACCESS_DENIED", "Valid and unexpired CURRENT_ENCOUNTER grant required");
+        }
+        const result = await repository.findAll({
+          patientId: parsed.data.patientId,
+          appointmentId: parsed.data.appointmentId,
+          includeOtherDoctorsFinalForPatient: true,
+          currentDoctorId: doctor.id,
+          currentAppointmentId: grant.appointmentId,
+          recordId: grant.recordId ?? undefined
+        }, parsed.data.page, parsed.data.limit, view);
+        return res.json({ success: true, data: result });
       }
     }
 
@@ -640,6 +649,10 @@ app.post("/api/v1/medical-records/:id/finalize", async (req, res, next) => {
       return fail(res, 409, "FINALIZATION_CONTEXT_CHANGED", "Finalization context record mismatch");
     }
     if (context.doctorId !== doctor.id) return fail(res, 403, "ACCESS_DENIED", "Context doctor mismatch");
+    if (!req.header("x-session-id") || context.sessionId !== req.header("x-session-id") ||
+      context.appointmentId !== existing.appointmentId || context.patientId !== existing.patientId) {
+      return fail(res, 409, "FINALIZATION_CONTEXT_CHANGED", "Finalization context no longer matches this encounter");
+    }
     if (context.expectedVersion !== parsed.data.expectedVersion) {
       return fail(res, 409, "RECORD_VERSION_CONFLICT", "Context expected version mismatch");
     }
@@ -651,7 +664,7 @@ app.post("/api/v1/medical-records/:id/finalize", async (req, res, next) => {
     }
 
     // Verify proof with User Service
-    const sessionId = req.header("x-session-id") ?? who.userId;
+    const sessionId = req.header("x-session-id")!;
     const proof = await verifyMfaProof({
       proofId: parsed.data.verificationProofId,
       purpose: "FINALIZE_MEDICAL_RECORD",
@@ -720,12 +733,13 @@ app.get("/api/v1/medical-records/:id", async (req, res, next) => {
       const doctor = await doctorByUser(who.userId);
       if (!doctor || !doctor.isActive) return fail(res, 403, "ACCESS_DENIED", "Access denied");
 
-      if (record.doctorId === doctor.id) {
-        return res.json({ success: true, data: record });
+      if (record.doctorId === doctor.id && req.query.view === "summary" &&
+        Date.parse(record.createdAt) >= Date.now() - 180 * 24 * 60 * 60 * 1000) {
+        const { id, appointmentId, patientId, doctorId, status, version, appointmentCompletion, createdAt, updatedAt } = record;
+        return res.json({ success: true, data: { id, appointmentId, patientId, doctorId, status, version, appointmentCompletion, createdAt, updatedAt } });
       }
-
       // Other doctor's record: requires grant and must be FINAL
-      if (record.status !== "FINAL") {
+      if (record.doctorId !== doctor.id && record.status !== "FINAL") {
         return fail(res, 403, "CLINICAL_ACCESS_DENIED", "Draft records of other doctors cannot be accessed");
       }
       const grantId = req.header("x-clinical-grant");
@@ -733,7 +747,12 @@ app.get("/api/v1/medical-records/:id", async (req, res, next) => {
         return fail(res, 403, "CLINICAL_VERIFICATION_REQUIRED", "Clinical access grant required to view another doctor's record");
       }
       const grant = await repository.findGrantById(grantId);
-      if (!grant || grant.doctorId !== doctor.id || grant.patientId !== record.patientId || grant.accessMode !== "CURRENT_ENCOUNTER") {
+      if (!grant || grant.doctorId !== doctor.id || grant.patientId !== record.patientId ||
+        grant.sessionId !== req.header("x-session-id") ||
+        (grant.accessMode === "AUTHORED_HISTORY" && (record.doctorId !== doctor.id || grant.recordId !== record.id ||
+          !(Date.parse(record.createdAt) >= Date.now() - 180 * 24 * 60 * 60 * 1000))) ||
+        (grant.accessMode === "CURRENT_ENCOUNTER" && ((grant.recordId && grant.recordId !== record.id) ||
+          (record.status === "DRAFT" && (record.doctorId !== doctor.id || record.appointmentId !== grant.appointmentId))))) {
         return fail(res, 403, "CLINICAL_ACCESS_DENIED", "Valid CURRENT_ENCOUNTER grant required");
       }
       return res.json({ success: true, data: record });
@@ -772,6 +791,12 @@ app.post("/api/v1/medical-records", async (req, res, next) => {
       }
       const context = await repository.findFinalizationContext(parsed.data.contextId);
       if (!context) return fail(res, 409, "FINALIZATION_CONTEXT_CHANGED", "Finalization context not found or expired");
+      const sessionId = req.header("x-session-id");
+      if (!sessionId || context.sessionId !== sessionId || context.appointmentId !== parsed.data.appointmentId ||
+        context.patientId !== parsed.data.patientId || context.doctorId !== parsed.data.doctorId ||
+        context.recordId !== null || context.expectedVersion !== 0) {
+        return fail(res, 409, "FINALIZATION_CONTEXT_CHANGED", "Finalization context no longer matches this encounter");
+      }
       const contentDigest = computeContentDigest(parsed.data);
       if (contentDigest !== context.contentDigest) {
         return fail(res, 409, "FINALIZATION_CONTEXT_CHANGED", "Content digest mismatch");
@@ -780,7 +805,7 @@ app.post("/api/v1/medical-records", async (req, res, next) => {
         proofId: parsed.data.verificationProofId,
         purpose: "FINALIZE_MEDICAL_RECORD",
         actorUserId: who.userId,
-        sessionId: req.header("x-session-id") ?? who.userId,
+        sessionId,
         context: { contextId: context.id, contentDigest }
       });
       if (!proof.valid) return fail(res, 403, "CLINICAL_VERIFICATION_REQUIRED", "Valid proof required");
@@ -791,9 +816,14 @@ app.post("/api/v1/medical-records", async (req, res, next) => {
       createdBy: who.userId,
       version: 1,
       appointmentCompletion: parsed.data.status === "FINAL" ? "PENDING" : "NOT_REQUESTED"
-    }, patient.userId);
+    }, patient.userId, parsed.data.status === "FINAL" ? {
+      proofId: parsed.data.verificationProofId!, contextId: parsed.data.contextId!
+    } : undefined);
     return res.status(201).json({ success: true, data: record });
   } catch (error) {
+    if (error instanceof Error && error.message === "PROOF_ALREADY_CONSUMED") {
+      return fail(res, 409, "PROOF_ALREADY_CONSUMED", "Verification proof has already been used");
+    }
     if (typeof error === "object" && error !== null && "code" in error && error.code === "23505") {
       return fail(res, 409, "MEDICAL_RECORD_ALREADY_EXISTS", "Record already exists for appointment");
     }
@@ -822,6 +852,12 @@ app.patch("/api/v1/medical-records/:id", async (req, res, next) => {
       }
       const context = await repository.findFinalizationContext(parsed.data.contextId);
       if (!context) return fail(res, 409, "FINALIZATION_CONTEXT_CHANGED", "Finalization context not found or expired");
+      const sessionId = req.header("x-session-id");
+      if (!sessionId || context.sessionId !== sessionId || context.appointmentId !== existing.appointmentId ||
+        context.patientId !== existing.patientId || context.doctorId !== existing.doctorId ||
+        context.expectedVersion !== parsed.data.expectedVersion) {
+        return fail(res, 409, "FINALIZATION_CONTEXT_CHANGED", "Finalization context no longer matches this encounter");
+      }
       if (context.recordId && context.recordId !== existing.id) {
         return fail(res, 409, "FINALIZATION_CONTEXT_CHANGED", "Context record mismatch");
       }
@@ -840,7 +876,7 @@ app.patch("/api/v1/medical-records/:id", async (req, res, next) => {
         proofId: parsed.data.verificationProofId,
         purpose: "FINALIZE_MEDICAL_RECORD",
         actorUserId: who.userId,
-        sessionId: req.header("x-session-id") ?? who.userId,
+        sessionId,
         context: { contextId: context.id, recordId: existing.id, contentDigest: digest }
       });
       if (!proof.valid) return fail(res, 403, "CLINICAL_VERIFICATION_REQUIRED", "Valid proof required");

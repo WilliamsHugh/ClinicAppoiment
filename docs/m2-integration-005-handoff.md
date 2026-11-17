@@ -1,6 +1,21 @@
 # Báo cáo bàn giao M2-INTEGRATION-005
 Ngày: 15/11/2026
 
+## Cập nhật kiểm tra ngày 16/11/2026 — TV1 / M2-INTEGRATION-005
+
+Revision sau `7607db9` đang có thay đổi **chưa commit** ở cả backend và web. Trạng thái của revision này là **đã qua unit/contract/typecheck và 24/24 PostgreSQL integration test, chưa chạy live E2E qua Gateway**. Số liệu/SHA trong các mục lịch sử phía dưới thuộc revision cũ; bảng này ghi bằng chứng mới cho revision đang sửa.
+
+| Thành viên / task | Thay đổi đã thực hiện | Bằng chứng mới | Còn thiếu để nghiệm thu |
+|---|---|---|---|
+| TV2 / `M2-USER-004` | MFA challenge gắn đúng factor và session, kiểm tra context proof, chặn replay challenge, 30 giây backoff, migration `004_mfa_challenge_backoff` | User Service lint + 80/80 test pass; migration đã áp dụng trên `user_service_test` | Kiểm thử MFA qua Gateway với nhiều phiên thật |
+| TV4 / `M2-RECORD-004` | Grant CURRENT_ENCOUNTER chỉ từ CHECKED_IN; AUTHORED_HISTORY gắn record; authored index chỉ metadata; đọc chi tiết yêu cầu grant cùng phiên; FINAL kiểm tra session/context/phiên bản; proof grant/final dùng một lần | Record Service lint + 42/42 unit/API test pass; 5/5 DB/HTTP integration pass | Live kiểm tra grant hết hạn và phiên bị thu hồi |
+| TV1 / `M2-INTEGRATION-005` | Sửa hướng dẫn `LIVE-SMOKE-GUIDE.md`, đối chiếu Gateway và web | Contract 104/104; 481 test trong các workspace pass ở lượt toàn workspace; 24/24 DB integration pass trên `clinic-test-pg` (port 5433, 5 DB `_test`) | Live smoke end to end qua Gateway |
+| TV1 / `M3-UI-REC-001` + TV2 / `M2-USER-004` | Web gọi TOTP/grant khi đọc hồ sơ; chốt FINAL với context/proof; login STAFF/ADMIN gửi `factorId` | Web typecheck + 284/284 test pass | Kiểm thử trình duyệt với tài khoản DOCTOR/STAFF/ADMIN và TOTP thật |
+
+**Điều kiện còn mở:** luồng thiết lập TOTP lần đầu cho tài khoản chưa có factor verified chưa có UI vận hành; cửa sổ quyền authored-history đang dùng 180 ngày theo kế hoạch M2 nhưng API Contract v2 chưa chốt chính sách dài hạn 1–2 năm; frontend và backend còn ở hai worktree/branch riêng, chưa kiểm thử cutover chung. Không nâng trạng thái revision này lên `ACCEPTED` cho đến khi hoàn tất các bước còn thiếu. Mốc kiểm thử và biến môi trường chính xác nằm trong [`LIVE-SMOKE-GUIDE.md`](../packages/openapi-contract-tests/LIVE-SMOKE-GUIDE.md). 24 integration test đã chạy lại thành công, nhưng chúng chưa thay thế smoke test có đăng nhập/TOTP/FINAL thật qua Gateway.
+
+---
+
 > **Trạng thái sau rà soát bổ sung và kiểm chứng DB thật:** Đã bổ sung xác minh Clinical Grant server-to-server giữa Appointment Service và Medical Record Service qua token `RECORD_APPOINTMENT_INTERNAL_API_TOKEN` (kiểm tra chặt chẽ grantId, appointmentId, patientId, doctorId, sessionId); xử lý dung sai mã lỗi PostgreSQL 40P01 (deadlock detected) trong giao dịch concurrent booking; và **đã chạy lại thành công toàn bộ 24/24 integration tests trên cụm PostgreSQL disposable (Exit code 0, 24 pass, 0 fail, 0 skip)**. Đầy đủ bằng chứng thực tế cho nghiệm thu tích hợp M2 local.
 
 ## Vị trí trong kế hoạch và trạng thái hiện tại

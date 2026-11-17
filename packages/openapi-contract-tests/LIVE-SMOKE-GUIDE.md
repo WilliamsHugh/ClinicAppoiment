@@ -1,103 +1,50 @@
-# Hướng dẫn chạy Live Smoke Test & Tích hợp (Health&Human API v2)
+# Live smoke test API v2
 
-Tài liệu này hướng dẫn chi tiết quy trình chạy smoke test live trên môi trường thực tế (API Gateway + Microservices) và điều kiện để unskip 24 integration tests yêu cầu database.
+Task: **TV1 / M2-INTEGRATION-005**. Các lệnh dưới đây là hướng dẫn chạy; kết quả live trên máy khác phải được ghi lại riêng. Không dùng cơ sở dữ liệu production hoặc Supabase đang phục vụ người dùng cho integration test có `TRUNCATE`.
 
----
+## 1. Kiểm tra OpenAPI và Swagger
 
-## 1. Yêu cầu môi trường (Prerequisites)
+Chạy Gateway cổng 8080 và 5 service cổng 3001–3005 (hoặc đặt các biến `OPENAPI_GATEWAY_URL`, `OPENAPI_USER_SERVICE_URL`, `OPENAPI_DOCTOR_SERVICE_URL`, `OPENAPI_APPOINTMENT_SERVICE_URL`, `OPENAPI_MEDICAL_RECORD_SERVICE_URL`, `OPENAPI_NOTIFICATION_SERVICE_URL`). Từ thư mục gốc repository:
 
-1. **API Gateway & Microservices đang hoạt động**:
-   - API Gateway: `http://localhost:8080` (hoặc cấu hình qua biến môi trường `OPENAPI_GATEWAY_URL`).
-   - User Service: `http://localhost:3001`
-   - Doctor Service: `http://localhost:3002`
-   - Appointment Service: `http://localhost:3003`
-   - Medical Record Service: `http://localhost:3004`
-   - Notification Service: `http://localhost:3005`
-
-2. **Test Accounts cấu hình trong `.env`**:
-   - `PATIENT_TEST_EMAIL=patient.test@clinic.local` / `PATIENT_TEST_PASSWORD=...`
-   - `STAFF_TEST_EMAIL=staff.test@clinic.local` / `STAFF_TEST_PASSWORD=...`
-   - `DOCTOR_TEST_EMAIL=doctor.test@clinic.local` / `DOCTOR_TEST_PASSWORD=...`
-   - `ADMIN_TEST_EMAIL=admin.test@clinic.local` / `ADMIN_TEST_PASSWORD=...`
-
----
-
-## 2. Lệnh thực thi Smoke Test Live
-
-### Chạy kiểm tra OpenAPI Schemas và Swagger UI của toàn bộ services:
 ```bash
 node packages/openapi-contract-tests/test/live-openapi.mjs
+npm test -w @clinic/openapi-contract-tests
 ```
 
-### Chạy Contract Integration Harness (Synthetic):
+Lệnh thứ nhất chỉ kiểm tra `/openapi.json`, `/docs/` và `/api-docs/` của 6 tiến trình. Lệnh thứ hai chạy contract/harness tổng hợp trong bộ nhớ. **Hai lệnh này không xác nhận đăng nhập, TOTP, đặt lịch, grant hoặc chốt bệnh án qua Gateway thật.**
+
+## 2. Integration test với PostgreSQL disposable
+
+Mỗi service dùng một database test riêng, đã áp dụng schema tương ứng. Appointment và Doctor test sẽ khởi tạo/truncate dữ liệu; tuyệt đối chỉ trỏ tới database có thể xóa. Không chỉnh `describe.skip` bằng tay: các suite tự bật khi có đúng biến môi trường.
+
+| Test file | Điều kiện bật | Lệnh chạy trong thư mục gốc |
+|---|---|---|
+| Appointment `postgres.integration.test.ts` | `APPOINTMENT_TEST_DATABASE_URL`, `APPOINTMENT_TEST_DATABASE_DISPOSABLE=1` | `npm test -w @clinic/appointment-service -- test/postgres.integration.test.ts` |
+| Doctor `postgres.integration.test.ts` | `DOCTOR_TEST_DATABASE_URL`, `DOCTOR_TEST_DATABASE_DISPOSABLE=1` | `npm test -w @clinic/doctor-service -- test/postgres.integration.test.ts` |
+| Record `postgres.integration.test.ts` | `TEST_DATABASE_URL` | `npm test -w @clinic/medical-record-service -- test/postgres.integration.test.ts` |
+| Record `appointment-http.integration.test.ts` | `TEST_DATABASE_URL`, `TEST_APPOINTMENT_DATABASE_URL`, `TEST_DOCTOR_DATABASE_URL` | `npm test -w @clinic/medical-record-service -- test/appointment-http.integration.test.ts` |
+| Record `user-guard.integration.test.ts` | `TEST_USER_PROVIDER_ROOT` trỏ tới root repository | `npm test -w @clinic/medical-record-service -- test/user-guard.integration.test.ts` |
+| Notification `postgres.integration.test.ts` | `TEST_DATABASE_URL` | `npm test -w @clinic/notification-service -- test/postgres.integration.test.ts` |
+| Notification `appointment-http.integration.test.ts` | `TEST_DATABASE_URL`, `TEST_APPOINTMENT_DATABASE_URL` | `npm test -w @clinic/notification-service -- test/appointment-http.integration.test.ts` |
+
+Đặt biến môi trường ngay trước lệnh trong cùng terminal, ví dụ:
+
 ```bash
-npm --prefix packages/openapi-contract-tests test
+APPOINTMENT_TEST_DATABASE_URL='postgresql://USER:PASSWORD@127.0.0.1:5433/appointment_test' \
+APPOINTMENT_TEST_DATABASE_DISPOSABLE=1 \
+npm test -w @clinic/appointment-service -- test/postgres.integration.test.ts
 ```
 
----
+Migration thông thường dùng các script `npm run db:migrate:user`, `db:migrate:doctor`, `db:migrate:appointment`, `db:migrate:medical-record`, `db:migrate:notification` từ root với `.env` riêng. Chỉ chạy chúng trên database test đã chọn. User Service cần migration `004_mfa_challenge_backoff` trước khi chạy luồng MFA mới.
 
-## 3. Danh sách Endpoints bắt buộc kiểm tra Live
+## 3. Kịch bản live qua API Gateway cần ghi bằng chứng
 
-| # | Endpoint | Method | Role / Auth | Mục đích kiểm tra | Expected HTTP Status | Expected Response Schema / Codes |
-|---|---|---|---|---|---|---|
-| 1 | `/health` | `GET` | Public | Kiểm tra Gateway upstream connectivity | `200 OK` | `{"status":"ok"}` |
-| 2 | `/api/v1/auth/login` | `POST` | Public | Xác thực đăng nhập và khởi tạo phiên | `200 OK` | **PATIENT**: `data.session.state="ACTIVE"`, `idleTimeoutSeconds=2592000`<br>**STAFF/ADMIN**: `data.session.state="PENDING_MFA"`, `absoluteTimeoutSeconds=28800` |
-| 3 | `/api/v1/doctors` | `GET` | Bearer (Active) | Tra cứu danh sách bác sĩ đang hoạt động | `200 OK` | `{"success":true,"data":{"items":[...],"total":N}}` (chỉ trả bác sĩ `isActive=true` cho non-ADMIN) |
-| 4 | `/api/v1/appointments` | `GET` | Bearer (Active) | Lấy danh sách lịch hẹn của actor | `200 OK` | `{"success":true,"data":{"items":[...],"page":1,"limit":20}}` (mặc định `view=summary`) |
-| 5 | `/api/v1/appointments` | `GET` | No Auth | Kiểm tra cơ chế chặn truy cập chưa xác thực | `401 Unauthorized` | `{"success":false,"error":{"code":"AUTH_TOKEN_INVALID"}}` |
-| 6 | `/api/v1/notifications/unread-count` | `GET` | Bearer (Active) | Lấy số lượng thông báo chưa đọc | `200 OK` | `{"success":true,"data":{"unreadCount":N}}` |
-| 7 | `/api/v1/medical-records` | `GET` | Bearer (No Grant) | Kiểm tra rào chắn an toàn dữ liệu lâm sàng | `403 Forbidden` | `{"success":false,"error":{"code":"CLINICAL_VERIFICATION_REQUIRED"}}` |
-| 8 | `/api/v1/medical-records` | `GET` | Bearer (STAFF) | Nhân viên tiếp đón không có quyền đọc lâm sàng | `403 Forbidden` | `{"success":false,"error":{"code":"CLINICAL_ACCESS_DENIED"}}` |
+Hiện repository **chưa có runner tự động** cho các bước này. Dùng tài khoản test và gửi mọi request public đến Gateway; ghi HTTP status, `requestId`, thời gian, và trạng thái database/outbox, không ghi token, mật khẩu, mã TOTP hoặc nội dung bệnh án vào log bàn giao.
 
----
+1. Đăng nhập STAFF/ADMIN: `PENDING_MFA`; gọi `GET /api/v1/auth/mfa/factors`, `POST /api/v1/auth/mfa/challenges` với `factorId`, rồi `POST /api/v1/auth/mfa/verify`. Trước xác minh, nghiệp vụ bị chặn; sau xác minh, được phép theo role.
+2. Đăng nhập DOCTOR; chọn lịch `CHECKED_IN`. Challenge `OPEN_CLINICAL_RECORDS` phải gắn `appointmentId`, `patientId`, `accessMode`. Chỉ sau proof hợp lệ mới xin grant. Thử lại với lịch `CONFIRMED`, sai phiên hoặc sai hồ sơ: phải bị từ chối.
+3. Gọi danh sách authored mặc định: chỉ có metadata. `GET /api/v1/medical-records/:id?view=summary` không chứa chẩn đoán/đơn thuốc. Muốn đọc chi tiết phải gửi `X-Clinical-Grant` hợp lệ trong cùng phiên. `AUTHORED_HISTORY` chỉ dành cho hồ sơ do chính bác sĩ lập trong 180 ngày; `CURRENT_ENCOUNTER` cần ca đã `CHECKED_IN`.
+4. Tạo `finalization-context` từ nội dung cuối; challenge `FINALIZE_MEDICAL_RECORD` phải gắn `contextId`, `contentDigest` và `recordId` nếu sửa nháp. Dùng proof để chốt FINAL; đổi đơn thuốc sau context hoặc dùng lại proof phải bị từ chối. Kiểm tra outbox hoàn thành appointment.
+5. Đăng xuất/thu hồi phiên, thử dùng lại grant/proof; kiểm tra mất quyền. Ghi cả trường hợp upstream tạm mất kết nối và phục hồi.
 
-## 4. Danh sách 24 Integration Tests bị Skip và Điều kiện Unskip
-
-Trong toàn bộ suite tích hợp của backend hiện có **24 integration tests** bị đánh dấu skip (tại các service repo) do yêu cầu phụ thuộc vào PostgreSQL instance thực tế hoặc HTTP service mock.
-
-### Phân bổ chi tiết:
-
-1. **Appointment Service (12 tests skipped)**:
-   - *Phạm vi test*: Concurrent slot booking transactions, pessimistic locking chống double-booking, state machine transitions gắn với outbox queue event, Postgres date/time range overlaps.
-   - *Nguyên nhân skip*: Môi trường CI/static chạy không có container Postgres chạy nền.
-   - *Điều kiện unskip*:
-     1. Khởi chạy PostgreSQL hoặc trỏ tới Supabase test database.
-     2. Cấu hình biến môi trường trong `services/appointment-service/.env`:
-        ```env
-        DATABASE_URL=postgresql://postgres:[PASSWORD]@localhost:54322/postgres
-        ```
-     3. Chạy lệnh migrate: `npm run migrate`
-     4. Bỏ cờ `describe.skip` hoặc `test.skip` trong `test/integration/*.test.ts`.
-
-2. **Medical Record Service (5 tests skipped)**:
-   - *Phạm vi test*: Bảng audit ghi nhận lịch sử mở bệnh án, Clinical Grant TTL expiration, Outbox message delivery đồng bộ sang Appointment Service, Finalization TOTP proof verification.
-   - *Nguyên nhân skip*: Yêu cầu database schema `medical_record_service` và mock HTTP server giả lập User Service endpoint `/internal/v1/auth/mfa/proofs/verify`.
-   - *Điều kiện unskip*:
-     1. Cấu hình `DATABASE_URL` trong `services/medical-record-service/.env`.
-     2. Chạy migration: `npm run migrate` (chạy qua `src/migrate.ts` áp dụng migration 001 và 002).
-     3. Khởi chạy User Service hoặc mock endpoint xác minh TOTP proof.
-
-3. **Notification Service (5 tests skipped)**:
-   - *Phạm vi test*: Outbox processor, notification retry loop, event consumption từ Kafka/PG pub-sub, read-all cutoff timestamp update.
-   - *Nguyên nhân skip*: Yêu cầu Postgres database lưu trữ bảng `notifications` và kênh sự kiện.
-   - *Điều kiện unskip*:
-     1. Cấu hình `DATABASE_URL` trong `services/notification-service/.env`.
-     2. Áp dụng schema: `npm run migrate`.
-
-4. **Doctor Service (2 tests skipped)**:
-   - *Phạm vi test*: Trùng lặp khung giờ làm việc (`DoctorSchedule` overlap) và xung đột lịch nghỉ phép (`DoctorTimeOff` occupancy check).
-   - *Nguyên nhân skip*: Cần Postgres connection để thực thi native exclusion constraints hoặc composite overlap query.
-   - *Điều kiện unskip*:
-     1. Cấu hình `DATABASE_URL` trong `services/doctor-service/.env`.
-     2. Áp dụng schema migration cho Doctor Service.
-
----
-
-## 5. Check-list nghiệm thu Live Integration
-
-- [ ] Toàn bộ 5 microservices và API Gateway khởi động không có runtime crash.
-- [ ] Endpoints OpenAPI schema `/openapi.json` trả về HTTP 200 và schema OpenAPI 3.0 hợp lệ.
-- [ ] Swagger UI tại `/docs/` và `/api-docs/` truy cập được từ trình duyệt.
-- [ ] Các flow xác thực (PATIENT 30 ngày idle, STAFF/ADMIN 8h absolute + 15m idle lock) hoạt động theo đúng hợp đồng `docs/api-contract-v2.md`.
-- [ ] Bệnh án lâm sàng được bảo vệ tuyệt đối: Không mở nếu thiếu `X-Clinical-Grant` và TOTP verification proof.
-- [ ] Khi có cơ sở dữ liệu thật, unskip toàn bộ 24 integration tests và xác nhận pass 100%.
+Chỉ đánh dấu nghiệm thu live E2E khi đã chạy và lưu kết quả thực tế của từng bước trên cùng một revision backend/frontend.

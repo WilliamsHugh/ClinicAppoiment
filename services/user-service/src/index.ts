@@ -121,10 +121,10 @@ const handleInternalProofVerify: express.RequestHandler = async (req, res) => {
   const purpose = req.body?.purpose as MfaPurpose | undefined;
   const actorUserId = (req.body?.actorUserId ?? req.body?.actor_id) as string | undefined;
   const sessionId = (req.body?.sessionId ?? req.body?.session_id) as string | undefined;
-  const context = (req.body?.context ?? (req.body?.resource_id ? { resourceId: req.body.resource_id } : {})) as Record<string, unknown>;
+  const context = req.body?.context as Record<string, unknown> | undefined;
 
-  if (!proofId || !purpose) {
-    return res.status(400).json(error("VALIDATION_ERROR", "proofId and purpose are required"));
+  if (!proofId || !purpose || !actorUserId || !sessionId || !context || typeof context !== "object" || Array.isArray(context)) {
+    return res.status(400).json(error("VALIDATION_ERROR", "proofId, purpose, actorUserId, sessionId and context are required"));
   }
 
   const result = await mfaService.verifyProof({

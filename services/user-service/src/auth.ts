@@ -489,7 +489,9 @@ export function createAuthRouter(
     let sessionId: string | undefined;
     if (sessions) {
       const active = await sessions.listActiveSessions(actor.profile.id);
-      sessionId = active[0]?.sessionId;
+      const gatewaySessionId = req.header("x-session-id");
+      sessionId = gatewaySessionId ? active.find((item) => item.sessionId === gatewaySessionId)?.sessionId : active[0]?.sessionId;
+      if (!sessionId) return fail(res, 401, "AUTH_SESSION_INVALID", "Active session required for MFA challenge");
     }
 
     try {
@@ -505,6 +507,9 @@ export function createAuthRouter(
       if (err instanceof Error && err.message === "MFA_FACTOR_NOT_FOUND") {
         return fail(res, 404, "MFA_FACTOR_NOT_FOUND", "MFA factor not found");
       }
+      if (err instanceof Error && err.message === "MFA_FACTOR_NOT_VERIFIED") {
+        return fail(res, 403, "MFA_FACTOR_NOT_VERIFIED", "Verified TOTP factor required");
+      }
       return fail(res, 500, "MFA_CHALLENGE_FAILED", "Failed to create MFA challenge");
     }
   };
@@ -517,13 +522,14 @@ export function createAuthRouter(
     const parsed = challengeVerifySchema.safeParse(req.body);
     if (!parsed.success) return fail(res, 400, "VALIDATION_ERROR", "Invalid request body", parsed.error.issues);
 
-    let sessionId = parsed.data.sessionId;
-    if (!sessionId && sessions) {
-      const actor = await resolveActor(req);
-      if (actor) {
-        const active = await sessions.listActiveSessions(actor.profile.id);
-        sessionId = active[0]?.sessionId;
-      }
+    const actor = await resolveActor(req);
+    if (!actor) return fail(res, 401, "AUTH_REQUIRED", "Valid authentication required");
+    const active = sessions ? await sessions.listActiveSessions(actor.profile.id) : [];
+    const gatewaySessionId = req.header("x-session-id");
+    const sessionId = gatewaySessionId ?? parsed.data.sessionId ?? active[0]?.sessionId;
+    if (!sessionId || !active.some((item) => item.sessionId === sessionId) ||
+      (gatewaySessionId && parsed.data.sessionId && gatewaySessionId !== parsed.data.sessionId)) {
+      return fail(res, 401, "AUTH_SESSION_INVALID", "Active session required for MFA verification");
     }
 
     const result = await mfas.verifyChallenge({
@@ -537,6 +543,8 @@ export function createAuthRouter(
       if (result.error === "MFA_CHALLENGE_EXPIRED") return fail(res, 403, "MFA_CHALLENGE_EXPIRED", "Yêu cầu xác thực đã hết hạn");
       if (result.error === "MFA_RATE_LIMITED") return fail(res, 429, "MFA_RATE_LIMITED", "Đã vượt quá số lần thử cho phép. Vui lòng thử lại sau.");
       if (result.error === "MFA_CHALLENGE_NOT_FOUND") return fail(res, 404, "MFA_CHALLENGE_NOT_FOUND", "MFA challenge not found");
+      if (result.error === "MFA_SESSION_MISMATCH") return fail(res, 403, "MFA_SESSION_MISMATCH", "MFA challenge belongs to another session");
+      if (result.error === "MFA_CHALLENGE_USED") return fail(res, 409, "MFA_CHALLENGE_USED", "MFA challenge already verified");
       return fail(res, 400, "MFA_VERIFY_FAILED", "MFA verification failed");
     }
 

@@ -73,16 +73,29 @@ export class MedicalRecordRepository {
     status?: "FINAL" | "DRAFT";
     includeOtherDoctorsFinalForPatient?: boolean;
     currentDoctorId?: string;
+    currentAppointmentId?: string;
+    recordId?: string;
+    createdAfter?: Date;
   }, page: number, limit: number, view: "summary" | "detail" = "detail") {
     const values: unknown[] = [];
     const clauses = ["deleted_at IS NULL"];
+    if (filters.createdAfter) {
+      values.push(filters.createdAfter);
+      clauses.push(`created_at >= $${values.length}`);
+    }
+    if (filters.recordId) {
+      values.push(filters.recordId);
+      clauses.push(`id = $${values.length}`);
+    }
 
     if (filters.includeOtherDoctorsFinalForPatient && filters.patientId && filters.currentDoctorId) {
       values.push(filters.patientId);
       const pIdx = values.length;
       values.push(filters.currentDoctorId);
       const dIdx = values.length;
-      clauses.push(`patient_id = $${pIdx} AND (status = 'FINAL' OR doctor_id = $${dIdx})`);
+      values.push(filters.currentAppointmentId ?? "");
+      const aIdx = values.length;
+      clauses.push(`patient_id = $${pIdx} AND (status = 'FINAL' OR (doctor_id = $${dIdx} AND appointment_id = $${aIdx}))`);
       if (filters.appointmentId) {
         values.push(filters.appointmentId);
         clauses.push(`appointment_id = $${values.length}`);
@@ -135,7 +148,7 @@ export class MedicalRecordRepository {
     );
   }
 
-  async create(input: RecordInput, recipientUserId: string) {
+  async create(input: RecordInput, recipientUserId: string, finalization?: { proofId: string; contextId: string }) {
     const client = await this.pool.connect();
     try {
       await client.query("BEGIN");
@@ -147,6 +160,15 @@ export class MedicalRecordRepository {
         [input.appointmentId, input.patientId, input.doctorId, input.symptoms ?? null, input.diagnosis ?? null, input.notes ?? null, input.treatmentPlan ?? null, JSON.stringify(input.prescription), input.status, input.version ?? 1, appointmentCompletion, input.createdBy]
       );
       const record = result.rows[0];
+      if (finalization) {
+        const consumed = await client.query(
+          `INSERT INTO medical_record_service.consumed_proofs (proof_id, purpose, record_id, context_id)
+           VALUES ($1, 'FINALIZE_MEDICAL_RECORD', $2, $3)
+           ON CONFLICT (proof_id) DO NOTHING RETURNING proof_id`,
+          [finalization.proofId, record.id, finalization.contextId]
+        );
+        if (!consumed.rows[0]) throw new Error("PROOF_ALREADY_CONSUMED");
+      }
       // Logging safety: metadata only, no PHI or drug names
       await client.query(
         "INSERT INTO medical_record_service.medical_record_audit_logs (medical_record_id, actor_id, action, changes) VALUES ($1,$2,'CREATE',$3)",
@@ -315,8 +337,11 @@ export class MedicalRecordRepository {
     recordId?: string | null;
     accessMode: "CURRENT_ENCOUNTER" | "AUTHORED_HISTORY";
     expiresAt: Date;
-  }): Promise<ClinicalGrant> {
-    const result = await this.pool.query<ClinicalGrant>(
+  }, proofId: string): Promise<ClinicalGrant> {
+    const client = await this.pool.connect();
+    try {
+      await client.query("BEGIN");
+      const result = await client.query<ClinicalGrant>(
       `INSERT INTO medical_record_service.clinical_grants
        (session_id, doctor_id, patient_id, appointment_id, record_id, access_mode, expires_at)
        VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -324,8 +349,21 @@ export class MedicalRecordRepository {
          appointment_id AS "appointmentId", record_id AS "recordId", access_mode AS "accessMode",
          issued_at AS "issuedAt", expires_at AS "expiresAt", revoked_at AS "revokedAt"`,
       [grant.sessionId, grant.doctorId, grant.patientId, grant.appointmentId, grant.recordId ?? null, grant.accessMode, grant.expiresAt]
-    );
-    return result.rows[0];
+      );
+      const consumed = await client.query(
+        `INSERT INTO medical_record_service.consumed_grant_proofs (proof_id, grant_id)
+         VALUES ($1, $2) ON CONFLICT (proof_id) DO NOTHING RETURNING proof_id`,
+        [proofId, result.rows[0].id]
+      );
+      if (!consumed.rows[0]) throw new Error("PROOF_ALREADY_CONSUMED");
+      await client.query("COMMIT");
+      return result.rows[0];
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
   }
 
   async findGrantById(grantId: string): Promise<ClinicalGrant | null> {

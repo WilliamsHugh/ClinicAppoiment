@@ -183,7 +183,7 @@ Object.assign(mutableDocument.components.schemas, {
     properties: { currentPassword: { type: "string" }, newPassword: { type: "string", minLength: 6, maxLength: 128 } } },
   InvalidationRequest: { type: "object", required: ["userId", "scope", "reason"], additionalProperties: false,
     properties: { userId: { type: "string", format: "uuid" }, sessionId: { type: "string", format: "uuid", nullable: true }, scope: { type: "string", enum: ["CURRENT", "ALL", "ACCOUNT"] }, reason: { type: "string" }, sessionVersion: { type: "integer" }, invalidatedAt: { type: "string", format: "date-time" } } },
-  ProofVerifyRequest: { type: "object", required: ["purpose"], additionalProperties: false,
+  ProofVerifyRequest: { type: "object", required: ["proofId", "purpose", "actorUserId", "sessionId", "context"], additionalProperties: false,
     properties: { proofId: { type: "string", format: "uuid" }, proof_token: { type: "string" }, purpose: { type: "string" }, actorUserId: { type: "string", format: "uuid" }, actor_id: { type: "string" }, sessionId: { type: "string", format: "uuid" }, session_id: { type: "string" }, context: { type: "object" } } },
   BatchPatientLookupRequest: { type: "object", required: ["patientIds"], additionalProperties: false,
     properties: { patientIds: { type: "array", items: { type: "string", format: "uuid" } }, actorContext: { type: "object" }, appointmentIds: { type: "array", items: { type: "string", format: "uuid" } } } },

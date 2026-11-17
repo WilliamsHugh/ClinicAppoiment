@@ -1,8 +1,10 @@
-# Kế hoạch triển khai backend theo API Contract v2 (Đã hoàn tất & Nghiệm thu)
+# Kế hoạch triển khai backend theo API Contract v2 (snapshot nghiệm thu trước cập nhật 16/11)
+
+> **Lưu ý revision 16/11/2026 — TV1 / M2-INTEGRATION-005:** Các trạng thái `ACCEPTED` và số liệu PostgreSQL bên dưới thuộc snapshot trước `7607db9`. Revision đang sửa User MFA, Medical Record grant/finalization và Web đã chạy lại 24/24 DB integration test trên PostgreSQL disposable; live E2E qua Gateway vẫn chưa chạy. Trạng thái nghiệm thu cutover của revision mới là **đang xác minh**; xem [`m2-integration-005-handoff.md`](m2-integration-005-handoff.md) và [`LIVE-SMOKE-GUIDE.md`](../packages/openapi-contract-tests/LIVE-SMOKE-GUIDE.md). Chính sách authored-history 180 ngày chỉ là cấu hình M2 tạm thời; thời hạn dài hạn 1–2 năm chưa được chốt trong API Contract v2.
 
 **Ngày lập:** 15/11/2026 — **Ngày nghiệm thu:** 16/11/2026  
 **Mục tiêu:** tăng tốc triển khai backend từ contract API v2 trên nhánh `test/m2-integration-002-openapi-contract-tests` và tích hợp toàn diện trên `test/m2-integration-005-api-v2-clinic-workflow`.  
-**Trạng thái:** **ĐÃ HOÀN TẤT TRIỂN KHAI VÀ NGHIỆM THU TÍCH HỢP (ACCEPTED)**; Sẵn sàng mở Pull Request merge vào `main` cho môi trường Staging / Live E2E.  
+**Trạng thái snapshot trước `7607db9`:** Đã nghiệm thu tích hợp local. **Revision đang chỉnh sửa 16/11:** đã nghiệm thu lại 24/24 DB integration test; chưa chạy live E2E, chưa sẵn sàng tuyên bố `ACCEPTED` cho cutover.
 **Checkout tích hợp backend:** `/home/Williams/Projects/ClinicAppoiment-worktrees/backend-openapi` (nhánh `test/m2-integration-005-api-v2-clinic-workflow`, HEAD `04d0666`)  
 **Checkout tích hợp frontend:** `/home/Williams/Projects/ClinicAppoiment` (nhánh `feat/m3-ui-acceptance-integrated`, HEAD `bbd251a`)  
 **Base quan sát ban đầu:** `dad4f96aa8d2524c6ce31bee12e6421a5ba44946` — `merge: standardize backend service logging`.
@@ -139,7 +141,7 @@ Theo đúng kiến trúc phụ thuộc:
 |---|---|---|---|---|
 | 1 | Bác sĩ mở ca: `CHECKED_IN` hay cả `CONFIRMED` gần giờ? | Doctor clinical grant | Đã triển khai kiểm tra trạng thái trong `services/medical-record-service/src/index.ts` | **Fail-Closed:** Chỉ cho phép cấp grant khi lịch hẹn đã ở trạng thái `CHECKED_IN`. Từ chối cấp grant nếu lịch hẹn đang `CONFIRMED`. |
 | 2 | TTL grant và điều kiện mất quyền khi hết phiên/đổi bác sĩ | Record access/read | Đã triển khai trong `medical-record-service` (cột `expires_at` trên bảng `clinical_grants`) | **Chốt mặc định:** TTL = 15 phút (`900s`), actor-bound và encounter-bound. Tự động mất quyền khi hết hạn hoặc khi phiên của bác sĩ bị thu hồi. |
-| 3 | History authored-read tồn tại 1 hay 2 năm? | Authored history access | Đã triển khai truy vấn theo mốc thời gian trong `medical-record-service` | **Chốt mặc định:** Cửa sổ 6 tháng (`180 ngày`) cho phép bác sĩ tra cứu lại các hồ sơ do chính mình tạo mà không cần encounter grant đang hoạt động. |
+| 3 | History authored-read tồn tại 1 hay 2 năm? | Authored history access | Đã triển khai truy vấn theo mốc thời gian trong `medical-record-service` | **Tạm thời M2:** Chỉ mục authored mặc định 180 ngày; đọc nội dung chi tiết cần TOTP và grant `AUTHORED_HISTORY` gắn hồ sơ, hoặc `CURRENT_ENCOUNTER` từ ca mới đã CHECKED_IN. Chính sách quyền dài hạn 1–2 năm chưa chốt. |
 | 4 | MFA challenge/proof TTL, số lần sai, backoff | User MFA acceptance | Đã triển khai trong `services/user-service/src/mfa-service.ts` | **Chốt mặc định:** Challenge TTL = 5 phút (`300s`), tối đa 5 lần thử sai liên tiếp trước khi khóa challenge, backoff delay = 30s. |
 | 5 | Mất Authenticator / factor recovery identity proof | Factor recovery release | Giữ nguyên trạng thái chưa hỗ trợ | **Fail-Closed:** Không mở tính năng tự reset qua email khi mất Authenticator để tránh rủi ro chiếm quyền tài khoản; bắt buộc hỗ trợ xác minh thủ công qua Quản trị viên. |
 | 6 | Sự kiện `NO_SHOW` có sinh notification không? | Event schema & Notification | Đã xác nhận trong `HYP-02` | **Chốt:** Không sinh thông báo outbox tự động; sự kiện `NO_SHOW` chỉ cập nhật trạng thái vận hành của lịch hẹn. |

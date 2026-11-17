@@ -1,3 +1,4 @@
+import { isDeepStrictEqual } from "node:util";
 import type { MfaChallengeRecord, MfaFactorRecord, MfaProofRecord, UserRepository } from "./repository.js";
 import { buildOtpauthUrl, generateTotpSecret, verifyTotpCode } from "./totp.js";
 import type { MfaPurpose } from "./types/internal-proof-verify.js";
@@ -46,6 +47,9 @@ export class MfaService {
     if (!factor || factor.userId !== input.userId) {
       throw new Error("MFA_FACTOR_NOT_FOUND");
     }
+    if (input.purpose !== "ENROLL_TOTP" && factor.status !== "verified") {
+      throw new Error("MFA_FACTOR_NOT_VERIFIED");
+    }
 
     const now = input.now ?? new Date();
     const expiresAt = new Date(now.getTime() + CHALLENGE_TTL_MS);
@@ -88,6 +92,12 @@ export class MfaService {
 
     const now = input.now ?? new Date();
     const expMs = new Date(challenge.expiresAt).getTime();
+    if (challenge.verifiedAt) {
+      return { success: false, purpose: challenge.purpose as MfaPurpose, factorId: challenge.factorId, error: "MFA_CHALLENGE_USED" };
+    }
+    if (challenge.sessionId && input.sessionId !== challenge.sessionId) {
+      return { success: false, purpose: challenge.purpose as MfaPurpose, factorId: challenge.factorId, error: "MFA_SESSION_MISMATCH" };
+    }
     if (now.getTime() > expMs) {
       return { success: false, purpose: challenge.purpose as MfaPurpose, factorId: challenge.factorId, error: "MFA_CHALLENGE_EXPIRED" };
     }
@@ -96,8 +106,13 @@ export class MfaService {
       return { success: false, purpose: challenge.purpose as MfaPurpose, factorId: challenge.factorId, error: "MFA_RATE_LIMITED" };
     }
 
+    if (challenge.attemptCount > 0 && challenge.lastAttemptAt &&
+      now.getTime() - new Date(challenge.lastAttemptAt).getTime() < 30_000) {
+      return { success: false, purpose: challenge.purpose as MfaPurpose, factorId: challenge.factorId, error: "MFA_RATE_LIMITED" };
+    }
+
     const attempts = await this.repository.incrementChallengeAttempt(challenge.id);
-    if (attempts > challenge.maxAttempts) {
+    if (attempts === 0 || attempts > challenge.maxAttempts) {
       return { success: false, purpose: challenge.purpose as MfaPurpose, factorId: challenge.factorId, error: "MFA_RATE_LIMITED" };
     }
 
@@ -112,7 +127,9 @@ export class MfaService {
     }
 
     // Code is valid! Mark challenge verified
-    await this.repository.markChallengeVerified(challenge.id);
+    if (!await this.repository.markChallengeVerified(challenge.id)) {
+      return { success: false, purpose: challenge.purpose as MfaPurpose, factorId: challenge.factorId, error: "MFA_CHALLENGE_USED" };
+    }
 
     // If enrolling, verify factor status
     if (challenge.purpose === "ENROLL_TOTP") {
@@ -186,6 +203,9 @@ export class MfaService {
 
     if (input.sessionId && proof.sessionId !== input.sessionId) {
       return { valid: false, reason: "PROOF_SESSION_MISMATCH" };
+    }
+    if (input.context && !isDeepStrictEqual(proof.context, input.context)) {
+      return { valid: false, reason: "PROOF_CONTEXT_MISMATCH" };
     }
 
     return { valid: true, proof };
