@@ -255,8 +255,9 @@ function RealSessionProvider({ children }: { children: ReactNode }) {
             headers: {
               "Content-Type": "application/json",
               Authorization: `Bearer ${next.accessToken}`,
+              ...(sessionId ? { "x-session-id": sessionId } : {}),
             },
-            body: JSON.stringify({ purpose: "STAFF_ADMIN_LOGIN", ...(sessionId ? { sessionId } : {}) }),
+            body: JSON.stringify({ purpose: "STAFF_ADMIN_LOGIN" }),
           });
           const chPayload = await chRes.json();
           if (chRes.ok && chPayload.success && chPayload.data?.challengeId) {
@@ -360,10 +361,10 @@ function RealSessionProvider({ children }: { children: ReactNode }) {
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${data.accessToken}`,
+        ...(data.sessionId ? { "x-session-id": data.sessionId } : {}),
       },
       body: JSON.stringify({
         purpose: "UNLOCK_SESSION",
-        ...(data.sessionId ? { sessionId: data.sessionId } : {}),
       }),
     });
     const chPayload = await chRes.json();
