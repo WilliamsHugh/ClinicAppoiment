@@ -20,8 +20,16 @@
 - **Task ID:** `M2-INTEGRATION-006` (also covering `M2-INTEGRATION-005`, `M2-PLATFORM-003`)
 - **Coordinator / Owner:** Member 1 (TV1 — API Gateway, platform harness, integration coordinator)
 - **Worktree:** `/home/Williams/Projects/ClinicAppoiment-worktrees/backend-openapi`
-- **Branch:** `test/m2-integration-006-live-e2e` (base `bec6e93`)
+- **Branch:** `test/m2-integration-006-live-e2e`
 - **Status:** **HARNESS HARDENED / LIVE ACCEPTANCE PENDING**
+
+### Current local implementation revisions
+
+- Backend harness, Gateway boundary and report: `5239032` (`test/m2-integration-006-live-e2e`).
+- Client live-test preparation and patient appointment idempotency forwarding: `04746cc`
+  (`test/m2-integration-006-client-live`, based on frontend `bbd251a`).
+- Both commits are local only. They have not been pushed or merged. The original dirty
+  frontend worktree was not modified.
 
 ## 0. Current Acceptance Gate
 

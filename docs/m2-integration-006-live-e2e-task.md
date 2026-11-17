@@ -12,7 +12,9 @@
 > nội bộ trên Gateway public. Unit/typecheck và chế độ mặc định không gọi live đã xác minh.
 > Việc chạy DB disposable/hosted test Auth vẫn chờ người vận hành cấu hình và xác nhận môi
 > trường riêng; Web browser thật và Flutter emulator/device vẫn là bằng chứng bắt buộc còn
-> thiếu theo Definition of Done.
+> thiếu theo Definition of Done. Phần gia cố đã commit local: backend `5239032` trên
+> `test/m2-integration-006-live-e2e`; client tests `04746cc` trên
+> `test/m2-integration-006-client-live` (base frontend `bbd251a`). Chưa push hoặc merge.
 
 ## 1. Baseline và điều kiện bắt đầu
 
