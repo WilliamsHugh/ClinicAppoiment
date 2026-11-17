@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "test": "vitest run",
-    "test:live": "node --test test/live-openapi.mjs"
+    "test:live": "node --test test/live-openapi.mjs",
+    "test:live-e2e": "node test/run-phase5-live.mjs"
   },
   "devDependencies": {
     "@apidevtools/swagger-parser": "^12.1.0",
