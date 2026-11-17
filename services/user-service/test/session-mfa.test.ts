@@ -468,6 +468,64 @@ describe("MFA Challenges & Proofs", () => {
     expect(rateLimited.success).toBe(false);
     expect(rateLimited.error).toBe("MFA_RATE_LIMITED");
   });
+
+  it("handles step-up proof generation and validation for AUTHORIZE_SENSITIVE_OPERATION", async () => {
+    const enroll = await mfaService.enrollTotp("admin-user-1", "admin@example.com");
+    const factorId = enroll.factorId;
+
+    // Create challenge for sensitive operation
+    const challenge = await mfaService.createChallenge({
+      factorId,
+      userId: "admin-user-1",
+      sessionId: "admin-sess-1",
+      purpose: "AUTHORIZE_SENSITIVE_OPERATION",
+      context: {
+        operation: "UPDATE_USER_ROLE",
+        targetUserId: "user-target-1",
+        resource: "user-target-1",
+        role: "DOCTOR",
+      },
+    });
+
+    const code = generateTotpCode(enroll.secret, getTotpCounter());
+    const verifyResult = await mfaService.verifyChallenge({
+      challengeId: challenge.challengeId,
+      code,
+      sessionId: "admin-sess-1",
+    });
+
+    expect(verifyResult.success).toBe(true);
+    expect(verifyResult.purpose).toBe("AUTHORIZE_SENSITIVE_OPERATION");
+    expect(verifyResult.proofId).toBeDefined();
+
+    // Verify proof
+    const validProof = await mfaService.verifyProof({
+      proofId: verifyResult.proofId!,
+      purpose: "AUTHORIZE_SENSITIVE_OPERATION",
+      actorUserId: "admin-user-1",
+      sessionId: "admin-sess-1",
+    });
+    expect(validProof.valid).toBe(true);
+
+    // Context checks
+    const ctx = validProof.proof?.context as Record<string, unknown>;
+    expect(ctx.operation).toBe("UPDATE_USER_ROLE");
+    expect(ctx.targetUserId).toBe("user-target-1");
+    expect(ctx.role).toBe("DOCTOR");
+
+    // Single-use consumption
+    const consumed = await mfaService.consumeProof(verifyResult.proofId!, "user-service");
+    expect(consumed).toBe(true);
+
+    // Replay is rejected
+    const replayVerify = await mfaService.verifyProof({
+      proofId: verifyResult.proofId!,
+      purpose: "AUTHORIZE_SENSITIVE_OPERATION",
+      actorUserId: "admin-user-1",
+    });
+    expect(replayVerify.valid).toBe(false);
+    expect(replayVerify.reason).toBe("PROOF_ALREADY_CONSUMED");
+  });
 });
 
 describe("HTTP Endpoints (Auth, Sessions, MFA & Internal Verifications)", () => {
@@ -587,5 +645,23 @@ describe("HTTP Endpoints (Auth, Sessions, MFA & Internal Verifications)", () => 
     expect(res.status).toBe(200);
     expect(res.body.data.items).toHaveLength(1);
     expect(res.body.data.items[0].fullName).toBe("Patient Test");
+  });
+
+  it("POST /api/v1/auth/session/activity targets specific session via x-session-id or body", async () => {
+    const res = await request(app)
+      .post("/api/v1/auth/session/activity")
+      .set("Authorization", "Bearer valid-token")
+      .set("x-session-id", testSession.id);
+
+    expect(res.status).toBe(200);
+    expect(res.body.data.sessionId).toBe(testSession.id);
+
+    const resBody = await request(app)
+      .post("/api/v1/auth/session/activity")
+      .set("Authorization", "Bearer valid-token")
+      .send({ sessionId: testSession.id });
+
+    expect(resBody.status).toBe(200);
+    expect(resBody.body.data.sessionId).toBe(testSession.id);
   });
 });

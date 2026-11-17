@@ -157,10 +157,16 @@ Object.assign(mutableDocument.components.schemas, {
     properties: { refreshToken: { type: "string", minLength: 1 } } },
   UserProfileUpdate: { type: "object", additionalProperties: false,
     properties: { fullName: { type: "string", minLength: 2, maxLength: 120 }, phone: { type: "string", nullable: true } } },
-  UserStatusUpdate: { type: "object", required: ["status"], additionalProperties: false,
-    properties: { status: { type: "string", enum: ["ACTIVE", "INACTIVE", "LOCKED"] } } },
-  UserRoleUpdate: { type: "object", required: ["role"], additionalProperties: false,
-    properties: { role: { type: "string", enum: ["PATIENT", "DOCTOR", "STAFF", "ADMIN"] } } },
+  UserStatusUpdate: { type: "object", required: ["status", "verificationProofId"], additionalProperties: false,
+    properties: {
+      status: { type: "string", enum: ["ACTIVE", "INACTIVE", "LOCKED"] },
+      verificationProofId: { type: "string", format: "uuid", description: "MFA proof ID for AUTHORIZE_SENSITIVE_OPERATION" },
+    } },
+  UserRoleUpdate: { type: "object", required: ["role", "verificationProofId"], additionalProperties: false,
+    properties: {
+      role: { type: "string", enum: ["PATIENT", "DOCTOR", "STAFF", "ADMIN"] },
+      verificationProofId: { type: "string", format: "uuid", description: "MFA proof ID for AUTHORIZE_SENSITIVE_OPERATION" },
+    } },
   PatientProfileUpdate: { type: "object", additionalProperties: false, properties: {
     dateOfBirth: { type: "string", format: "date", nullable: true },
     gender: { type: "string", enum: ["MALE", "FEMALE", "OTHER"], nullable: true },

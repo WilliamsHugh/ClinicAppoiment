@@ -369,6 +369,14 @@ export function createAuthRouter(
           if (current) {
             await sessions.revokeSession(current.id);
           }
+        } else {
+          const targetSessionId = (req.header("x-session-id") ?? req.body?.sessionId) as string | undefined;
+          if (targetSessionId) {
+            const current = await sessions.getSession(targetSessionId);
+            if (current && (!accessToken || (await provider.verify(accessToken)) === current.userId)) {
+              await sessions.revokeSession(current.id);
+            }
+          }
         }
       }
 
@@ -387,10 +395,20 @@ export function createAuthRouter(
     if (!actor) return fail(res, 401, "AUTH_REQUIRED", "Valid authentication required");
     if (!sessions) return fail(res, 503, "SESSION_SERVICE_UNAVAILABLE", "Session service is unavailable");
 
-    const activeSessions = await sessions.listActiveSessions(actor.profile.id);
-    if (activeSessions.length === 0) return fail(res, 404, "SESSION_NOT_FOUND", "No active session found");
+    const headerSessionId = (req.header("x-session-id") ?? (req.query?.sessionId as string | undefined));
+    let currentSession: SessionRecord | null = null;
+    if (headerSessionId) {
+      currentSession = await sessions.getSession(headerSessionId);
+      if (currentSession && currentSession.userId !== actor.profile.id) {
+        currentSession = null;
+      }
+    }
 
-    const currentSession = await sessions.getSession(activeSessions[0].sessionId);
+    if (!currentSession) {
+      const activeSessions = await sessions.listActiveSessions(actor.profile.id);
+      if (activeSessions.length === 0) return fail(res, 404, "SESSION_NOT_FOUND", "No active session found");
+      currentSession = await sessions.getSession(activeSessions[0].sessionId);
+    }
     if (!currentSession) return fail(res, 404, "SESSION_NOT_FOUND", "No active session found");
 
     return res.json(ok(formatSessionMetadata(currentSession)));
@@ -402,11 +420,21 @@ export function createAuthRouter(
     if (!actor) return fail(res, 401, "AUTH_REQUIRED", "Valid authentication required");
     if (!sessions) return fail(res, 503, "SESSION_SERVICE_UNAVAILABLE", "Session service is unavailable");
 
-    const activeList = await sessions.listActiveSessions(actor.profile.id);
-    if (activeList.length === 0) return fail(res, 404, "SESSION_NOT_FOUND", "No active session found");
+    const targetSessionId = (req.header("x-session-id") ?? req.body?.sessionId) as string | undefined;
+    let session: SessionRecord | null = null;
+    if (targetSessionId) {
+      session = await sessions.getSession(targetSessionId);
+      if (session && session.userId !== actor.profile.id) {
+        session = null;
+      }
+    }
 
-    const session = await sessions.getSession(activeList[0].sessionId);
-    if (!session) return fail(res, 404, "SESSION_NOT_FOUND", "No active session found");
+    if (!session) {
+      const activeList = await sessions.listActiveSessions(actor.profile.id);
+      if (activeList.length === 0) return fail(res, 404, "SESSION_NOT_FOUND", "No active session found");
+      session = await sessions.getSession(activeList[0].sessionId);
+      if (!session) return fail(res, 404, "SESSION_NOT_FOUND", "No active session found");
+    }
 
     const state = evaluateSessionStatus(session);
     if (state === "LOCKED") return fail(res, 403, "AUTH_SESSION_LOCKED", "Phiên đăng nhập đang bị khóa do không hoạt động");

@@ -249,18 +249,103 @@ app.get("/api/v1/users/:id", requireRoles("ADMIN"), async (req, res) => {
 });
 
 app.patch("/api/v1/users/:id/status", requireRoles("ADMIN"), async (req, res) => {
-  const parsed = z.object({ status: z.enum(["ACTIVE", "INACTIVE", "LOCKED"]) }).strict().safeParse(req.body);
+  const parsed = z.object({
+    status: z.enum(["ACTIVE", "INACTIVE", "LOCKED"]),
+    verificationProofId: z.string().min(1, "verificationProofId is required"),
+  }).strict().safeParse(req.body);
   if (!parsed.success) return res.status(400).json(error("VALIDATION_ERROR", "Invalid request body", parsed.error.issues));
-  const user = await repository.updateUser(String(req.params.id), { status: parsed.data.status });
+
+  const who = actor(req)!;
+  const targetUserId = String(req.params.id);
+
+  const proofVerify = await mfaService.verifyProof({
+    proofId: parsed.data.verificationProofId,
+    purpose: "AUTHORIZE_SENSITIVE_OPERATION",
+    actorUserId: who.userId,
+  });
+
+  if (!proofVerify.valid || !proofVerify.proof) {
+    return res.status(403).json(error("STEP_UP_MFA_REQUIRED", `MFA proof verification failed: ${proofVerify.reason ?? "invalid proof"}`));
+  }
+
+  const context = proofVerify.proof.context as Record<string, unknown> | undefined;
+  if (context) {
+    if (context.operation && context.operation !== "UPDATE_USER_STATUS") {
+      return res.status(403).json(error("STEP_UP_MFA_REQUIRED", "Proof context operation mismatch"));
+    }
+    if (context.targetUserId && context.targetUserId !== targetUserId) {
+      return res.status(403).json(error("STEP_UP_MFA_REQUIRED", "Proof context target user mismatch"));
+    }
+    if (context.resource && context.resource !== targetUserId) {
+      return res.status(403).json(error("STEP_UP_MFA_REQUIRED", "Proof context resource mismatch"));
+    }
+    if (context.status && context.status !== parsed.data.status) {
+      return res.status(403).json(error("STEP_UP_MFA_REQUIRED", "Proof context status mismatch"));
+    }
+  }
+
+  const consumed = await mfaService.consumeProof(proofVerify.proof.id, "user-service");
+  if (!consumed) {
+    return res.status(403).json(error("STEP_UP_MFA_REQUIRED", "MFA proof already consumed"));
+  }
+
+  const user = await repository.updateUser(targetUserId, { status: parsed.data.status });
   if (!user) return res.status(404).json(error("USER_NOT_FOUND", "User not found"));
+
+  if (parsed.data.status === "LOCKED" || parsed.data.status === "INACTIVE") {
+    await sessionService.revokeAllUserSessions(user.id);
+  }
+
   return res.json(success(publicUser(user)));
 });
 
 app.patch("/api/v1/users/:id/role", requireRoles("ADMIN"), async (req, res) => {
-  const parsed = z.object({ role: z.enum(["PATIENT", "DOCTOR", "STAFF", "ADMIN"]) }).strict().safeParse(req.body);
+  const parsed = z.object({
+    role: z.enum(["PATIENT", "DOCTOR", "STAFF", "ADMIN"]),
+    verificationProofId: z.string().min(1, "verificationProofId is required"),
+  }).strict().safeParse(req.body);
   if (!parsed.success) return res.status(400).json(error("VALIDATION_ERROR", "Invalid request body", parsed.error.issues));
-  const user = await repository.updateUser(String(req.params.id), { role: parsed.data.role });
+
+  const who = actor(req)!;
+  const targetUserId = String(req.params.id);
+
+  const proofVerify = await mfaService.verifyProof({
+    proofId: parsed.data.verificationProofId,
+    purpose: "AUTHORIZE_SENSITIVE_OPERATION",
+    actorUserId: who.userId,
+  });
+
+  if (!proofVerify.valid || !proofVerify.proof) {
+    return res.status(403).json(error("STEP_UP_MFA_REQUIRED", `MFA proof verification failed: ${proofVerify.reason ?? "invalid proof"}`));
+  }
+
+  const context = proofVerify.proof.context as Record<string, unknown> | undefined;
+  if (context) {
+    if (context.operation && context.operation !== "UPDATE_USER_ROLE") {
+      return res.status(403).json(error("STEP_UP_MFA_REQUIRED", "Proof context operation mismatch"));
+    }
+    if (context.targetUserId && context.targetUserId !== targetUserId) {
+      return res.status(403).json(error("STEP_UP_MFA_REQUIRED", "Proof context target user mismatch"));
+    }
+    if (context.resource && context.resource !== targetUserId) {
+      return res.status(403).json(error("STEP_UP_MFA_REQUIRED", "Proof context resource mismatch"));
+    }
+    if (context.role && context.role !== parsed.data.role) {
+      return res.status(403).json(error("STEP_UP_MFA_REQUIRED", "Proof context role mismatch"));
+    }
+  }
+
+  const consumed = await mfaService.consumeProof(proofVerify.proof.id, "user-service");
+  if (!consumed) {
+    return res.status(403).json(error("STEP_UP_MFA_REQUIRED", "MFA proof already consumed"));
+  }
+
+  const user = await repository.updateUser(targetUserId, { role: parsed.data.role });
   if (!user) return res.status(404).json(error("USER_NOT_FOUND", "User not found"));
+
+  // Invalidate all active sessions for the user so previous role grants cannot be reused
+  await sessionService.revokeAllUserSessions(user.id);
+
   return res.json(success(publicUser(user)));
 });
 
