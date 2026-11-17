@@ -1,50 +1,52 @@
-# Live smoke test API v2
+# Hướng dẫn kiểm tra OpenAPI, integration và live E2E
 
-Task: **TV1 / M2-INTEGRATION-005**. Các lệnh dưới đây là hướng dẫn chạy; kết quả live trên máy khác phải được ghi lại riêng. Không dùng cơ sở dữ liệu production hoặc Supabase đang phục vụ người dùng cho integration test có `TRUNCATE`.
+Task hiện hành: **TV1 / Member 1 — `M2-INTEGRATION-006`**. Dùng dữ liệu tổng hợp và database disposable. Không dùng production hoặc Supabase đang phục vụ người dùng cho suite có thể ghi/xóa dữ liệu.
 
-## 1. Kiểm tra OpenAPI và Swagger
+## Phân biệt các loại bằng chứng
 
-Chạy Gateway cổng 8080 và 5 service cổng 3001–3005 (hoặc đặt các biến `OPENAPI_GATEWAY_URL`, `OPENAPI_USER_SERVICE_URL`, `OPENAPI_DOCTOR_SERVICE_URL`, `OPENAPI_APPOINTMENT_SERVICE_URL`, `OPENAPI_MEDICAL_RECORD_SERVICE_URL`, `OPENAPI_NOTIFICATION_SERVICE_URL`). Từ thư mục gốc repository:
-
-```bash
-node packages/openapi-contract-tests/test/live-openapi.mjs
-npm test -w @clinic/openapi-contract-tests
-```
-
-Lệnh thứ nhất chỉ kiểm tra `/openapi.json`, `/docs/` và `/api-docs/` của 6 tiến trình. Lệnh thứ hai chạy contract/harness tổng hợp trong bộ nhớ. **Hai lệnh này không xác nhận đăng nhập, TOTP, đặt lịch, grant hoặc chốt bệnh án qua Gateway thật.**
-
-## 2. Integration test với PostgreSQL disposable
-
-Mỗi service dùng một database test riêng, đã áp dụng schema tương ứng. Appointment và Doctor test sẽ khởi tạo/truncate dữ liệu; tuyệt đối chỉ trỏ tới database có thể xóa. Không chỉnh `describe.skip` bằng tay: các suite tự bật khi có đúng biến môi trường.
-
-| Test file | Điều kiện bật | Lệnh chạy trong thư mục gốc |
+| Kiểm tra | Thành phần thật được chạm tới | Điều không chứng minh |
 |---|---|---|
-| Appointment `postgres.integration.test.ts` | `APPOINTMENT_TEST_DATABASE_URL`, `APPOINTMENT_TEST_DATABASE_DISPOSABLE=1` | `npm test -w @clinic/appointment-service -- test/postgres.integration.test.ts` |
-| Doctor `postgres.integration.test.ts` | `DOCTOR_TEST_DATABASE_URL`, `DOCTOR_TEST_DATABASE_DISPOSABLE=1` | `npm test -w @clinic/doctor-service -- test/postgres.integration.test.ts` |
-| Record `postgres.integration.test.ts` | `TEST_DATABASE_URL` | `npm test -w @clinic/medical-record-service -- test/postgres.integration.test.ts` |
-| Record `appointment-http.integration.test.ts` | `TEST_DATABASE_URL`, `TEST_APPOINTMENT_DATABASE_URL`, `TEST_DOCTOR_DATABASE_URL` | `npm test -w @clinic/medical-record-service -- test/appointment-http.integration.test.ts` |
-| Record `user-guard.integration.test.ts` | `TEST_USER_PROVIDER_ROOT` trỏ tới root repository | `npm test -w @clinic/medical-record-service -- test/user-guard.integration.test.ts` |
-| Notification `postgres.integration.test.ts` | `TEST_DATABASE_URL` | `npm test -w @clinic/notification-service -- test/postgres.integration.test.ts` |
-| Notification `appointment-http.integration.test.ts` | `TEST_DATABASE_URL`, `TEST_APPOINTMENT_DATABASE_URL` | `npm test -w @clinic/notification-service -- test/appointment-http.integration.test.ts` |
+| `npm test -w @clinic/openapi-contract-tests` | Contract/spec và harness trong bộ nhớ | Không chứng minh service runtime, DB hoặc giao diện thật |
+| `npm run test:live -w @clinic/openapi-contract-tests` | Các URL OpenAPI/Swagger cấu hình trong môi trường | Không chứng minh đăng nhập hay nghiệp vụ |
+| `npm run test:live-e2e -w @clinic/openapi-contract-tests` | Gateway thật trong test process, nhưng năm upstream là Express fixture và dữ liệu in-memory | Không phải E2E qua năm business service runtime hoặc DB thật |
+| PostgreSQL integration suites | Repository/service test với PostgreSQL disposable | Không chứng minh client → Gateway → toàn bộ services |
+| Live product E2E | Flutter/Web → Gateway → business services thật → từng DB thật | Chỉ đạt khi có kết quả lưu cho từng flow và bộ SHA |
 
-Đặt biến môi trường ngay trước lệnh trong cùng terminal, ví dụ:
+## 1. Contract và OpenAPI
+
+Từ root repository:
 
 ```bash
-APPOINTMENT_TEST_DATABASE_URL='postgresql://USER:PASSWORD@127.0.0.1:5433/appointment_test' \
-APPOINTMENT_TEST_DATABASE_DISPOSABLE=1 \
-npm test -w @clinic/appointment-service -- test/postgres.integration.test.ts
+npm test -w @clinic/openapi-contract-tests
+npm run test:live -w @clinic/openapi-contract-tests
 ```
 
-Migration thông thường dùng các script `npm run db:migrate:user`, `db:migrate:doctor`, `db:migrate:appointment`, `db:migrate:medical-record`, `db:migrate:notification` từ root với `.env` riêng. Chỉ chạy chúng trên database test đã chọn. User Service cần migration `004_mfa_challenge_backoff` trước khi chạy luồng MFA mới.
+`test:live` dùng các URL `OPENAPI_GATEWAY_URL`, `OPENAPI_USER_SERVICE_URL`, `OPENAPI_DOCTOR_SERVICE_URL`, `OPENAPI_APPOINTMENT_SERVICE_URL`, `OPENAPI_MEDICAL_RECORD_SERVICE_URL`, `OPENAPI_NOTIFICATION_SERVICE_URL` nếu được đặt; nếu không, dùng mặc định trong test. Chạy nó chỉ kiểm tra OpenAPI/Swagger.
 
-## 3. Kịch bản live qua API Gateway cần ghi bằng chứng
+## 2. Gateway synthetic runner
 
-Hiện repository **chưa có runner tự động** cho các bước này. Dùng tài khoản test và gửi mọi request public đến Gateway; ghi HTTP status, `requestId`, thời gian, và trạng thái database/outbox, không ghi token, mật khẩu, mã TOTP hoặc nội dung bệnh án vào log bàn giao.
+```bash
+npm run build --workspaces --if-present
+npm run test:live-e2e -w @clinic/openapi-contract-tests
+```
 
-1. Đăng nhập STAFF/ADMIN: `PENDING_MFA`; gọi `GET /api/v1/auth/mfa/factors`, `POST /api/v1/auth/mfa/challenges` với `factorId`, rồi `POST /api/v1/auth/mfa/verify`. Trước xác minh, nghiệp vụ bị chặn; sau xác minh, được phép theo role.
-2. Đăng nhập DOCTOR; chọn lịch `CHECKED_IN`. Challenge `OPEN_CLINICAL_RECORDS` phải gắn `appointmentId`, `patientId`, `accessMode`. Chỉ sau proof hợp lệ mới xin grant. Thử lại với lịch `CONFIRMED`, sai phiên hoặc sai hồ sơ: phải bị từ chối.
-3. Gọi danh sách authored mặc định: chỉ có metadata. `GET /api/v1/medical-records/:id?view=summary` không chứa chẩn đoán/đơn thuốc. Muốn đọc chi tiết phải gửi `X-Clinical-Grant` hợp lệ trong cùng phiên. `AUTHORED_HISTORY` chỉ dành cho hồ sơ do chính bác sĩ lập trong 180 ngày; `CURRENT_ENCOUNTER` cần ca đã `CHECKED_IN`.
-4. Tạo `finalization-context` từ nội dung cuối; challenge `FINALIZE_MEDICAL_RECORD` phải gắn `contextId`, `contentDigest` và `recordId` nếu sửa nháp. Dùng proof để chốt FINAL; đổi đơn thuốc sau context hoặc dùng lại proof phải bị từ chối. Kiểm tra outbox hoàn thành appointment.
-5. Đăng xuất/thu hồi phiên, thử dùng lại grant/proof; kiểm tra mất quyền. Ghi cả trường hợp upstream tạm mất kết nối và phục hồi.
+Runner `test/run-phase5-live.mjs` tự khởi chạy Gateway và các upstream Express tổng hợp tại localhost. Fixture login, MFA và dữ liệu nghiệp vụ được xử lý trong bộ nhớ. Kết quả chỉ được báo là **Gateway synthetic integration**. Không dùng kết quả này để xác nhận kết nối service/DB thật, TOTP thật, Flutter, Web hoặc toàn trình sản phẩm.
 
-Chỉ đánh dấu nghiệm thu live E2E khi đã chạy và lưu kết quả thực tế của từng bước trên cùng một revision backend/frontend.
+## 3. PostgreSQL disposable integration
+
+Mỗi suite phải dùng database riêng có thể xóa, đã migrate theo service. Appointment và Doctor có thể truncate dữ liệu. Không bật suite trên production. Các lệnh, biến môi trường và test files cụ thể được ghi trong phần PostgreSQL integration của handoff và task `M2-INTEGRATION-006`.
+
+Sau khi chạy, ghi command, revision, exit code, pass/fail/skip và tên DB test (không ghi password/URL có credential). Nếu suite tự skip do thiếu env, báo `SKIP`, không tính là PASS.
+
+## 4. Live E2E qua service thật
+
+Hiện chưa có bằng chứng trong repo này cho runner tự động dùng đồng thời Flutter/Web, Gateway và năm service runtime thật. Task [`M2-INTEGRATION-006`](../../docs/m2-integration-006-live-e2e-task.md) mô tả cách hoàn thiện và acceptance. Trước khi đánh dấu PASS cần:
+
+1. Chạy năm service thật cùng Gateway với URL nội bộ trỏ đúng service; xác minh readiness và DB riêng.
+2. Chạy Flutter PATIENT và Next.js DOCTOR/STAFF/ADMIN trên cùng bộ revision tương thích.
+3. Gửi mọi request public qua Gateway; không để client gọi port service hoặc database trực tiếp.
+4. Thực hiện các flow login/session, booking, check-in, clinical grant, record finalization, patient record/notification, revoke và outage/retry bằng fixture tổng hợp.
+5. Kiểm tra database/outbox sau mỗi side effect; ghi request IDs/status/thời gian và loại bỏ token, mật khẩu, TOTP, secret, PHI khỏi artifacts.
+6. Ghi riêng kết quả Web và Flutter, test lỗi/skip, SHA frontend/backend, migrations và trạng thái working tree. Chỉ đặt E2E PASS khi mọi flow bắt buộc qua đủ lớp.
+
+Tài liệu nghiệm thu hiện hành: [`api-v2-e2e-acceptance-report.md`](../../docs/api-v2-e2e-acceptance-report.md). Bản hướng dẫn cũ được giữ trong [`archive/m2-2026-11-17`](archive/m2-2026-11-17/README.md).
