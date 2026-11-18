@@ -2,7 +2,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { EmptyState, ErrorState, PermissionDeniedState } from "../../components/states";
-import { Alert, Badge, Button, ConfirmModal, Skeleton } from "../../components/ui";
+import { Alert, Badge, Button, ConfirmModal, Input, Modal, Skeleton } from "../../components/ui";
 import { Pagination } from "../../components/pagination";
 import { PageHeader } from "../../components/page-header";
 import { ApiClientError, createBrowserApiClient } from "../../lib/api/client";
@@ -24,6 +24,7 @@ export interface MedicalRecordItem {
   treatmentPlan?: string;
   prescription: PrescriptionItem[];
   status: "DRAFT" | "FINAL";
+  version?: number;
   createdAt: string;
   appointmentCompletion?: "NOT_REQUESTED" | "PENDING" | "COMPLETED";
 }
@@ -51,6 +52,19 @@ interface Page<T> {
   items: T[];
   total?: number;
 }
+
+type ClinicalBody = Pick<RecordForm, "symptoms" | "diagnosis" | "notes" | "treatmentPlan" | "prescription">;
+type ClinicalChallenge = {
+  challengeId: string;
+  purpose: "OPEN_CLINICAL_RECORDS" | "FINALIZE_MEDICAL_RECORD";
+  appointmentId: string;
+  patientId: string;
+  contextId?: string;
+  expectedVersion?: number;
+  body?: ClinicalBody;
+  readTarget?: "record" | "history";
+  recordId?: string;
+};
 
 const pageSize = 20;
 const emptyForm = (): RecordForm => ({
@@ -100,6 +114,7 @@ function MedicalRecordsPanelWorkspace({ session }: { session: Session }) {
   const [selection, setSelection] = useState<{ appointmentId: string; record?: MedicalRecordItem; recordId?: string }>({ appointmentId: "" });
   const [selectedAppointment, setSelectedAppointment] = useState<AppointmentOption | null>(null);
   const [record, setRecord] = useState<MedicalRecordItem | null>(null);
+  const [recordVerified, setRecordVerified] = useState(false);
   const [selectionLoading, setSelectionLoading] = useState(false);
   const [selectionError, setSelectionError] = useState<ApiClientError | null>(null);
   const [selectionRetry, setSelectionRetry] = useState(0);
@@ -111,11 +126,20 @@ function MedicalRecordsPanelWorkspace({ session }: { session: Session }) {
   const [pendingSelection, setPendingSelection] = useState<typeof selection | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const submitInFlight = useRef(false);
+  const draftIdempotencyKeyRef = useRef<string>("");
+  const finalizeIdempotencyKeyRef = useRef<string>("");
   const [confirmFinal, setConfirmFinal] = useState(false);
   const [lastAttemptedStatus, setLastAttemptedStatus] = useState<"DRAFT" | "FINAL">("DRAFT");
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [serverError, setServerError] = useState<ApiClientError | null>(null);
   const [prescriptionErrors, setPrescriptionErrors] = useState<Record<number, PrescriptionItemErrors>>({});
+  const [clinicalChallenge, setClinicalChallenge] = useState<ClinicalChallenge | null>(null);
+  const [clinicalCode, setClinicalCode] = useState("");
+  const [clinicalBusy, setClinicalBusy] = useState(false);
+  const [clinicalError, setClinicalError] = useState<string | null>(null);
+  const [historyRecords, setHistoryRecords] = useState<MedicalRecordItem[] | null>(null);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historyError, setHistoryError] = useState<string | null>(null);
   const finalized = record?.status === "FINAL";
   const selectedAppointmentId = selection.appointmentId || record?.appointmentId || "";
 
@@ -180,16 +204,19 @@ function MedicalRecordsPanelWorkspace({ session }: { session: Session }) {
     setPatientError(false);
     setSelectedAppointment(null);
     setRecord(null);
+    setRecordVerified(false);
     setForm(emptyForm());
     setDirty(false);
     setSuccessMessage(null);
     setServerError(null);
     setPrescriptionErrors({});
+    setHistoryRecords(null);
+    setHistoryError(null);
     const load = async () => {
       try {
         let selectedRecord = selection.record ?? null;
         if (selection.recordId) {
-          const result = await client.get<MedicalRecordItem>(`/api/v1/medical-records/${encodeURIComponent(selection.recordId)}`, { signal: controller.signal });
+          const result = await client.get<MedicalRecordItem>(`/api/v1/medical-records/${encodeURIComponent(selection.recordId)}`, { query: { view: "summary" }, signal: controller.signal });
           selectedRecord = result.data;
         } else if (!selectedRecord) {
           const result = await client.get<Page<MedicalRecordItem>>("/api/v1/medical-records", {
@@ -201,7 +228,7 @@ function MedicalRecordsPanelWorkspace({ session }: { session: Session }) {
         if (!active) return;
         const appointmentId = selectedRecord?.appointmentId || selection.appointmentId;
         setRecord(selectedRecord);
-        if (selectedRecord) setForm(formFrom(selectedRecord));
+        // The authored list and deep link contain metadata only. Clinical fields load after TOTP.
         setSelectionLoading(false);
         const localAppointment = appointments.find((a) => a.id === appointmentId);
         let appointment = localAppointment;
@@ -244,7 +271,12 @@ function MedicalRecordsPanelWorkspace({ session }: { session: Session }) {
   const changeSelection = (next: typeof selection) => {
     if (submitting) return;
     if (dirty) { setPendingSelection(next); return; }
+    draftIdempotencyKeyRef.current = "";
+    finalizeIdempotencyKeyRef.current = "";
     setSelection(next);
+    setClinicalChallenge(null);
+    setHistoryRecords(null);
+    setRecordVerified(false);
     if (!next.appointmentId && !next.recordId && !next.record) {
       setRecord(null);
       setForm(emptyForm());
@@ -283,7 +315,134 @@ function MedicalRecordsPanelWorkspace({ session }: { session: Session }) {
     return Object.keys(errors).length === 0;
   };
 
-  const executeSubmit = async (status: "DRAFT" | "FINAL") => {
+  const clinicalBody = (): ClinicalBody => ({
+    symptoms: form.symptoms.trim(), diagnosis: form.diagnosis.trim(),
+    notes: form.notes.trim(), treatmentPlan: form.treatmentPlan.trim(),
+    prescription: form.prescription.filter((item) => item.medicineName.trim()),
+  });
+
+  const beginChallenge = async (purpose: ClinicalChallenge["purpose"], context: Record<string, unknown>): Promise<string> => {
+    const factors = await client.get<{ items: Array<{ factorId: string; type: string; status: string }> }>("/api/v1/auth/mfa/factors");
+    const factor = factors.data.items.find((item) => item.type === "totp" && item.status === "verified");
+    if (!factor) throw new Error("Chưa có TOTP đã xác minh cho tài khoản bác sĩ. Cần thiết lập TOTP trước khi tiếp tục.");
+    const challenge = await client.post<{ challengeId: string }>("/api/v1/auth/mfa/challenges", {
+      body: { factorId: factor.factorId, purpose, context },
+    });
+    return challenge.data.challengeId;
+  };
+
+  const startClinicalOperation = async (purpose: ClinicalChallenge["purpose"], readTarget: "record" | "history" = "history") => {
+    const appointmentId = selectedAppointmentId;
+    const patientId = record?.patientId || selectedAppointment?.patientId;
+    if (!appointmentId || !patientId || clinicalBusy) return;
+    setClinicalBusy(true);
+    setClinicalError(null);
+    setHistoryError(null);
+    try {
+      if (purpose === "OPEN_CLINICAL_RECORDS") {
+        if (readTarget === "history" && selectedAppointment?.status !== "CHECKED_IN") throw new Error("Chỉ mở tiền sử khi ca khám đã được tiếp nhận.");
+        if (readTarget === "record" && !record?.id) throw new Error("Chưa chọn hồ sơ cần mở.");
+        const accessMode = readTarget === "record" ? "AUTHORED_HISTORY" : "CURRENT_ENCOUNTER";
+        const recordId = readTarget === "record" ? record?.id : undefined;
+        const challengeId = await beginChallenge(purpose, { appointmentId, patientId, accessMode,
+          ...(recordId ? { recordId } : {}) });
+        setClinicalChallenge({ challengeId, purpose, appointmentId, patientId, readTarget, recordId });
+      } else {
+        const body = clinicalBody();
+        const expectedVersion = record?.version ?? (record ? 1 : 0);
+        const context = await client.post<{ contextId: string; contentDigest: string }>("/api/v1/medical-records/finalization-contexts", {
+          body: { appointmentId, ...(record ? { recordId: record.id } : {}), expectedVersion, record: body },
+        });
+        const challengeContext = { contextId: context.data.contextId, contentDigest: context.data.contentDigest,
+          ...(record ? { recordId: record.id } : {}) };
+        const challengeId = await beginChallenge(purpose, challengeContext);
+        setClinicalChallenge({ challengeId, purpose, appointmentId, patientId, contextId: context.data.contextId, expectedVersion, body });
+      }
+      setClinicalCode("");
+      setConfirmFinal(false);
+    } catch (caught) {
+      setClinicalError(caught instanceof Error ? caught.message : "Không thể bắt đầu xác minh TOTP.");
+      setConfirmFinal(false);
+    } finally {
+      setClinicalBusy(false);
+    }
+  };
+
+  const verifyClinicalCode = async () => {
+    const challenge = clinicalChallenge;
+    if (!challenge || clinicalBusy || !/^\d{6}$/.test(clinicalCode)) return;
+    setClinicalBusy(true);
+    setClinicalError(null);
+    try {
+      const verified = await client.post<{ authorization?: { proofId: string } }>("/api/v1/auth/mfa/verify", {
+        body: { challengeId: challenge.challengeId, code: clinicalCode },
+      });
+      const proofId = verified.data.authorization?.proofId;
+      if (!proofId) throw new Error("Máy chủ chưa cấp bằng chứng xác minh. Vui lòng thử lại.");
+      if (challenge.purpose === "OPEN_CLINICAL_RECORDS") {
+        const grant = await client.post<{ id?: string; grantId?: string }>("/api/v1/medical-records/access-grants", {
+          body: { verificationProofId: proofId, accessMode: challenge.readTarget === "record" ? "AUTHORED_HISTORY" : "CURRENT_ENCOUNTER",
+            appointmentId: challenge.appointmentId, patientId: challenge.patientId,
+            ...(challenge.recordId ? { recordId: challenge.recordId } : {}) },
+        });
+        const grantId = grant.data.grantId || grant.data.id;
+        if (!grantId) throw new Error("Máy chủ chưa trả mã quyền đọc bệnh án.");
+        setClinicalChallenge(null);
+        if (challenge.readTarget === "record" && challenge.recordId) {
+          const detail = await client.get<MedicalRecordItem>(`/api/v1/medical-records/${encodeURIComponent(challenge.recordId)}`, {
+            headers: { "X-Clinical-Grant": grantId },
+          });
+          setRecord(detail.data);
+          setForm(formFrom(detail.data));
+          setRecordVerified(true);
+          return;
+        }
+        setHistoryLoading(true);
+        try {
+          const history = await client.get<Page<MedicalRecordItem>>("/api/v1/medical-records", {
+            query: { scope: "patient-history", view: "detail", patientId: challenge.patientId, page: 1, limit: pageSize },
+            headers: { "X-Clinical-Grant": grantId },
+          });
+          setHistoryRecords(history.data.items);
+        } catch (caught) {
+          setHistoryError(caught instanceof Error ? caught.message : "Không thể tải tiền sử bệnh án.");
+        } finally {
+          setHistoryLoading(false);
+        }
+      } else {
+        setClinicalChallenge(null);
+        await executeSubmit("FINAL", { proofId, contextId: challenge.contextId!, expectedVersion: challenge.expectedVersion!, body: challenge.body! });
+      }
+    } catch (caught) {
+      setClinicalError(caught instanceof Error ? caught.message : "Mã TOTP không hợp lệ hoặc đã hết hạn.");
+    } finally {
+      setClinicalBusy(false);
+      setClinicalCode("");
+    }
+  };
+
+  const canSave = !submitting && !selectionLoading && !selectionError && ((Boolean(record) && recordVerified) || (!record && selectedAppointment?.status === "CHECKED_IN"));
+
+  const handleResolveConflict = async () => {
+    if (!record?.id) return;
+    setSubmitting(true);
+    setServerError(null);
+    try {
+      const result = await client.get<MedicalRecordItem>(`/api/v1/medical-records/${encodeURIComponent(record.id)}`, {
+        query: { view: "summary" },
+      });
+      setRecord((prev) => prev ? { ...prev, ...result.data, version: result.data.version ?? ((prev.version ?? 1) + 1) } : result.data);
+      draftIdempotencyKeyRef.current = "";
+      setSuccessMessage("Đã đồng bộ phiên bản mới nhất từ máy chủ. Dữ liệu bạn vừa nhập vẫn được giữ nguyên, bạn có thể bấm lưu nháp ngay bây giờ.");
+    } catch (caught) {
+      setServerError(apiError(caught, "Không thể tải phiên bản mới từ máy chủ. Vui lòng thử lại."));
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const executeSubmit = async (status: "DRAFT" | "FINAL", authorization?: { proofId: string; contextId: string; expectedVersion: number; body: ClinicalBody }) => {
+    if (status === "FINAL" && !authorization) return;
     if (submitInFlight.current || finalized || selectionError || selectionLoading || !selectedAppointmentId) return;
     if (!record && selectedAppointment?.status !== "CHECKED_IN") return;
     submitInFlight.current = true;
@@ -293,25 +452,49 @@ function MedicalRecordsPanelWorkspace({ session }: { session: Session }) {
     setSuccessMessage(null);
     setLastAttemptedStatus(status);
     try {
-      const clinicalBody = {
-        symptoms: form.symptoms.trim() || undefined, diagnosis: form.diagnosis.trim() || undefined,
-        notes: form.notes.trim() || undefined, treatmentPlan: form.treatmentPlan.trim() || undefined,
-        prescription: form.prescription.filter((item) => item.medicineName.trim()), status,
+      let idempotencyKey = status === "FINAL" ? finalizeIdempotencyKeyRef.current : draftIdempotencyKeyRef.current;
+      if (!idempotencyKey) {
+        idempotencyKey = `${status.toLowerCase()}-${selectedAppointmentId}-${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
+        if (status === "FINAL") {
+          finalizeIdempotencyKeyRef.current = idempotencyKey;
+        } else {
+          draftIdempotencyKeyRef.current = idempotencyKey;
+        }
+      }
+
+      const expectedVersion = authorization?.expectedVersion ?? (record ? (record.version ?? 1) : undefined);
+      const submittedBody = {
+        ...(authorization?.body ?? clinicalBody()),
+        status,
+        ...(expectedVersion !== undefined ? { expectedVersion } : {}),
+        ...(authorization ? { verificationProofId: authorization.proofId, contextId: authorization.contextId } : {}),
       };
+
+      const headers: Record<string, string> = { "Idempotency-Key": idempotencyKey };
+
       const result = record
-        ? await client.patch<Partial<MedicalRecordItem>>(`/api/v1/medical-records/${encodeURIComponent(record.id)}`, { body: clinicalBody })
+        ? await client.patch<Partial<MedicalRecordItem>>(`/api/v1/medical-records/${encodeURIComponent(record.id)}`, { body: submittedBody, headers })
         : await client.post<Partial<MedicalRecordItem>>("/api/v1/medical-records", {
-          body: { appointmentId: selectedAppointmentId, patientId: selectedAppointment!.patientId, doctorId: selectedAppointment!.doctorId, ...clinicalBody },
+          body: { appointmentId: selectedAppointmentId, patientId: selectedAppointment!.patientId, doctorId: selectedAppointment!.doctorId, ...submittedBody },
+          headers,
         });
       // Older responses may omit unchanged fields; never erase the submitted draft.
       const saved = {
         ...record, appointmentId: selectedAppointmentId,
         patientId: record?.patientId || selectedAppointment!.patientId,
         doctorId: record?.doctorId || selectedAppointment!.doctorId,
-        createdAt: record?.createdAt || "", ...clinicalBody, ...result.data,
+        createdAt: record?.createdAt || "", ...clinicalBody(), status, ...result.data,
       };
       if (!saved.id) throw new ApiClientError("Máy chủ chưa trả mã hồ sơ. Hãy tải lại ca trước khi lưu tiếp.", 502, "UPSTREAM_INVALID_RESPONSE");
+
+      if (status === "FINAL") {
+        finalizeIdempotencyKeyRef.current = "";
+      } else {
+        draftIdempotencyKeyRef.current = "";
+      }
+
       setRecord({ ...saved, id: saved.id });
+      setRecordVerified(true);
       setForm(formFrom({ ...saved, id: saved.id }));
       setDirty(false);
       setSuccessMessage(saved.status === "FINAL"
@@ -326,6 +509,18 @@ function MedicalRecordsPanelWorkspace({ session }: { session: Session }) {
     }
   };
 
+  // Autosave draft every 30s when dirty && canSave && !submitting && !finalized && Boolean(record)
+  useEffect(() => {
+    if (!dirty || !canSave || submitting || finalized || !record || !recordVerified) return;
+    const timer = setTimeout(() => {
+      if (validate()) {
+        void executeSubmit("DRAFT");
+      }
+    }, 30000);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dirty, canSave, submitting, finalized, record, recordVerified]);
+
   if (session.status !== "loading" && !isDoctor) {
     return <PermissionDeniedState title="Không có quyền truy cập hồ sơ khám" message="Chỉ bác sĩ được phân công mới có quyền lập và quản lý bệnh án khám bệnh. Quản trị viên và nhân viên phòng khám không có quyền truy cập hồ sơ lâm sàng." action={{ label: "Về trang chủ", href: "/" }} />;
   }
@@ -335,7 +530,6 @@ function MedicalRecordsPanelWorkspace({ session }: { session: Session }) {
   const displayedAppointments = selectedAppointment && !appointments.some((a) => a.id === selectedAppointment.id)
     ? [selectedAppointment, ...appointments] : appointments;
   const selectedPatientId = record?.patientId || selectedAppointment?.patientId;
-  const canSave = !submitting && !selectionLoading && !selectionError && (Boolean(record) || selectedAppointment?.status === "CHECKED_IN");
 
   return (
     <section className="page-stack">
@@ -388,7 +582,12 @@ function MedicalRecordsPanelWorkspace({ session }: { session: Session }) {
           </div>
           {!hasSelection ? <div className={styles.selectionPrompt}><h3 className={styles.prescriptionTitle}>Chọn ca để bắt đầu</h3><p className={styles.fieldHelp}>Chọn lịch hẹn đã tiếp nhận hoặc mở một hồ sơ trong danh sách để tiếp tục làm việc.</p></div> : selectionLoading ? (
             <div className={styles.formGrid} aria-busy="true" aria-label="Đang tải hồ sơ ca đã chọn"><Skeleton height={80} width="100%" /><Skeleton height={120} width="100%" /></div>
-          ) : selectionError ? <ErrorState message={selectionError.message} requestId={selectionError.requestId} onRetry={() => setSelectionRetry((value) => value + 1)} /> : (
+          ) : selectionError ? <ErrorState message={selectionError.message} requestId={selectionError.requestId} onRetry={() => setSelectionRetry((value) => value + 1)} /> : record && !recordVerified ? <div className={styles.selectionPrompt}>
+            <h3 className={styles.prescriptionTitle}>Xác minh để mở hồ sơ</h3>
+            <p className={styles.fieldHelp}>Thông tin lâm sàng chỉ hiển thị sau khi bác sĩ nhập mã TOTP. Quyền mở hồ sơ gắn với phiên đăng nhập và hồ sơ đã chọn.</p>
+            {clinicalError && <Alert variant="danger" title="Không thể mở hồ sơ">{clinicalError}</Alert>}
+            <Button disabled={clinicalBusy} loading={clinicalBusy} onClick={() => void startClinicalOperation("OPEN_CLINICAL_RECORDS", "record")}>Xác minh TOTP để mở hồ sơ</Button>
+          </div> : (
             <div className={styles.formGrid}>
               <div className={styles.recordHeader}><h3 className={styles.prescriptionTitle}>{finalized ? "Bệnh án đã chốt (FINAL) · Chỉ đọc" : record ? "Cập nhật kết quả khám (DRAFT)" : "Lập hồ sơ khám bệnh mới"}</h3><Badge variant={finalized ? "success" : "warning"}>{finalized ? "Đã chốt (FINAL)" : record ? "Bản nháp (DRAFT)" : "Chưa lưu hồ sơ"}</Badge></div>
               {selectedPatientId && <div className={styles.patientCard} aria-label="Thông tin bệnh nhân ca khám">
@@ -399,7 +598,28 @@ function MedicalRecordsPanelWorkspace({ session }: { session: Session }) {
                 {selectedAppointment?.reason && <p className={styles.fieldHelp}>Lý do khám: {selectedAppointment.reason}</p>}
               </div>}
               {successMessage && <Alert variant="success" title="Đã lưu hồ sơ">{successMessage}</Alert>}
-              {serverError && <Alert variant="danger" title={serverError.status === 409 ? "Hồ sơ có xung đột" : "Không thể lưu hồ sơ"}><p>{serverError.message} Dữ liệu đã nhập được giữ nguyên.</p>{serverError.status === 409 ? <p className={styles.fieldHelp}>Mở lại hồ sơ để đối chiếu trạng thái trước khi lưu tiếp.</p> : <Button variant="secondary" size="sm" disabled={submitting} onClick={() => lastAttemptedStatus === "FINAL" ? setConfirmFinal(true) : void executeSubmit("DRAFT")}>Thử lại thao tác</Button>}</Alert>}
+              {serverError && (
+                <Alert variant="danger" title={serverError.status === 409 ? "Hồ sơ có xung đột phiên bản" : "Không thể lưu hồ sơ"}>
+                  <p>{serverError.message} Dữ liệu đã nhập được giữ nguyên.</p>
+                  {serverError.status === 409 ? (
+                    <div className={styles.fieldGroup} style={{ marginTop: "0.5rem" }}>
+                      <p className={styles.fieldHelp}>Phiên bản trên máy chủ đã thay đổi. Bạn có thể làm mới phiên bản máy chủ để lưu tiếp mà không làm mất nội dung vừa nhập.</p>
+                      <Button variant="secondary" size="sm" disabled={submitting} onClick={() => void handleResolveConflict()}>
+                        Đồng bộ phiên bản máy chủ & thử lưu lại
+                      </Button>
+                    </div>
+                  ) : (
+                    <Button variant="secondary" size="sm" disabled={submitting} onClick={() => lastAttemptedStatus === "FINAL" ? setConfirmFinal(true) : void executeSubmit("DRAFT")}>Thử lại thao tác</Button>
+                  )}
+                </Alert>
+              )}
+              {clinicalError && <Alert variant="danger" title="Không thể xác minh TOTP">{clinicalError}</Alert>}
+              {selectedAppointment?.status === "CHECKED_IN" && selectedPatientId && <section className={styles.fieldGroup} aria-labelledby="patient-history-heading">
+                <div className={styles.recordHeader}><h3 id="patient-history-heading" className={styles.prescriptionTitle}>Tiền sử bệnh án của bệnh nhân</h3><Button type="button" variant="secondary" size="sm" disabled={submitting || clinicalBusy} loading={historyLoading} onClick={() => void startClinicalOperation("OPEN_CLINICAL_RECORDS")}>Xác minh TOTP để xem</Button></div>
+                {historyError && <Alert variant="danger" title="Không thể tải tiền sử">{historyError} Xác minh lại để lấy quyền truy cập mới.</Alert>}
+                {historyLoading && <Skeleton height={80} width="100%" />}
+                {historyRecords && !historyLoading && (historyRecords.length ? <div className={styles.historyList}>{historyRecords.map((item) => <article className={styles.recordCard} key={item.id}><p className={styles.recordMeta}>{formatVietnamDateTime(item.createdAt)} · {item.status}</p><p className={styles.historyDiagnosis}>{item.diagnosis || "Chưa có chẩn đoán"}</p>{item.notes && <p className={styles.fieldHelp}>Ghi chú: {item.notes}</p>}{item.treatmentPlan && <p className={styles.fieldHelp}>Điều trị: {item.treatmentPlan}</p>}{item.prescription?.length > 0 && <ul>{item.prescription.map((medicine, index) => <li key={`${item.id}-${index}`}>{medicine.medicineName} · {medicine.dosage} · {medicine.frequency} · {medicine.duration}</li>)}</ul>}</article>)}</div> : <p className={styles.fieldHelp}>Chưa có bệnh án trước đó trong phạm vi được phép xem.</p>)}
+              </section>}
               {finalized && <div className={styles.finalizedBanner}><p className={styles.finalizedTitle}>Hồ sơ đã được chốt hoàn tất (FINAL)</p><p className={styles.finalizedDesc}>Nội dung ở chế độ chỉ đọc. {record?.appointmentCompletion === "COMPLETED" || selectedAppointment?.status === "COMPLETED" ? "Lịch hẹn đã hoàn thành (COMPLETED)." : record?.appointmentCompletion === "PENDING" ? "Đang đồng bộ trạng thái lịch hẹn." : "Trạng thái hoàn thành lịch hẹn chưa được xác nhận."}</p></div>}
               <form className={styles.formGrid} onSubmit={(event) => { event.preventDefault(); if (canSave && validate()) { setLastAttemptedStatus("FINAL"); setConfirmFinal(true); } }}>
                 {([
@@ -416,7 +636,12 @@ function MedicalRecordsPanelWorkspace({ session }: { session: Session }) {
           )}
         </section>
       </div>
-      <ConfirmModal isOpen={confirmFinal} onClose={() => setConfirmFinal(false)} onConfirm={() => void executeSubmit("FINAL")} title="Xác nhận chốt bệnh án (FINAL)" message="Sau khi chốt bệnh án ở trạng thái FINAL, nội dung và đơn thuốc sẽ chuyển sang chỉ đọc. Trạng thái hoàn thành lịch hẹn cần được hệ thống xác nhận riêng. Bạn có chắc chắn muốn chốt hồ sơ này?" confirmLabel="Xác nhận chốt bệnh án" cancelLabel="Quay lại kiểm tra" variant="primary" loading={submitting} />
+      <ConfirmModal isOpen={confirmFinal} onClose={() => setConfirmFinal(false)} onConfirm={() => void startClinicalOperation("FINALIZE_MEDICAL_RECORD")} title="Xác nhận chốt bệnh án (FINAL)" message="Sau khi chốt bệnh án ở trạng thái FINAL, nội dung và đơn thuốc sẽ chuyển sang chỉ đọc. Trạng thái hoàn thành lịch hẹn cần được hệ thống xác nhận riêng. Bạn có chắc chắn muốn chốt hồ sơ này?" confirmLabel="Xác nhận chốt bệnh án" cancelLabel="Quay lại kiểm tra" variant="primary" loading={clinicalBusy} />
+      <Modal isOpen={clinicalChallenge !== null} onClose={() => { if (!clinicalBusy) { setClinicalChallenge(null); setClinicalCode(""); } }} title={clinicalChallenge?.purpose === "FINALIZE_MEDICAL_RECORD" ? "Xác minh TOTP để chốt bệnh án" : clinicalChallenge?.readTarget === "record" ? "Xác minh TOTP để mở hồ sơ" : "Xác minh TOTP để xem tiền sử"} footer={<><Button variant="secondary" disabled={clinicalBusy} onClick={() => setClinicalChallenge(null)}>Hủy</Button><Button disabled={clinicalBusy || !/^\d{6}$/.test(clinicalCode)} loading={clinicalBusy} onClick={() => void verifyClinicalCode()}>Xác minh</Button></>}>
+        <p className={styles.fieldHelp}>Nhập mã 6 số hiện tại từ ứng dụng xác thực. Yêu cầu xác minh hết hạn sau 5 phút.</p>
+        <Input label="Mã TOTP 6 số" type="text" inputMode="numeric" autoComplete="one-time-code" maxLength={6} pattern="[0-9]{6}" value={clinicalCode} onChange={(event) => setClinicalCode(event.target.value.replace(/\D/g, ""))} />
+        {clinicalError && <Alert variant="danger" title="Không thể xác minh">{clinicalError}</Alert>}
+      </Modal>
       <ConfirmModal isOpen={pendingSelection !== null} onClose={() => setPendingSelection(null)} onConfirm={() => { setDirty(false); setSelection(pendingSelection!); setPendingSelection(null); }} title="Đổi ca khi chưa lưu?" message="Nội dung chưa lưu của ca hiện tại sẽ bị bỏ. Chọn quay lại để lưu nháp trước khi đổi ca." confirmLabel="Bỏ thay đổi và đổi ca" cancelLabel="Quay lại hồ sơ" variant="danger" />
     </section>
   );

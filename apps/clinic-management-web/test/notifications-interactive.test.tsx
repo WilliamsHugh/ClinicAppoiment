@@ -404,4 +404,65 @@ describe("NotificationsPanel State & Mutation Transitions (Nhánh 2 Agent B)", (
     expect(unreadFilter.getAttribute("aria-pressed")).toBe("true");
   });
 
+  it("bulk read-all preserves unread count and keeps notifications arriving after cutoff UNREAD (G09)", async () => {
+    const olderItem = {
+      id: "notif-old",
+      recipientUserId: "user-1",
+      type: "appointment.confirmed",
+      title: "Lịch hẹn cũ",
+      message: "Lịch hẹn đã xác nhận trước cutoff",
+      status: "UNREAD",
+      createdAt: "2026-11-17T10:00:00.000Z"
+    };
+    const newerItem = {
+      id: "notif-new",
+      recipientUserId: "user-1",
+      type: "appointment.created",
+      title: "Lịch hẹn mới",
+      message: "Lịch hẹn đến sau cutoff",
+      status: "UNREAD",
+      createdAt: "2026-11-17T10:05:00.000Z"
+    };
+
+    function UnreadProbe() {
+      const { unreadCount } = useNotifications();
+      return <output aria-label="Số chưa đọc">{unreadCount}</output>;
+    }
+
+    vi.stubGlobal("fetch", vi.fn(async (input: string, init?: RequestInit) => {
+      const url = new URL(String(input));
+      if (init?.method === "PATCH" && url.pathname.includes("read-all")) {
+        return envelope({
+          updatedCount: 1,
+          unreadCount: 1,
+          readBefore: "2026-11-17T10:02:00.000Z",
+          readAt: "2026-11-17T10:06:00.000Z"
+        });
+      }
+      if (url.searchParams.get("limit") === "1") return envelope({ items: [], total: 2 });
+      return envelope({ items: [olderItem, newerItem], total: 2 });
+    }));
+
+    await act(async () => {
+      root.render(<NotificationProvider><UnreadProbe /><NotificationsPanel /></NotificationProvider>);
+    });
+
+    expect(host.querySelector("output")?.textContent).toBe("2");
+
+    const readAllButton = Array.from(host.querySelectorAll("button")).find((button) => button.textContent?.includes("Đánh dấu tất cả đã đọc"))!;
+    expect(readAllButton).toBeDefined();
+
+    await act(async () => {
+      readAllButton.click();
+    });
+
+    // Global unread count must sync to 1 from server response, NEVER forced to 0
+    expect(host.querySelector("output")?.textContent).toBe("1");
+
+    // The newer notification arrived after cutoff, so it MUST remain UNREAD with its action button
+    expect(host.querySelector("button[aria-label='Đánh dấu đã đọc thông báo: Lịch hẹn mới']")).not.toBeNull();
+    // The older notification was before cutoff, so it is now READ
+    expect(host.querySelector("button[aria-label='Đánh dấu đã đọc thông báo: Lịch hẹn cũ']")).toBeNull();
+  });
+
 });

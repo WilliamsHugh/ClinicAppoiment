@@ -6,7 +6,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AppointmentSelector } from "../src/features/medical-records/appointment-selector";
 import { PrescriptionForm } from "../src/features/medical-records/prescription-form";
-import { MedicalRecordsPanel } from "../src/features/medical-records/medical-records-panel";
+import { MedicalRecordsPanel, type MedicalRecordItem } from "../src/features/medical-records/medical-records-panel";
 import type { Session } from "../src/lib/session/session";
 
 Object.assign(globalThis, { React, IS_REACT_ACT_ENVIRONMENT: true });
@@ -111,7 +111,9 @@ function failure(message: string, status = 500) {
 }
 
 function changeInputValue(input: HTMLInputElement | HTMLTextAreaElement, value: string) {
-  const prototype = input instanceof HTMLTextAreaElement ? window.HTMLTextAreaElement.prototype : window.HTMLInputElement.prototype;
+  const prototype = (input.tagName === "TEXTAREA" || input instanceof HTMLTextAreaElement)
+    ? window.HTMLTextAreaElement.prototype
+    : window.HTMLInputElement.prototype;
   const setter = Object.getOwnPropertyDescriptor(prototype, "value")?.set;
   if (setter) {
     setter.call(input, value);
@@ -120,6 +122,32 @@ function changeInputValue(input: HTMLInputElement | HTMLTextAreaElement, value: 
   }
   input.dispatchEvent(new Event("input", { bubbles: true }));
   input.dispatchEvent(new Event("change", { bubbles: true }));
+}
+
+function clinicalResponse(input: RequestInfo | URL, init: RequestInit | undefined, record: MedicalRecordItem): Response | null {
+  const url = new URL(String(input), "http://gateway.test");
+  if (url.pathname === "/api/v1/auth/mfa/factors") return envelope({ items: [{ factorId: "factor-1", type: "totp", status: "verified" }] });
+  if (url.pathname === "/api/v1/auth/mfa/challenges") return envelope({ challengeId: "challenge-1" }, 201);
+  if (url.pathname === "/api/v1/auth/mfa/verify") return envelope({ authorization: { proofId: "proof-1" } });
+  if (url.pathname === "/api/v1/medical-records/access-grants") return envelope({ id: "grant-1" }, 201);
+  if (url.pathname === `/api/v1/medical-records/${record.id}` && init?.method !== "PATCH") {
+    if (url.searchParams.get("view") === "summary") {
+      const { id, appointmentId, patientId, doctorId, status, createdAt } = record;
+      return envelope({ id, appointmentId, patientId, doctorId, status, createdAt, version: record.version ?? 1 });
+    }
+    return envelope(record);
+  }
+  return null;
+}
+
+async function unlockRecord(container: HTMLDivElement) {
+  await act(async () => { Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("Xác minh TOTP để mở hồ sơ"))?.click(); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)); });
+  const code = document.body.querySelector<HTMLInputElement>('input[autocomplete="one-time-code"]');
+  expect(code).not.toBeNull();
+  await act(async () => { changeInputValue(code!, "123456"); });
+  await act(async () => { Array.from(document.body.querySelectorAll("button")).find((button) => button.textContent === "Xác minh")?.click(); });
+  await act(async () => { await new Promise((resolve) => setTimeout(resolve, 10)); });
 }
 
 describe("Medical Records Feature Components (M3-WEB-011)", () => {
@@ -404,6 +432,7 @@ describe("Medical Records Feature Components (M3-WEB-011)", () => {
     it("requires ConfirmModal before FINAL and locks form to readonly only after server success", async () => {
       currentSession = makeSession("DOCTOR");
       let postCalled = false;
+      let finalPayload: Record<string, unknown> | null = null;
 
       globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
         const url = String(input);
@@ -418,8 +447,13 @@ describe("Medical Records Feature Components (M3-WEB-011)", () => {
         if (url.includes("/api/v1/medical-records") && method === "GET") {
           return envelope({ items: [] });
         }
+        if (url.endsWith("/api/v1/auth/mfa/factors")) return envelope({ items: [{ factorId: "factor-1", type: "totp", status: "verified" }] });
+        if (url.endsWith("/api/v1/auth/mfa/challenges")) return envelope({ challengeId: "challenge-1" }, 201);
+        if (url.endsWith("/api/v1/auth/mfa/verify")) return envelope({ authorization: { proofId: "proof-1" } });
+        if (url.endsWith("/api/v1/medical-records/finalization-contexts")) return envelope({ contextId: "context-1", contentDigest: "digest-1" }, 201);
         if (url.includes("/api/v1/medical-records") && method === "POST") {
           postCalled = true;
+          finalPayload = JSON.parse(String(init?.body));
           return envelope({ id: "rec-final-999", status: "FINAL" }, 201);
         }
         return failure("Not found", 404);
@@ -469,12 +503,21 @@ describe("Medical Records Feature Components (M3-WEB-011)", () => {
         confirmBtn?.click();
       });
 
+      await act(async () => { await new Promise((r) => setTimeout(r, 30)); });
+      expect(document.body.textContent).toContain("Xác minh TOTP để chốt bệnh án");
+      const codeInput = document.body.querySelector('input[autocomplete="one-time-code"]') as HTMLInputElement;
+      await act(async () => { changeInputValue(codeInput, "123456"); });
+      const verifyButton = Array.from(document.body.querySelectorAll("button")).find((b) => b.textContent === "Xác minh");
+      await act(async () => { verifyButton?.click(); });
+
       await act(async () => {
         await new Promise((r) => setTimeout(r, 50));
       });
 
       // Server was called
       expect(postCalled).toBe(true);
+      expect(finalPayload).toMatchObject({ status: "FINAL", contextId: "context-1",
+        verificationProofId: "proof-1", expectedVersion: 0, diagnosis: "Viêm amidan" });
 
       // Form is now locked (readonly)
       const symptomsInput = container.querySelector("#symptoms-input") as HTMLTextAreaElement;
@@ -484,6 +527,37 @@ describe("Medical Records Feature Components (M3-WEB-011)", () => {
       expect(container.textContent).toContain("Trạng thái hoàn thành lịch hẹn chưa được xác nhận.");
       expect(container.textContent).not.toContain("Lịch hẹn đã hoàn thành (COMPLETED)");
       expect(container.textContent).toContain("Lập hồ sơ ca khám mới");
+    });
+
+    it("loads patient history only after TOTP and a clinical grant", async () => {
+      currentSession = makeSession("DOCTOR");
+      let historyGrantHeader = "";
+      globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = new URL(String(input), "http://gateway.test");
+        if (url.pathname === "/api/v1/auth/mfa/factors") return envelope({ items: [{ factorId: "factor-1", type: "totp", status: "verified" }] });
+        if (url.pathname === "/api/v1/auth/mfa/challenges") return envelope({ challengeId: "challenge-1" }, 201);
+        if (url.pathname === "/api/v1/auth/mfa/verify") return envelope({ authorization: { proofId: "proof-1" } });
+        if (url.pathname === "/api/v1/medical-records/access-grants") return envelope({ id: "grant-1" }, 201);
+        if (url.pathname === "/api/v1/appointments") return envelope({ items: [mockAppointment] });
+        if (url.pathname === "/api/v1/medical-records" && url.searchParams.get("scope") === "patient-history") {
+          historyGrantHeader = new Headers(init?.headers).get("X-Clinical-Grant") ?? "";
+          return envelope({ items: [mockFinalRecord], total: 1 });
+        }
+        if (url.pathname === "/api/v1/medical-records") return envelope({ items: [], total: 0 });
+        if (url.pathname.includes("/patients/")) return envelope(mockPatientProfile);
+        return failure("Not found", 404);
+      });
+      await act(async () => { root.render(<MedicalRecordsPanel />); });
+      const select = container.querySelector<HTMLSelectElement>("#appointment-select")!;
+      await act(async () => { select.value = mockAppointment.id; select.dispatchEvent(new Event("change", { bubbles: true })); });
+      expect(historyGrantHeader).toBe("");
+      await act(async () => { Array.from(container.querySelectorAll("button")).find((button) => button.textContent === "Xác minh TOTP để xem")?.click(); });
+      const code = document.body.querySelector<HTMLInputElement>('input[autocomplete="one-time-code"]');
+      expect(code).not.toBeNull();
+      await act(async () => { changeInputValue(code!, "123456"); });
+      await act(async () => { Array.from(document.body.querySelectorAll("button")).find((button) => button.textContent === "Xác minh")?.click(); });
+      expect(historyGrantHeader).toBe("grant-1");
+      expect(container.textContent).toContain("Viêm họng cấp");
     });
 
     it("preserves draft inputs when request fails and allows retry without page reload", async () => {
@@ -565,6 +639,143 @@ describe("Medical Records Feature Components (M3-WEB-011)", () => {
       expect(attempts).toBe(2);
       expect(container.textContent).toContain("Đã lưu nháp hồ sơ khám bệnh thành công");
       expect(symptomsInput.value).toBe("Đau tức ngực trái");
+    });
+
+    it("sends Idempotency-Key and expectedVersion on draft PATCH and preserves key on retry (G08)", async () => {
+      currentSession = makeSession("DOCTOR");
+      const existingDraft = {
+        ...mockDraftRecord,
+        version: 2,
+      };
+      let capturedKeys: string[] = [];
+      let capturedBody: any = null;
+      let shouldFailOnce = true;
+
+      globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const clinical = clinicalResponse(input, init, existingDraft);
+        if (clinical) return clinical;
+        const url = String(input);
+        const method = init?.method ?? "GET";
+        if (url.includes("/api/v1/appointments")) return envelope({ items: [mockAppointment] });
+        if (url.includes("/api/v1/patients/")) return envelope(mockPatientProfile);
+        if (url.includes(`/api/v1/medical-records/${existingDraft.id}`) && method === "GET") {
+          return envelope({ ...existingDraft, version: 2 });
+        }
+        if (url.includes("/api/v1/medical-records") && method === "GET") {
+          return envelope({ items: [existingDraft], total: 1 });
+        }
+        if (url.includes("/api/v1/medical-records") && method === "PATCH") {
+          const headers = new Headers(init?.headers);
+          const key = headers.get("Idempotency-Key") ?? "";
+          capturedKeys.push(key);
+          capturedBody = JSON.parse(String(init?.body));
+          if (shouldFailOnce) {
+            shouldFailOnce = false;
+            return failure("Lỗi tạm thời từ mạng", 503);
+          }
+          return envelope({ ...existingDraft, ...capturedBody, version: 3 });
+        }
+        return failure("Not found", 404);
+      });
+
+      await act(async () => { root.render(<MedicalRecordsPanel />); });
+      await act(async () => {
+        Array.from(container.querySelectorAll("button")).find((b) => b.textContent?.includes("Tiếp tục chỉnh sửa"))?.click();
+      });
+      await unlockRecord(container);
+
+      const diagnosisInput = container.querySelector("#diagnosis-input") as HTMLTextAreaElement;
+      await act(async () => { changeInputValue(diagnosisInput, "Cúm A mức độ nhẹ"); });
+
+      const draftBtn = Array.from(container.querySelectorAll("button")).find((b) => b.textContent?.includes("Lưu nháp"));
+      await act(async () => { draftBtn?.click(); });
+      await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+
+      expect(container.textContent).toContain("Lỗi tạm thời từ mạng");
+      expect(capturedKeys.length).toBe(1);
+      expect(capturedKeys[0]).toMatch(/^draft-/);
+      expect(capturedBody.expectedVersion).toBe(2);
+
+      // Retry should reuse the exact same Idempotency-Key
+      const retryBtn = Array.from(container.querySelectorAll("button")).find((b) => b.textContent?.includes("Thử lại thao tác"));
+      await act(async () => { retryBtn?.click(); });
+      await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+
+      expect(capturedKeys.length).toBe(2);
+      expect(capturedKeys[1]).toBe(capturedKeys[0]); // EXACT same key preserved across retries
+      expect(container.textContent).toContain("Đã lưu nháp hồ sơ khám bệnh thành công");
+      expect(diagnosisInput.value).toBe("Cúm A mức độ nhẹ");
+    });
+
+    it("recovers from 409 RECORD_VERSION_CONFLICT preserving uncommitted form inputs (G08)", async () => {
+      currentSession = makeSession("DOCTOR");
+      const existingDraft = {
+        ...mockDraftRecord,
+        version: 1,
+      };
+      let patchCount = 0;
+      let lastExpectedVersion: number | undefined;
+
+      globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        const method = init?.method ?? "GET";
+        if (url.includes(`/api/v1/medical-records/${existingDraft.id}`) && method === "GET" && patchCount > 0) {
+          return envelope({ ...existingDraft, version: 2 });
+        }
+        const clinical = clinicalResponse(input, init, existingDraft);
+        if (clinical) return clinical;
+        if (url.includes("/api/v1/appointments")) return envelope({ items: [mockAppointment] });
+        if (url.includes("/api/v1/patients/")) return envelope(mockPatientProfile);
+        if (url.includes(`/api/v1/medical-records/${existingDraft.id}`) && method === "GET") {
+          return envelope({ ...existingDraft, version: 2 });
+        }
+        if (url.includes("/api/v1/medical-records") && method === "GET") {
+          return envelope({ items: [existingDraft], total: 1 });
+        }
+        if (url.includes(`/api/v1/medical-records/${existingDraft.id}`) && method === "PATCH") {
+          patchCount++;
+          const body = JSON.parse(String(init?.body));
+          lastExpectedVersion = body.expectedVersion;
+          if (patchCount === 1) {
+            return failure("Phiên bản hồ sơ không khớp (RECORD_VERSION_CONFLICT).", 409);
+          }
+          return envelope({ ...existingDraft, ...body, version: 3 });
+        }
+        return failure("Not found", 404);
+      });
+
+      await act(async () => { root.render(<MedicalRecordsPanel />); });
+      await act(async () => {
+        Array.from(container.querySelectorAll("button")).find((b) => b.textContent?.includes("Tiếp tục chỉnh sửa"))?.click();
+      });
+      await unlockRecord(container);
+
+      const diagnosisInput = container.querySelector("#diagnosis-input") as HTMLTextAreaElement;
+      await act(async () => { changeInputValue(diagnosisInput, "Chẩn đoán sửa đổi bởi bác sĩ"); });
+
+      const draftBtn = Array.from(container.querySelectorAll("button")).find((b) => b.textContent?.includes("Lưu nháp"));
+      await act(async () => { draftBtn?.click(); });
+      await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+
+      // 409 conflict displayed, input preserved
+      expect(container.textContent).toContain("Hồ sơ có xung đột phiên bản");
+      expect(diagnosisInput.value).toBe("Chẩn đoán sửa đổi bởi bác sĩ");
+
+      // Click conflict resolution button
+      const syncBtn = Array.from(container.querySelectorAll("button")).find((b) => b.textContent?.includes("Đồng bộ phiên bản máy chủ"));
+      expect(syncBtn).toBeDefined();
+      await act(async () => { syncBtn?.click(); });
+      await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+
+      expect(container.textContent).toContain("Đã đồng bộ phiên bản mới nhất từ máy chủ");
+      expect(diagnosisInput.value).toBe("Chẩn đoán sửa đổi bởi bác sĩ"); // preserved!
+
+      // Save again
+      await act(async () => { draftBtn?.click(); });
+      await act(async () => { await new Promise((r) => setTimeout(r, 50)); });
+
+      expect(container.textContent).toContain("Đã lưu nháp hồ sơ khám bệnh thành công");
+      expect(lastExpectedVersion).toBe(2);
     });
 
     it("Agent B: renders skeleton only at data regions with aria-busy, preserving headings and static controls immediately", async () => {
@@ -707,9 +918,10 @@ describe("Medical Records Feature Components (M3-WEB-011)", () => {
       currentSession = makeSession("DOCTOR");
       window.history.replaceState({}, "", "/medical-records?recordId=record-outside-page");
       const target = { ...mockFinalRecord, id: "record-outside-page", appointmentId: "appointment-outside-page", symptoms: "Nội dung hồ sơ được liên kết" };
-      const fetchSpy = vi.fn(async (input: RequestInfo | URL) => {
+      const fetchSpy = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const clinical = clinicalResponse(input, init, target);
+        if (clinical) return clinical;
         const url = new URL(String(input), "http://gateway.test");
-        if (url.pathname === `/api/v1/medical-records/${target.id}`) return envelope(target);
         if (url.pathname === `/api/v1/appointments/${target.appointmentId}`) return envelope({ ...mockAppointment, id: target.appointmentId });
         if (url.pathname === "/api/v1/medical-records") return envelope({ items: [mockDraftRecord], total: 21 });
         if (url.pathname === "/api/v1/appointments") return envelope({ items: [], total: 0 });
@@ -718,6 +930,7 @@ describe("Medical Records Feature Components (M3-WEB-011)", () => {
       });
       globalThis.fetch = fetchSpy;
       await act(async () => { root.render(<MedicalRecordsPanel />); });
+      await unlockRecord(container);
       const symptoms = container.querySelector<HTMLTextAreaElement>("#symptoms-input");
       expect(symptoms?.value).toBe(target.symptoms);
       expect(symptoms?.readOnly).toBe(true);
@@ -731,6 +944,8 @@ describe("Medical Records Feature Components (M3-WEB-011)", () => {
       window.history.replaceState({}, "", `/medical-records?appointmentId=${target.appointmentId}`);
       let patchUrl = "";
       globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const clinical = clinicalResponse(input, init, target);
+        if (clinical) return clinical;
         const url = new URL(String(input), "http://gateway.test");
         if (init?.method === "PATCH") { patchUrl = url.pathname; return envelope(target); }
         if (url.pathname === "/api/v1/medical-records") return envelope({ items: url.searchParams.get("appointmentId") === target.appointmentId ? [target] : [], total: 1 });
@@ -740,6 +955,7 @@ describe("Medical Records Feature Components (M3-WEB-011)", () => {
         return failure("Not found", 404);
       });
       await act(async () => { root.render(<MedicalRecordsPanel />); });
+      await unlockRecord(container);
       expect(container.querySelector<HTMLTextAreaElement>("#symptoms-input")?.value).toBe(target.symptoms);
       await act(async () => { Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("Lưu nháp"))?.click(); });
       expect(patchUrl).toBe(`/api/v1/medical-records/${target.id}`);
@@ -772,7 +988,10 @@ describe("Medical Records Feature Components (M3-WEB-011)", () => {
     it("preserves an unsaved draft through history pagination and cancelled encounter changes", async () => {
       currentSession = makeSession("DOCTOR");
       const other = { ...mockDraftRecord, id: "record-page-2", appointmentId: "appointment-page-2", symptoms: "Nội dung của ca khác" };
-      globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const target = String(input).includes("record-page-2") ? other : mockDraftRecord;
+        const clinical = clinicalResponse(input, init, target);
+        if (clinical) return clinical;
         const url = new URL(String(input), "http://gateway.test");
         if (url.pathname === "/api/v1/appointments") return envelope({ items: [mockAppointment] });
         if (url.pathname === `/api/v1/appointments/${other.appointmentId}`) return envelope({ ...mockAppointment, id: other.appointmentId });
@@ -782,6 +1001,7 @@ describe("Medical Records Feature Components (M3-WEB-011)", () => {
       });
       await act(async () => { root.render(<MedicalRecordsPanel />); });
       await act(async () => { Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("Tiếp tục chỉnh sửa"))?.click(); });
+      await unlockRecord(container);
       const symptoms = container.querySelector<HTMLTextAreaElement>("#symptoms-input")!;
       await act(async () => { changeInputValue(symptoms, "Bản nháp chưa lưu của ca hiện tại"); });
       currentSession = { ...currentSession, getAccessToken: async () => "refreshed-token" };
@@ -795,6 +1015,7 @@ describe("Medical Records Feature Components (M3-WEB-011)", () => {
       expect(symptoms.value).toBe("Bản nháp chưa lưu của ca hiện tại");
       await act(async () => { Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("Tiếp tục chỉnh sửa"))?.click(); });
       await act(async () => { Array.from(document.body.querySelectorAll("button")).find((button) => button.textContent === "Bỏ thay đổi và đổi ca")?.click(); });
+      await unlockRecord(container);
       expect(container.querySelector<HTMLTextAreaElement>("#symptoms-input")?.value).toBe(other.symptoms);
     });
 
@@ -804,7 +1025,9 @@ describe("Medical Records Feature Components (M3-WEB-011)", () => {
     ] as const)("uses authoritative record completion evidence: %s", async (completion, expected) => {
       currentSession = makeSession("DOCTOR");
       const target = { ...mockFinalRecord, appointmentCompletion: completion };
-      globalThis.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      globalThis.fetch = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const clinical = clinicalResponse(input, init, target);
+        if (clinical) return clinical;
         const url = String(input);
         if (url.includes("/appointments")) return envelope({ items: [mockAppointment] });
         if (url.includes("/medical-records")) return envelope({ items: [target] });
@@ -813,6 +1036,7 @@ describe("Medical Records Feature Components (M3-WEB-011)", () => {
       });
       await act(async () => { root.render(<MedicalRecordsPanel />); });
       await act(async () => { Array.from(container.querySelectorAll("button")).find((button) => button.textContent?.includes("Xem hồ sơ (Chỉ đọc)"))?.click(); });
+      await unlockRecord(container);
       expect(container.textContent).toContain(expected);
       expect(container.querySelector<HTMLTextAreaElement>("#diagnosis-input")?.readOnly).toBe(true);
       if (completion === "PENDING") expect(container.textContent).not.toContain("Lịch hẹn đã hoàn thành (COMPLETED).");

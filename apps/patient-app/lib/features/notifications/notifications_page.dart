@@ -27,7 +27,10 @@ class NotificationsPage extends StatefulWidget {
 class _NotificationsPageState extends State<NotificationsPage> {
   late final ClinicApiClient _api;
   List<dynamic> _items = [];
+  PageMetadata? _pagination;
+  int _page = 1;
   bool _loading = true;
+  bool _loadingMore = false;
   ApiException? _error;
 
   @override
@@ -37,19 +40,26 @@ class _NotificationsPageState extends State<NotificationsPage> {
     _load();
   }
 
-  Future<void> _load() async {
+  Future<void> _load({bool refresh = false}) async {
+    if (refresh) _page = 1;
     setState(() {
-      _loading = true;
+      if (_items.isEmpty || refresh) {
+        _loading = true;
+      }
       _error = null;
     });
     try {
       final response = await _api.get(
         '/api/v1/notifications',
-        query: {'page': 1, 'limit': 20},
+        query: {'page': _page, 'limit': 20},
       );
       final data = response.data as Map<String, dynamic>;
+      final items = (data['items'] as List).cast<dynamic>();
       if (mounted) {
-        setState(() => _items = (data['items'] as List).cast<dynamic>());
+        setState(() {
+          _items = refresh || _page == 1 ? items : [..._items, ...items];
+          _pagination = response.pagination;
+        });
       }
     } on ApiException catch (error) {
       if (mounted) setState(() => _error = error);
@@ -58,10 +68,51 @@ class _NotificationsPageState extends State<NotificationsPage> {
     }
   }
 
-  Future<void> _markRead(String id, {bool reload = true}) async {
+  Future<void> _loadMore() async {
+    if (_loadingMore || _loading) return;
+    final canLoadMore = _pagination != null && _items.length < _pagination!.total;
+    if (!canLoadMore) return;
+    setState(() => _loadingMore = true);
+    _page += 1;
+    try {
+      final response = await _api.get(
+        '/api/v1/notifications',
+        query: {'page': _page, 'limit': 20},
+      );
+      final data = response.data as Map<String, dynamic>;
+      final items = (data['items'] as List).cast<dynamic>();
+      if (mounted) {
+        setState(() {
+          _items = [..._items, ...items];
+          _pagination = response.pagination;
+        });
+      }
+    } on ApiException catch (error) {
+      _page -= 1;
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(error.message)));
+      }
+    } finally {
+      if (mounted) setState(() => _loadingMore = false);
+    }
+  }
+
+  Future<void> _markRead(String id, {bool reload = false}) async {
     try {
       await _api.patch('/api/v1/notifications/$id/read', body: {});
-      if (reload) await _load();
+      if (mounted) {
+        setState(() {
+          _items = _items.map((dynamic item) {
+            final map = Map<String, dynamic>.from(item as Map);
+            if (map['id'].toString() == id) {
+              map['status'] = 'READ';
+            }
+            return map;
+          }).toList();
+        });
+      }
+      if (reload) await _load(refresh: true);
     } on ApiException catch (error) {
       if (mounted) {
         ScaffoldMessenger.of(context)
@@ -71,14 +122,41 @@ class _NotificationsPageState extends State<NotificationsPage> {
   }
 
   Future<void> _markAllRead() async {
-    final unreadIds = _items
-        .where((item) => (item as Map<String, dynamic>)['status'] == 'UNREAD')
-        .map((item) => (item as Map<String, dynamic>)['id'].toString())
-        .toList(growable: false);
-    for (final id in unreadIds) {
-      await _markRead(id, reload: false);
+    try {
+      final response =
+          await _api.patch('/api/v1/notifications/read-all', body: {});
+      final data = response.data as Map<String, dynamic>?;
+      final readBeforeStr = data?['readBefore'] as String?;
+      final readBefore =
+          readBeforeStr != null ? DateTime.tryParse(readBeforeStr) : null;
+      if (mounted) {
+        setState(() {
+          _items = _items.map((dynamic item) {
+            final map = Map<String, dynamic>.from(item as Map);
+            if (map['status'] == 'UNREAD') {
+              if (readBefore != null) {
+                final createdAtStr = map['createdAt'] as String?;
+                final createdAt =
+                    createdAtStr != null ? DateTime.tryParse(createdAtStr) : null;
+                if (createdAt != null &&
+                    (createdAt.isBefore(readBefore) ||
+                        createdAt.isAtSameMomentAs(readBefore))) {
+                  map['status'] = 'READ';
+                }
+              } else {
+                map['status'] = 'READ';
+              }
+            }
+            return map;
+          }).toList();
+        });
+      }
+    } on ApiException catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(error.message)));
+      }
     }
-    await _load();
   }
 
   @override
@@ -123,13 +201,34 @@ class _NotificationsPageState extends State<NotificationsPage> {
         ],
       ),
       body: RefreshIndicator(
-        onRefresh: _load,
+        onRefresh: () => _load(refresh: true),
         child: ListView.separated(
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
-          itemCount: display.length + 1,
+          itemCount: display.length +
+              1 +
+              (_pagination != null && display.length < _pagination!.total
+                  ? 1
+                  : 0),
           separatorBuilder: (_, __) => const SizedBox(height: 10),
           itemBuilder: (context, index) {
             if (index == 0) return const ReminderBanner();
+            if (index == display.length + 1) {
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
+                child: Center(
+                  child: TextButton(
+                    onPressed: _loadingMore ? null : _loadMore,
+                    child: _loadingMore
+                        ? const SizedBox(
+                            width: 16,
+                            height: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Text('Tải thêm thông báo'),
+                  ),
+                ),
+              );
+            }
             final notification = display[index - 1];
             final unread = notification['status'] == 'UNREAD';
             return NotificationTile(
