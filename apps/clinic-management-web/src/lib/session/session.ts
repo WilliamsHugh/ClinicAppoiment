@@ -19,7 +19,7 @@ export function sessionDisplayName(identity: SessionIdentity | null | undefined)
   return name && name !== identity?.role ? name : undefined;
 }
 
-export type SessionStatus = "loading" | "authenticated" | "unauthenticated";
+export type SessionStatus = "loading" | "authenticated" | "unauthenticated" | "locked";
 
 export interface SessionIdentity {
   id: string;
@@ -38,6 +38,7 @@ export interface SignInResult {
 export interface Session {
   status: SessionStatus;
   identity: SessionIdentity | null;
+  sessionId?: string;
   recovery?: {
     message: string;
     pending: boolean;
@@ -46,6 +47,8 @@ export interface Session {
   getAccessToken(): Promise<string | null>;
   signIn(email: string, password: string): Promise<SignInResult | void>;
   verifyMfa?(code: string, challengeId?: string): Promise<void>;
+  unlockSession?(code: string): Promise<void>;
+  recordActivity?(): Promise<void>;
   signOut(): Promise<void>;
   handleUnauthorized?(): Promise<void>;
 }

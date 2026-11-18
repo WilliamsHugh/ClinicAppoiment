@@ -517,7 +517,7 @@ describe("Auth & Profile Pages (M3-WEB-030)", () => {
       });
       expect(name.value).toBe("Tên đang sửa");
       expect(save.disabled).toBe(false);
-      expect(vi.mocked(fetch).mock.calls.filter(([, options]) => !options?.method || options.method === "GET")).toHaveLength(1);
+      expect(vi.mocked(fetch).mock.calls.filter(([url, options]) => String(url).includes("/api/v1/users/me") && (!options?.method || options.method === "GET"))).toHaveLength(1);
     });
 
     it("confirms the provider's global logout scope before signing out", async () => {
@@ -549,6 +549,78 @@ describe("Auth & Profile Pages (M3-WEB-030)", () => {
       });
 
       expect(mockSignOut).toHaveBeenCalled();
+    });
+
+    it("renders active sessions and allows revoking a non-current session", async () => {
+      const mockSessions = [
+        {
+          sessionId: "sess-current",
+          isCurrent: true,
+          role: "DOCTOR",
+          state: "ACTIVE",
+          startedAt: new Date().toISOString(),
+          lastActiveAt: new Date().toISOString(),
+          deviceInfo: "Chrome on macOS",
+        },
+        {
+          sessionId: "sess-other",
+          isCurrent: false,
+          role: "DOCTOR",
+          state: "ACTIVE",
+          startedAt: new Date(Date.now() - 3600000).toISOString(),
+          lastActiveAt: new Date(Date.now() - 1800000).toISOString(),
+          deviceInfo: "Safari on iPhone",
+        },
+      ];
+
+      const deleteSpy = vi.fn();
+
+      vi.spyOn(globalThis, "fetch").mockImplementation(async (input, options) => {
+        const url = new URL(String(input));
+        const method = options?.method ?? "GET";
+
+        if (url.pathname === "/api/v1/users/me" && method === "GET") {
+          return envelope(mockProfile);
+        }
+        if (url.pathname === "/api/v1/auth/sessions" && method === "GET") {
+          return envelope({ items: mockSessions });
+        }
+        if (url.pathname === "/api/v1/auth/sessions/sess-other" && method === "DELETE") {
+          deleteSpy();
+          return envelope({ sessionId: "sess-other", revoked: true });
+        }
+        return envelope({});
+      });
+
+      await act(async () => {
+        root.render(<ProfileForm />);
+      });
+
+      expect(host.textContent).toContain("Chrome on macOS");
+      expect(host.textContent).toContain("Phiên hiện tại");
+      expect(host.textContent).toContain("Safari on iPhone");
+
+      const revokeBtns = Array.from(host.querySelectorAll("button")).filter(
+        (b) => b.textContent?.trim() === "Thu hồi"
+      );
+      expect(revokeBtns.length).toBe(1);
+
+      await act(async () => {
+        revokeBtns[0].click();
+      });
+
+      expect(host.textContent).toContain("Xác nhận thu hồi phiên đăng nhập");
+
+      const modalConfirmBtn = Array.from(host.querySelectorAll("button")).find(
+        (b) => b.textContent?.trim() === "Thu hồi phiên" && !!b.closest("[role='dialog']")
+      )!;
+
+      await act(async () => {
+        modalConfirmBtn.click();
+      });
+
+      expect(deleteSpy).toHaveBeenCalled();
+      expect(host.textContent).toContain("Đã thu hồi phiên đăng nhập thành công.");
     });
   });
 });

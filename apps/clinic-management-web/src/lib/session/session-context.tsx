@@ -13,6 +13,7 @@ interface StoredSessionData {
   refreshToken: string;
   expiresAt: string;
   identity: SessionIdentity;
+  sessionId?: string;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -34,7 +35,13 @@ function readStoredSession(value: unknown): StoredSessionData | null {
     email: typeof value.identity.email === "string" ? value.identity.email : undefined,
     phone: typeof value.identity.phone === "string" ? value.identity.phone : undefined,
   };
-  return { accessToken: value.accessToken, refreshToken: value.refreshToken, expiresAt: value.expiresAt, identity };
+  return {
+    accessToken: value.accessToken,
+    refreshToken: value.refreshToken,
+    expiresAt: value.expiresAt,
+    identity,
+    sessionId: typeof value.sessionId === "string" ? value.sessionId : undefined,
+  };
 }
 
 function readAuthSession(value: unknown, previousIdentity?: SessionIdentity): StoredSessionData | null {
@@ -42,11 +49,14 @@ function readAuthSession(value: unknown, previousIdentity?: SessionIdentity): St
       typeof value.expiresIn !== "number" || !Number.isFinite(value.expiresIn) || value.expiresIn <= 0) return null;
   const expiry = Date.now() + value.expiresIn * 1000;
   if (!Number.isFinite(expiry) || expiry > 8.64e15) return null;
+  const sessionObj = isRecord(value.session) ? value.session : null;
+  const sessionId = typeof sessionObj?.sessionId === "string" ? sessionObj.sessionId : undefined;
   return readStoredSession({
     accessToken: value.accessToken,
     refreshToken: value.refreshToken,
     expiresAt: new Date(expiry).toISOString(),
     identity: { ...previousIdentity, id: value.user.id, role: value.user.role },
+    sessionId,
   });
 }
 
@@ -233,8 +243,9 @@ function RealSessionProvider({ children }: { children: ReactNode }) {
       next.identity.email = email;
 
       const sessionObj = isRecord(payload.data) && isRecord(payload.data.session) ? payload.data.session : null;
-      if (sessionObj && sessionObj.status === "PENDING_MFA") {
-        const sessionId = typeof sessionObj.sessionId === "string" ? sessionObj.sessionId : undefined;
+      const sessionState = sessionObj ? (sessionObj.state ?? sessionObj.status) : null;
+      if (sessionState === "PENDING_MFA") {
+        const sessionId = typeof sessionObj?.sessionId === "string" ? sessionObj.sessionId : undefined;
         pendingMfa.current = { next, sessionId };
         setStatus("unauthenticated");
         let challengeId: string | undefined;
@@ -244,6 +255,7 @@ function RealSessionProvider({ children }: { children: ReactNode }) {
             headers: {
               "Content-Type": "application/json",
               Authorization: `Bearer ${next.accessToken}`,
+              ...(sessionId ? { "x-session-id": sessionId } : {}),
             },
             body: JSON.stringify({ purpose: "STAFF_ADMIN_LOGIN" }),
           });
@@ -253,6 +265,10 @@ function RealSessionProvider({ children }: { children: ReactNode }) {
           }
         } catch { /* challenge creation fallback */ }
         return { pendingMfa: true, challengeId, sessionId };
+      }
+      if (sessionState === "LOCKED") {
+        setStatus("locked");
+        return { pendingMfa: false };
       }
 
       try {
@@ -337,6 +353,100 @@ function RealSessionProvider({ children }: { children: ReactNode }) {
     }
   };
 
+  const handleUnlockSession = async (code: string) => {
+    const data = current.current;
+    if (!data) throw new Error("Không có phiên đăng nhập cần mở khóa.");
+    const chRes = await fetch(`${baseUrl}/api/v1/auth/mfa/challenges`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${data.accessToken}`,
+        ...(data.sessionId ? { "x-session-id": data.sessionId } : {}),
+      },
+      body: JSON.stringify({
+        purpose: "UNLOCK_SESSION",
+      }),
+    });
+    const chPayload = await chRes.json();
+    if (!chRes.ok || !chPayload.success || !chPayload.data?.challengeId) {
+      throw new Error(chPayload?.error?.message || "Không thể tạo yêu cầu mở khóa TOTP.");
+    }
+
+    const verifyRes = await fetch(`${baseUrl}/api/v1/auth/mfa/verify`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${data.accessToken}`,
+      },
+      body: JSON.stringify({
+        challengeId: chPayload.data.challengeId,
+        code,
+        ...(data.sessionId ? { sessionId: data.sessionId } : {}),
+      }),
+    });
+    const verifyPayload = await verifyRes.json();
+    if (!verifyRes.ok || !verifyPayload.success) {
+      throw new Error(verifyPayload?.error?.message || "Mã xác thực TOTP không chính xác hoặc đã hết hạn.");
+    }
+
+    lastActivityTime.current = Date.now();
+    setStatus("authenticated");
+  };
+
+  const lastActivityTime = useRef(Date.now());
+
+  const handleRecordActivity = useCallback(async () => {
+    const data = current.current;
+    if (!data || status !== "authenticated") return;
+    const now = Date.now();
+    if (now - lastActivityTime.current < 60_000) return; // Throttled to 1/min
+
+    try {
+      const res = await fetch(`${baseUrl}/api/v1/auth/session/activity`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${data.accessToken}`,
+          ...(data.sessionId ? { "x-session-id": data.sessionId } : {}),
+        },
+        body: JSON.stringify({ ...(data.sessionId ? { sessionId: data.sessionId } : {}) }),
+      });
+      if (res.status === 403) {
+        const payload = await res.json().catch(() => null);
+        if (payload?.error?.code === "AUTH_SESSION_LOCKED") {
+          setStatus("locked");
+          return;
+        }
+      }
+      if (res.status === 401) {
+        clearLocalSession();
+        return;
+      }
+      if (res.ok) {
+        lastActivityTime.current = now;
+      }
+    } catch {
+      // Activity ping failure is non-fatal
+    }
+  }, [baseUrl, status, clearLocalSession]);
+
+  useEffect(() => {
+    if (status !== "authenticated") return;
+    const onUserInteraction = () => {
+      void handleRecordActivity();
+    };
+
+    window.addEventListener("pointerdown", onUserInteraction, { passive: true });
+    window.addEventListener("keydown", onUserInteraction, { passive: true });
+    window.addEventListener("focus", onUserInteraction);
+
+    return () => {
+      window.removeEventListener("pointerdown", onUserInteraction);
+      window.removeEventListener("keydown", onUserInteraction);
+      window.removeEventListener("focus", onUserInteraction);
+    };
+  }, [status, handleRecordActivity]);
+
   const handleSignOut = async () => {
     const data = current.current;
     clearLocalSession();
@@ -351,10 +461,13 @@ function RealSessionProvider({ children }: { children: ReactNode }) {
   const sessionValue: Session = {
     status,
     identity: storedSession?.identity ?? null,
+    sessionId: storedSession?.sessionId,
     recovery: recoveryMessage ? { message: recoveryMessage, pending: refreshPending, retry: async () => { await refreshSession(); } } : undefined,
     getAccessToken,
     signIn: handleSignIn,
     verifyMfa: handleVerifyMfa,
+    unlockSession: handleUnlockSession,
+    recordActivity: handleRecordActivity,
     signOut: handleSignOut,
     handleUnauthorized: async () => { clearLocalSession(); },
   };

@@ -11,6 +11,7 @@ import { useSession } from "../lib/session/session-context";
 import { clinicRoleLabel, sessionDisplayName } from "../lib/session/session";
 import { useNotifications } from "../features/notifications/notification-context";
 import { RouteGuard } from "./route-guard";
+import { LockoutModal } from "./lockout-modal";
 import { Alert, Badge, Button, ConfirmModal } from "./ui";
 import styles from "./app-shell.module.css";
 
@@ -316,6 +317,7 @@ export function AppShell({ children, NotificationSlot }: AppShellProps) {
         cancelLabel="Hủy bỏ"
         variant="danger"
       />
+      <LockoutModal />
     </div>
   );
 }

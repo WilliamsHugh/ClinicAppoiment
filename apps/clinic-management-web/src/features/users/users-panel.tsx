@@ -94,13 +94,46 @@ export function UsersPanel() {
     });
   };
 
-  const handleConfirmRoleChange = async (userId: string, newRole: ClinicRole) => {
+  const handleConfirmRoleChange = async (userId: string, newRole: ClinicRole, totpCode?: string) => {
     setMutating(true);
     setActionSuccess(null);
     setActionError(null);
     try {
       const api = createBrowserApiClient(session);
-      await api.patch(`/api/v1/users/${userId}/role`, { body: { role: newRole } });
+      let verificationProofId: string | undefined;
+
+      if (totpCode) {
+        const chRes = await api.post<{ challengeId: string }>("/api/v1/auth/mfa/challenges", {
+          body: {
+            purpose: "AUTHORIZE_SENSITIVE_OPERATION",
+            context: {
+              operation: "UPDATE_USER_ROLE",
+              targetUserId: userId,
+              resource: userId,
+              role: newRole,
+            },
+          },
+        });
+        const chId = chRes.data?.challengeId;
+        const verifyRes = await api.post<{
+          authorization?: { proofId?: string };
+          proofId?: string;
+        }>("/api/v1/auth/mfa/verify", {
+          body: {
+            challengeId: chId,
+            code: totpCode,
+            sessionId: session.sessionId,
+          },
+        });
+        verificationProofId = verifyRes.data?.authorization?.proofId ?? verifyRes.data?.proofId;
+      }
+
+      await api.patch(`/api/v1/users/${userId}/role`, {
+        body: {
+          role: newRole,
+          ...(verificationProofId ? { verificationProofId } : {}),
+        },
+      });
       setActionSuccess("Đã cập nhật vai trò người dùng thành công.");
       setRoleModalUser(null);
       await fetchUsers(page);
@@ -111,7 +144,7 @@ export function UsersPanel() {
     }
   };
 
-  const handleConfirmStatusChange = async (userId: string, newStatus: UserStatus) => {
+  const handleConfirmStatusChange = async (userId: string, newStatus: UserStatus, totpCode?: string) => {
     if (currentUserId && userId === currentUserId && newStatus === "LOCKED") {
       setActionError("Bạn không thể tự khóa tài khoản của chính mình.");
       setStatusModalUser(null);
@@ -124,7 +157,40 @@ export function UsersPanel() {
     setActionError(null);
     try {
       const api = createBrowserApiClient(session);
-      await api.patch(`/api/v1/users/${userId}/status`, { body: { status: newStatus } });
+      let verificationProofId: string | undefined;
+
+      if (totpCode) {
+        const chRes = await api.post<{ challengeId: string }>("/api/v1/auth/mfa/challenges", {
+          body: {
+            purpose: "AUTHORIZE_SENSITIVE_OPERATION",
+            context: {
+              operation: "UPDATE_USER_STATUS",
+              targetUserId: userId,
+              resource: userId,
+              status: newStatus,
+            },
+          },
+        });
+        const chId = chRes.data?.challengeId;
+        const verifyRes = await api.post<{
+          authorization?: { proofId?: string };
+          proofId?: string;
+        }>("/api/v1/auth/mfa/verify", {
+          body: {
+            challengeId: chId,
+            code: totpCode,
+            sessionId: session.sessionId,
+          },
+        });
+        verificationProofId = verifyRes.data?.authorization?.proofId ?? verifyRes.data?.proofId;
+      }
+
+      await api.patch(`/api/v1/users/${userId}/status`, {
+        body: {
+          status: newStatus,
+          ...(verificationProofId ? { verificationProofId } : {}),
+        },
+      });
       setActionSuccess(
         newStatus === "LOCKED"
           ? "Đã khóa tài khoản người dùng thành công."

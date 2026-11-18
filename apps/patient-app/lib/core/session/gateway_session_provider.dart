@@ -24,6 +24,8 @@ class GatewaySessionProvider
   AuthSession? _session;
   String? _refreshToken;
   DateTime? _expiresAt;
+  Future<AuthSession>? _refreshFuture;
+  DateTime? _lastActivityRecordedAt;
 
   @override
   Future<String?> getAccessToken() async {
@@ -47,9 +49,19 @@ class GatewaySessionProvider
       _session = _sessionFromJson(stored);
       _refreshToken = stored['refreshToken'] as String;
       _expiresAt = DateTime.parse(stored['expiresAt'] as String).toUtc();
-      return await _refreshSessionIfNeeded();
     } catch (_) {
       await _clearSession();
+      return null;
+    }
+
+    try {
+      return await _refreshSessionIfNeeded();
+    } catch (e) {
+      if (e is SessionException &&
+          (e.isNetworkError ||
+              (e.statusCode != null && e.statusCode! >= 500))) {
+        return _session;
+      }
       return null;
     }
   }
@@ -107,6 +119,19 @@ class GatewaySessionProvider
   }
 
   Future<AuthSession> _refreshSession() async {
+    final inFlight = _refreshFuture;
+    if (inFlight != null) return inFlight;
+
+    final future = _performRefreshSession();
+    _refreshFuture = future;
+    try {
+      return await future;
+    } finally {
+      _refreshFuture = null;
+    }
+  }
+
+  Future<AuthSession> _performRefreshSession() async {
     final refreshToken = _refreshToken;
     if (refreshToken == null) {
       throw const SessionException('Phiên đăng nhập không hợp lệ.');
@@ -116,9 +141,35 @@ class GatewaySessionProvider
         'refreshToken': refreshToken,
       });
       return await _saveSession(data);
-    } catch (_) {
-      await _clearSession();
+    } catch (e) {
+      if (e is SessionException &&
+          (e.statusCode == 401 || e.statusCode == 403)) {
+        await _clearSession();
+      }
       rethrow;
+    }
+  }
+
+  Future<void> recordActivity({bool force = false}) async {
+    final session = _session;
+    if (session == null) return;
+    final now = DateTime.now();
+    if (!force &&
+        _lastActivityRecordedAt != null &&
+        now.difference(_lastActivityRecordedAt!).inSeconds < 60) {
+      return;
+    }
+    final accessToken = await getAccessToken();
+    if (accessToken == null) return;
+    try {
+      await _post(
+        '/api/v1/auth/session/activity',
+        {},
+        accessToken: accessToken,
+      );
+      _lastActivityRecordedAt = DateTime.now();
+    } catch (_) {
+      // Background / foreground activity ping error is non-fatal
     }
   }
 
@@ -145,6 +196,7 @@ class GatewaySessionProvider
     } catch (_) {
       throw const SessionException(
         'Không thể kết nối đến hệ thống. Vui lòng thử lại.',
+        isNetworkError: true,
       );
     }
 
@@ -161,7 +213,13 @@ class GatewaySessionProvider
       final error = decoded['error'];
       final message =
           error is Map<String, dynamic> ? error['message']?.toString() : null;
-      throw SessionException(message ?? 'Yêu cầu xác thực thất bại.');
+      final code =
+          error is Map<String, dynamic> ? error['code']?.toString() : null;
+      throw SessionException(
+        message ?? 'Yêu cầu xác thực thất bại.',
+        statusCode: response.statusCode,
+        code: code,
+      );
     }
     final data = decoded['data'];
     if (allowNullData && data == null) return {};
