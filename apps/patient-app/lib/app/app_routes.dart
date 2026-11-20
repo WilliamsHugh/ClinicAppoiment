@@ -23,13 +23,19 @@ class PatientRouteContext {
     required this.navigate,
     required this.onBookingSelection,
     this.appointmentsRevision = 0,
+    this.recordsRevision = 0,
     this.doctorApiClient,
+    this.apiClient,
+    this.onSignOut,
   });
 
   final void Function(String) navigate;
   final ValueChanged<BookingSelection> onBookingSelection;
   final int appointmentsRevision;
+  final int recordsRevision;
   final ClinicApiClient? doctorApiClient;
+  final ClinicApiClient? apiClient;
+  final VoidCallback? onSignOut;
 }
 
 @immutable
@@ -39,12 +45,14 @@ class PatientRoute {
     required this.label,
     required this.icon,
     required this.builder,
+    this.selectedIcon,
     this.roles = const {UserRole.patient},
   });
 
   final String path;
   final String label;
   final IconData icon;
+  final IconData? selectedIcon;
   final Widget Function(BuildContext, AuthSession, PatientRouteContext) builder;
   final Set<UserRole> roles;
 }
@@ -54,9 +62,10 @@ final patientRoutes = <PatientRoute>[
     path: AppRoutes.doctors,
     label: 'Bác sĩ',
     icon: Icons.medical_services_outlined,
+    selectedIcon: Icons.medical_services,
     builder: (_, session, route) => DoctorsPage(
       tokenProvider: session,
-      apiClient: route.doctorApiClient,
+      apiClient: route.doctorApiClient ?? route.apiClient,
       onOpenNotifications: () => route.navigate(AppRoutes.notifications),
       onBookingSelection: (selection) {
         route.onBookingSelection(selection);
@@ -68,9 +77,10 @@ final patientRoutes = <PatientRoute>[
     path: AppRoutes.appointments,
     label: 'Lịch hẹn',
     icon: Icons.calendar_month_outlined,
+    selectedIcon: Icons.calendar_month,
     builder: (_, session, route) => AppointmentsPage(
       tokenProvider: session,
-      api: route.doctorApiClient,
+      api: route.doctorApiClient ?? route.apiClient,
       refreshVersion: route.appointmentsRevision,
     ),
   ),
@@ -78,14 +88,21 @@ final patientRoutes = <PatientRoute>[
     path: AppRoutes.records,
     label: 'Hồ sơ khám',
     icon: Icons.description_outlined,
-    builder: (_, session, __) => RecordsPage(tokenProvider: session),
+    selectedIcon: Icons.description,
+    builder: (_, session, route) => RecordsPage(
+      tokenProvider: session,
+      api: route.apiClient,
+      refreshVersion: route.recordsRevision,
+    ),
   ),
   PatientRoute(
     path: AppRoutes.notifications,
     label: 'Thông báo',
     icon: Icons.notifications_outlined,
+    selectedIcon: Icons.notifications,
     builder: (_, session, route) => NotificationsPage(
       tokenProvider: session,
+      api: route.apiClient,
       onOpenRoute: route.navigate,
     ),
   ),
@@ -93,6 +110,11 @@ final patientRoutes = <PatientRoute>[
     path: AppRoutes.profile,
     label: 'Cá nhân',
     icon: Icons.person_outline,
-    builder: (_, session, ___) => ProfilePage(tokenProvider: session),
+    selectedIcon: Icons.person,
+    builder: (_, session, route) => ProfilePage(
+      tokenProvider: session,
+      apiClient: route.apiClient,
+      onSignOut: route.onSignOut,
+    ),
   ),
 ];

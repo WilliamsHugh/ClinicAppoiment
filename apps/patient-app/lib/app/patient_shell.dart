@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../core/api/clinic_api_client.dart';
 import '../core/session/session.dart';
+import '../core/theme/app_theme.dart';
 import '../shared/widgets/async_states.dart';
 import 'app_routes.dart';
 
@@ -10,12 +11,14 @@ class PatientShell extends StatefulWidget {
     required this.session,
     required this.onSignOut,
     this.doctorApiClient,
+    this.apiClient,
     super.key,
   });
 
   final AuthSession session;
   final Future<void> Function() onSignOut;
   final ClinicApiClient? doctorApiClient;
+  final ClinicApiClient? apiClient;
 
   @override
   State<PatientShell> createState() => _PatientShellState();
@@ -24,6 +27,7 @@ class PatientShell extends StatefulWidget {
 class _PatientShellState extends State<PatientShell> {
   int _selectedIndex = 0;
   int _appointmentsRevision = 0;
+  int _recordsRevision = 0;
 
   @override
   Widget build(BuildContext context) {
@@ -37,52 +41,32 @@ class _PatientShellState extends State<PatientShell> {
         ),
       );
     }
-    final selectedRoute = routes[_selectedIndex];
-    // Các page Doctor/Appointments/Records/Notifications tự có AppBar,
-    // nên ẩn AppBar của Shell để không hiển thị hai thanh tiêu đề.
-    final hideAppBar = selectedRoute.path == AppRoutes.doctors ||
-        selectedRoute.path == AppRoutes.appointments ||
-        selectedRoute.path == AppRoutes.records ||
-        selectedRoute.path == AppRoutes.notifications;
 
     final routeContext = PatientRouteContext(
       navigate: (path) => _selectPath(routes, path),
       onBookingSelection: (_) => setState(() => _appointmentsRevision++),
       appointmentsRevision: _appointmentsRevision,
+      recordsRevision: _recordsRevision,
       doctorApiClient: widget.doctorApiClient,
+      apiClient: widget.apiClient,
+      onSignOut: widget.onSignOut,
     );
 
     return Scaffold(
-      appBar: hideAppBar
-          ? null
-          : AppBar(
-              title: Text(selectedRoute.label),
-              actions: selectedRoute.path == AppRoutes.profile
-                  ? [
-                      IconButton(
-                        tooltip: 'Đăng xuất',
-                        onPressed: widget.onSignOut,
-                        icon: const Icon(Icons.logout),
-                      ),
-                    ]
-                  : [
-                      IconButton(
-                        tooltip: 'Hồ sơ cá nhân',
-                        onPressed: () => _selectPath(routes, AppRoutes.profile),
-                        icon: const Icon(Icons.account_circle_outlined),
-                      ),
-                    ],
-            ),
       body: IndexedStack(
         index: _selectedIndex,
         children: routes
             .map(
-                (route) => route.builder(context, widget.session, routeContext))
+              (route) => route.builder(context, widget.session, routeContext),
+            )
             .toList(),
       ),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: ClinicColors.card,
+          border: const Border(
+            top: BorderSide(color: ClinicColors.border, width: 0.8),
+          ),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withValues(alpha: 0.06),
@@ -96,15 +80,18 @@ class _PatientShellState extends State<PatientShell> {
           borderRadius: const BorderRadius.vertical(top: Radius.circular(20)),
           child: NavigationBar(
             height: 64,
-            backgroundColor: Colors.white,
+            backgroundColor: ClinicColors.card,
+            surfaceTintColor: Colors.transparent,
+            indicatorColor: ClinicColors.primarySoft,
+            labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
             elevation: 0,
             selectedIndex: _selectedIndex,
-            onDestinationSelected: (index) =>
-                setState(() => _selectedIndex = index),
+            onDestinationSelected: (index) => _selectIndex(routes, index),
             destinations: routes
                 .map(
                   (route) => NavigationDestination(
                     icon: Icon(route.icon),
+                    selectedIcon: Icon(route.selectedIcon ?? route.icon),
                     label: route.label,
                   ),
                 )
@@ -115,10 +102,25 @@ class _PatientShellState extends State<PatientShell> {
     );
   }
 
+  void _selectIndex(List<PatientRoute> routes, int index) {
+    if (index < 0 || index >= routes.length) return;
+    setState(() {
+      if (routes[index].path == AppRoutes.records && index != _selectedIndex) {
+        _recordsRevision++;
+      }
+      _selectedIndex = index;
+    });
+  }
+
   void _selectPath(List<PatientRoute> routes, String path) {
     final index = routes.indexWhere((route) => route.path == path);
     if (index >= 0) {
-      setState(() => _selectedIndex = index);
+      setState(() {
+        if (routes[index].path == AppRoutes.records) {
+          _recordsRevision++;
+        }
+        _selectedIndex = index;
+      });
     }
   }
 }

@@ -41,9 +41,18 @@ ThemeData buildPatientTheme() {
   final scheme = ColorScheme.fromSeed(
     seedColor: seed,
     primary: ClinicColors.primary,
+    onPrimary: Colors.white,
+    primaryContainer: ClinicColors.primarySoft,
+    onPrimaryContainer: ClinicColors.primaryDark,
     surface: ClinicColors.scaffold,
+    onSurface: ClinicColors.ink,
+    outline: ClinicColors.border,
     error: ClinicColors.danger,
     surfaceContainerHighest: ClinicColors.surfaceSubtle,
+  );
+  final inputBorder = OutlineInputBorder(
+    borderRadius: BorderRadius.circular(12),
+    borderSide: const BorderSide(color: ClinicColors.border),
   );
   return ThemeData(
     colorScheme: scheme,
@@ -52,11 +61,13 @@ ThemeData buildPatientTheme() {
     fontFamily: 'Roboto',
     cardTheme: CardThemeData(
       color: ClinicColors.card,
+      surfaceTintColor: Colors.transparent,
       clipBehavior: Clip.antiAlias,
       margin: EdgeInsets.zero,
       elevation: 0,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(12),
+        side: const BorderSide(color: ClinicColors.border),
       ),
     ),
     appBarTheme: const AppBarTheme(
@@ -69,17 +80,26 @@ ThemeData buildPatientTheme() {
       filled: true,
       fillColor: ClinicColors.card,
       hintStyle: const TextStyle(color: ClinicColors.mutedLight, fontSize: 14),
-      border: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(24),
-        borderSide: BorderSide.none,
+      labelStyle: const TextStyle(color: ClinicColors.muted, fontSize: 14),
+      floatingLabelStyle: const TextStyle(
+        color: ClinicColors.primary,
+        fontWeight: FontWeight.w600,
       ),
-      enabledBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(24),
-        borderSide: BorderSide.none,
-      ),
+      prefixIconColor: ClinicColors.muted,
+      border: inputBorder,
+      enabledBorder: inputBorder,
+      disabledBorder: inputBorder,
       focusedBorder: OutlineInputBorder(
-        borderRadius: BorderRadius.circular(24),
-        borderSide: const BorderSide(color: ClinicColors.primary, width: 1.2),
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: ClinicColors.primary, width: 1.5),
+      ),
+      errorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: ClinicColors.danger, width: 1.2),
+      ),
+      focusedErrorBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(12),
+        borderSide: const BorderSide(color: ClinicColors.danger, width: 1.5),
       ),
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
     ),
@@ -87,8 +107,11 @@ ThemeData buildPatientTheme() {
       style: FilledButton.styleFrom(
         backgroundColor: ClinicColors.primary,
         foregroundColor: Colors.white,
+        disabledBackgroundColor: ClinicColors.primary.withValues(alpha: 0.45),
+        disabledForegroundColor: Colors.white,
+        minimumSize: const Size(0, 48),
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(24),
+          borderRadius: BorderRadius.circular(12),
         ),
         padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 14),
         textStyle: const TextStyle(
@@ -97,9 +120,49 @@ ThemeData buildPatientTheme() {
         ),
       ),
     ),
+    outlinedButtonTheme: OutlinedButtonThemeData(
+      style: OutlinedButton.styleFrom(
+        foregroundColor: ClinicColors.primary,
+        side: const BorderSide(color: ClinicColors.border),
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        textStyle: const TextStyle(
+          fontWeight: FontWeight.w600,
+          fontSize: 14,
+        ),
+      ),
+    ),
+    textButtonTheme: TextButtonThemeData(
+      style: TextButton.styleFrom(
+        foregroundColor: ClinicColors.primary,
+        textStyle: const TextStyle(
+          fontWeight: FontWeight.w600,
+          fontSize: 14,
+        ),
+      ),
+    ),
     navigationBarTheme: NavigationBarThemeData(
-      backgroundColor: Colors.white,
-      indicatorColor: ClinicColors.primary.withValues(alpha: 0.12),
+      backgroundColor: ClinicColors.card,
+      surfaceTintColor: Colors.transparent,
+      indicatorColor: ClinicColors.primarySoft,
+      indicatorShape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(14),
+      ),
+      labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+      iconTheme: WidgetStateProperty.resolveWith((states) {
+        if (states.contains(WidgetState.selected)) {
+          return const IconThemeData(
+            color: ClinicColors.primary,
+            size: 22,
+          );
+        }
+        return const IconThemeData(
+          color: ClinicColors.muted,
+          size: 22,
+        );
+      }),
       labelTextStyle: WidgetStateProperty.resolveWith((states) {
         if (states.contains(WidgetState.selected)) {
           return const TextStyle(
@@ -114,6 +177,11 @@ ThemeData buildPatientTheme() {
           color: ClinicColors.muted,
         );
       }),
+    ),
+    dividerTheme: const DividerThemeData(
+      color: ClinicColors.border,
+      thickness: 1,
+      space: 1,
     ),
     textTheme: const TextTheme(
       headlineSmall: TextStyle(

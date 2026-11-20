@@ -6,6 +6,7 @@ class PaginationControls extends StatelessWidget {
     required this.limit,
     required this.total,
     required this.onPageChanged,
+    this.hideWhenSinglePage = true,
     super.key,
   });
 
@@ -13,9 +14,13 @@ class PaginationControls extends StatelessWidget {
   final int limit;
   final int total;
   final ValueChanged<int> onPageChanged;
+  final bool hideWhenSinglePage;
 
   @override
   Widget build(BuildContext context) {
+    if (limit <= 0 || (hideWhenSinglePage && total <= limit)) {
+      return const SizedBox.shrink();
+    }
     final pageCount = total == 0 ? 1 : (total / limit).ceil();
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
@@ -25,9 +30,14 @@ class PaginationControls extends StatelessWidget {
           onPressed: page > 1 ? () => onPageChanged(page - 1) : null,
           icon: const Icon(Icons.chevron_left),
         ),
-        Semantics(
-          liveRegion: true,
-          child: Text('Trang $page / $pageCount'),
+        Flexible(
+          child: Semantics(
+            liveRegion: true,
+            child: Text(
+              'Trang $page / $pageCount',
+              textAlign: TextAlign.center,
+            ),
+          ),
         ),
         IconButton(
           tooltip: 'Trang sau',

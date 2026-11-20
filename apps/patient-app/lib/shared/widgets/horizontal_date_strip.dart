@@ -17,6 +17,10 @@ class HorizontalDateStrip extends StatelessWidget {
   final DateTime? startDate;
   final int daysCount;
 
+  static const double tileWidth = 58.0;
+  static const double separatorWidth = 8.0;
+  static const double horizontalPadding = 16.0;
+
   static const _weekdayNames = ['CN', 'T2', 'T3', 'T4', 'T5', 'T6', 'T7'];
 
   bool _isSameDay(DateTime a, DateTime b) =>
@@ -31,12 +35,12 @@ class HorizontalDateStrip extends StatelessWidget {
     );
 
     return SizedBox(
-      height: 80,
+      height: 88,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
+        padding: const EdgeInsets.symmetric(horizontal: horizontalPadding),
         itemCount: dates.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        separatorBuilder: (_, __) => const SizedBox(width: separatorWidth),
         itemBuilder: (context, index) {
           final date = dates[index];
           final isSelected = _isSameDay(date, selectedDate);
@@ -52,7 +56,7 @@ class HorizontalDateStrip extends StatelessWidget {
               onTap: () => onDateSelected(date),
               child: AnimatedContainer(
                 duration: const Duration(milliseconds: 150),
-                width: 58,
+                width: tileWidth,
                 padding: const EdgeInsets.symmetric(vertical: 8),
                 decoration: BoxDecoration(
                   color: isSelected ? ClinicColors.primary : ClinicColors.card,

@@ -12,10 +12,12 @@ class PatientApp extends StatefulWidget {
     super.key,
     this.sessionProvider = const UnauthenticatedSessionProvider(),
     this.doctorApiClient,
+    this.apiClient,
   });
 
   final SessionProvider sessionProvider;
   final ClinicApiClient? doctorApiClient;
+  final ClinicApiClient? apiClient;
 
   @override
   State<PatientApp> createState() => _PatientAppState();
@@ -53,6 +55,7 @@ class _PatientAppState extends State<PatientApp> {
               session: _sessionController.session!,
               onSignOut: _sessionController.signOut,
               doctorApiClient: widget.doctorApiClient,
+              apiClient: widget.apiClient,
             ),
           SessionStatus.unauthenticated => AuthPage(
               onLogin: _sessionController.signIn,

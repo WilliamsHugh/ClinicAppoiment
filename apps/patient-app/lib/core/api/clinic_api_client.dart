@@ -82,6 +82,21 @@ class ClinicApiClient {
     );
   }
 
+  Future<ApiResponse> delete(
+    String path, {
+    Map<String, Object?>? query,
+    String? idempotencyKey,
+    RequestCancellation? cancellation,
+  }) {
+    return _send(
+      'DELETE',
+      path,
+      query: query ?? const {},
+      idempotencyKey: idempotencyKey,
+      cancellation: cancellation,
+    );
+  }
+
   Future<ApiResponse> _send(
     String method,
     String path, {
@@ -96,6 +111,12 @@ class ClinicApiClient {
         statusCode: 401,
         code: 'SESSION_REQUIRED',
         message: 'Bạn cần đăng nhập để tiếp tục.',
+      );
+    }
+    if (cancellation?.isCancelled ?? false) {
+      throw const ApiException(
+        code: 'REQUEST_CANCELLED',
+        message: 'Yêu cầu đã bị hủy.',
       );
     }
 
@@ -173,7 +194,10 @@ class ClinicApiClient {
 
   ApiResponse _decode(http.Response response) {
     final requestId = response.headers['x-request-id'];
-    if (response.statusCode == 204) {
+    if (response.statusCode == 204 ||
+        (response.statusCode >= 200 &&
+            response.statusCode < 300 &&
+            response.body.trim().isEmpty)) {
       return ApiResponse(data: null, requestId: requestId);
     }
 

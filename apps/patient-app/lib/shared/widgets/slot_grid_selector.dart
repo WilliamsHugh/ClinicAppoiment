@@ -2,6 +2,9 @@ import 'package:flutter/material.dart';
 
 import '../../core/theme/app_theme.dart';
 
+DateTime _toClinicVnTime(DateTime value) =>
+    value.toUtc().add(const Duration(hours: 7));
+
 class SlotOption {
   const SlotOption({
     required this.startAt,
@@ -13,11 +16,16 @@ class SlotOption {
   final DateTime endAt;
   final bool isAvailable;
 
+  DateTime get clinicStartAt => _toClinicVnTime(startAt);
+  DateTime get clinicEndAt => _toClinicVnTime(endAt);
+
   String get timeRange {
-    final startH = startAt.hour.toString().padLeft(2, '0');
-    final startM = startAt.minute.toString().padLeft(2, '0');
-    final endH = endAt.hour.toString().padLeft(2, '0');
-    final endM = endAt.minute.toString().padLeft(2, '0');
+    final start = clinicStartAt;
+    final end = clinicEndAt;
+    final startH = start.hour.toString().padLeft(2, '0');
+    final startM = start.minute.toString().padLeft(2, '0');
+    final endH = end.hour.toString().padLeft(2, '0');
+    final endM = end.minute.toString().padLeft(2, '0');
     return '$startH:$startM–$endH:$endM';
   }
 }
@@ -38,7 +46,8 @@ class SlotGridSelector extends StatelessWidget {
   final String emptyMessage;
 
   bool _isSameSlot(SlotOption a, SlotOption b) =>
-      a.startAt == b.startAt && a.endAt == b.endAt;
+      a.startAt.toUtc() == b.startAt.toUtc() &&
+      a.endAt.toUtc() == b.endAt.toUtc();
 
   Widget _buildGroup(
     BuildContext context, {
@@ -82,35 +91,48 @@ class SlotGridSelector extends StatelessWidget {
               child: InkWell(
                 borderRadius: BorderRadius.circular(12),
                 onTap: isClickable ? () => onSlotSelected(slot) : null,
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 150),
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                  decoration: BoxDecoration(
-                    color: isSelected
-                        ? ClinicColors.primary
-                        : isClickable
-                            ? ClinicColors.card
-                            : const Color(0xFFF1F5F9),
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(minHeight: 48),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 150),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 14,
+                      vertical: 12,
+                    ),
+                    decoration: BoxDecoration(
                       color: isSelected
                           ? ClinicColors.primary
                           : isClickable
-                              ? const Color(0xFF93C5FD)
-                              : ClinicColors.border,
-                      width: isSelected ? 1.5 : 1.0,
+                              ? ClinicColors.card
+                              : ClinicColors.surfaceSubtle,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: isSelected
+                            ? ClinicColors.primary
+                            : isClickable
+                                ? ClinicColors.primary.withValues(alpha: 0.45)
+                                : ClinicColors.border,
+                        width: isSelected ? 1.5 : 1.0,
+                      ),
                     ),
-                  ),
-                  child: Text(
-                    slot.timeRange,
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
-                      color: isSelected
-                          ? Colors.white
-                          : isClickable
-                              ? ClinicColors.ink
-                              : ClinicColors.mutedLight,
+                    child: Center(
+                      widthFactor: 1,
+                      child: Text(
+                        slot.timeRange,
+                        style: TextStyle(
+                          fontSize: 13,
+                          fontWeight:
+                              isSelected ? FontWeight.w700 : FontWeight.w600,
+                          color: isSelected
+                              ? Colors.white
+                              : isClickable
+                                  ? ClinicColors.ink
+                                  : ClinicColors.mutedLight,
+                          decoration:
+                              isClickable ? null : TextDecoration.lineThrough,
+                          decorationColor: ClinicColors.mutedLight,
+                        ),
+                      ),
                     ),
                   ),
                 ),
@@ -145,9 +167,11 @@ class SlotGridSelector extends StatelessWidget {
       );
     }
 
-    // Split into Morning (< 12:00) and Afternoon (>= 12:00)
-    final morningSlots = slots.where((s) => s.startAt.hour < 12).toList();
-    final afternoonSlots = slots.where((s) => s.startAt.hour >= 12).toList();
+    // Split into Morning (< 12:00 VN time) and Afternoon (>= 12:00 VN time)
+    final morningSlots =
+        slots.where((s) => s.clinicStartAt.hour < 12).toList();
+    final afternoonSlots =
+        slots.where((s) => s.clinicStartAt.hour >= 12).toList();
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
