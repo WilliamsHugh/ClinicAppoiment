@@ -1,3 +1,4 @@
+import 'package:clinic_patient_app/core/api/api_models.dart';
 import 'package:clinic_patient_app/features/doctors/doctor_models.dart';
 import 'package:clinic_patient_app/features/doctors/doctor_repository.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -122,5 +123,67 @@ void main() {
             ]));
     await expectLater(DoctorRepository(inverted).slots('doctor-1', date),
         throwsFormatException);
+  });
+
+  test(
+      'specialties and doctors omit empty query params, never send isActive, and cache specialty names',
+      () async {
+    final requests = <http.Request>[];
+    final client = doctorClient(requests: requests);
+    final repo = DoctorRepository(client);
+
+    final spPage = await repo.specialties(page: 1, limit: 20, q: '   ');
+    final docPage = await repo.doctors(
+      page: 1,
+      limit: 20,
+      specialtyId: '',
+      q: '  An  ',
+    );
+
+    expect(spPage.items.single.name, 'Tim mạch');
+    expect(docPage.items.single.displayName, 'Bác sĩ An');
+
+    final spQuery = requests[0].url.queryParameters;
+    expect(spQuery.containsKey('q'), isFalse);
+    expect(spQuery.containsKey('isActive'), isFalse);
+
+    final docQuery = requests[1].url.queryParameters;
+    expect(docQuery['q'], 'An');
+    expect(docQuery.containsKey('specialtyId'), isFalse);
+    expect(docQuery.containsKey('isActive'), isFalse);
+
+    // Cached from specialties() -> no extra HTTP request.
+    expect(await repo.specialtyName('specialty-1'), 'Tim mạch');
+    expect(requests.length, 2);
+  });
+
+  test('slots accept 17:00Z previous UTC day as 00:00 VN clinic day',
+      () async {
+    final previousUtcDay = dayAfter(0);
+    final clinicTargetDay = dayAfter(1);
+    final client = doctorClient(
+      override: (_) async => success([
+        {
+          'startAt': '${previousUtcDay}T17:00:00.000Z',
+          'endAt': '${previousUtcDay}T17:30:00.000Z',
+        },
+      ]),
+    );
+    final result = await DoctorRepository(client).slots(
+      'doctor-1',
+      clinicTargetDay,
+    );
+    expect(result.length, 1);
+    expect(clinicDate(result.single.startAt), clinicTargetDay);
+    expect(clinicTime(result.single.startAt), '00:00');
+  });
+
+  test('doctorError maps 429 rate limit cleanly', () {
+    const exception = ApiException(
+      statusCode: 429,
+      code: 'RATE_LIMITED',
+      message: 'Too many requests',
+    );
+    expect(doctorError(exception), contains('quá nhanh'));
   });
 }

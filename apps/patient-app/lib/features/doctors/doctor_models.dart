@@ -1,12 +1,21 @@
 class Specialty {
-  const Specialty({required this.id, required this.name});
+  const Specialty({
+    required this.id,
+    required this.name,
+    this.description,
+    this.isActive = true,
+  });
 
   final String id;
   final String name;
+  final String? description;
+  final bool isActive;
 
   factory Specialty.fromJson(Map<String, dynamic> json) => Specialty(
         id: json['id'] as String,
         name: json['name'] as String,
+        description: json['description'] as String?,
+        isActive: json['isActive'] is bool ? json['isActive'] as bool : true,
       );
 }
 
@@ -71,13 +80,15 @@ class DoctorSchedule {
     final start = json['startTime'] as String;
     final end = json['endTime'] as String;
     final duration = json['slotDurationMinutes'] as int;
+    final isActive = json['isActive'];
     final clock = RegExp(r'^([01]\d|2[0-3]):[0-5]\d$');
     if (weekday < 0 ||
         weekday > 6 ||
         !clock.hasMatch(start) ||
         !clock.hasMatch(end) ||
         start.compareTo(end) >= 0 ||
-        duration <= 0) {
+        duration <= 0 ||
+        isActive is! bool) {
       throw const FormatException('Invalid doctor schedule');
     }
     return DoctorSchedule(
@@ -87,7 +98,7 @@ class DoctorSchedule {
         startTime: start,
         endTime: end,
         slotDurationMinutes: duration,
-        isActive: json['isActive'] as bool);
+        isActive: isActive);
   }
 }
 
@@ -106,10 +117,36 @@ String slotKey(DoctorSlot slot) =>
 
 String clinicDate(DateTime value) {
   final local = value.toUtc().add(const Duration(hours: 7));
-  return '${local.year.toString().padLeft(4, '0')}-${local.month.toString().padLeft(2, '0')}-${local.day.toString().padLeft(2, '0')}';
+  return formatClinicDate(local);
 }
 
 String clinicTime(DateTime value) {
   final local = value.toUtc().add(const Duration(hours: 7));
   return '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
+}
+
+String clinicTodayDate() => clinicDate(DateTime.now());
+
+String formatClinicDate(DateTime date) =>
+    '${date.year.toString().padLeft(4, '0')}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
+
+DateTime? tryParseClinicDateUtc(String date) {
+  if (!RegExp(r'^\d{4}-\d{2}-\d{2}$').hasMatch(date)) return null;
+  final parts = date.split('-');
+  final year = int.parse(parts[0]);
+  final month = int.parse(parts[1]);
+  final day = int.parse(parts[2]);
+  final utc = DateTime.utc(year, month, day);
+  if (utc.year != year || utc.month != month || utc.day != day) return null;
+  return utc;
+}
+
+String addClinicDays(String date, int days) {
+  final parsed = tryParseClinicDateUtc(date);
+  if (parsed == null) {
+    throw FormatException('Invalid clinic date: $date');
+  }
+  return formatClinicDate(
+    DateTime.utc(parsed.year, parsed.month, parsed.day + days),
+  );
 }
