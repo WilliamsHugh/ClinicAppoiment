@@ -83,6 +83,13 @@ Mỗi lệnh backend trên tự nạp file `gateway/api-gateway/.env` hoặc
 credential thật. Chỉ User Service được cấu hình `SUPABASE_URL` và
 `SUPABASE_ANON_KEY`; các service còn lại chỉ nhận `DATABASE_URL` của database mình sở hữu.
 
+Các lệnh `npm run dev:<service>` ở trên là cách chạy chuẩn từ thư mục gốc dự án trên cả
+Windows và Linux. Chúng dùng `scripts/with-env.mjs` để nạp đúng file `.env` và gọi npm
+qua Node, không phụ thuộc cú pháp gán biến môi trường của Bash hay `cmd.exe`. Không cần
+mở Git Bash để chạy Gateway hoặc các backend service. Lệnh workspace như
+`npm run dev -w @clinic/api-gateway` chỉ chạy script của package; hãy dùng lệnh root
+`npm run dev:gateway` để tự nạp file env tương ứng.
+
 Chạy Patient App trên Android emulator:
 
 ```bash
