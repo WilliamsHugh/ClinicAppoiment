@@ -1,51 +1,70 @@
 import 'package:flutter/material.dart';
-import 'package:qr_flutter/qr_flutter.dart';
 
 import '../../../core/api/clinic_api_client.dart';
+import '../../../core/theme/app_theme.dart';
+import '../../../shared/widgets/clinic_page_header.dart';
+import '../../../shared/widgets/qr_ticket_card.dart';
 import '../appointment_models.dart';
 import '../data/appointment_repository.dart';
-import 'status_chip.dart';
 
 typedef AppointmentTicketBuilder = Widget Function(
     BuildContext context, PatientAppointment appointment);
 
-/// Local QR rendering uses the library; TV1's QrTicketCard can replace this builder.
 class AppointmentTicketCard extends StatelessWidget {
   const AppointmentTicketCard({required this.appointment, super.key});
   final PatientAppointment appointment;
+
   @override
-  Widget build(BuildContext context) => Column(children: [
-        Text(appointment.doctorName,
-            style: Theme.of(context).textTheme.titleLarge,
-            textAlign: TextAlign.center),
-        const SizedBox(height: 8),
-        Text(
-            '${appointment.displayDate} · ${appointment.displayTime} (giờ Việt Nam)',
-            textAlign: TextAlign.center),
+  Widget build(BuildContext context) {
+    final specialtyName =
+        appointment.specialty.trim().isNotEmpty &&
+                appointment.specialty != 'Lịch khám'
+            ? appointment.specialty
+            : null;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        QrTicketCard(
+          appointmentId: appointment.id,
+          doctorName: appointment.doctorName,
+          specialtyName: specialtyName,
+          dateTimeLabel:
+              '${appointment.displayDate} · ${appointment.displayTime} (giờ Việt Nam)',
+          status: appointment.status,
+        ),
         const SizedBox(height: 12),
-        StatusChip(status: appointment.status),
-        const SizedBox(height: 20),
-        LayoutBuilder(builder: (_, constraints) {
-          final size =
-              constraints.maxWidth < 240 ? constraints.maxWidth : 240.0;
-          return QrImageView(
-            data: appointment.id,
-            version: QrVersions.auto,
-            size: size,
-            padding: EdgeInsets.all(size / 6),
-            backgroundColor: Colors.white,
-            gapless: false,
-            errorCorrectionLevel: QrErrorCorrectLevel.M,
-            semanticsLabel: 'Mã QR lịch hẹn để xuất trình cho lễ tân',
-            errorStateBuilder: (_, __) =>
-                const Text('Không thể tạo mã QR. Vui lòng tải lại vé.'),
-          );
-        }),
-        const SizedBox(height: 16),
-        const Text(
-            'Xuất trình mã QR cho lễ tân. Trạng thái lịch hẹn sẽ được kiểm tra trước khi check-in.',
-            textAlign: TextAlign.center),
-      ]);
+        Container(
+          width: double.infinity,
+          padding: const EdgeInsets.all(14),
+          decoration: BoxDecoration(
+            color: ClinicColors.infoLight,
+            borderRadius: BorderRadius.circular(12),
+            border: Border.all(
+              color: ClinicColors.info.withValues(alpha: 0.35),
+            ),
+          ),
+          child: const Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.verified_user_outlined,
+                  size: 18, color: ClinicColors.info),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Mã QR chứa định danh lịch hẹn để lễ tân đối chiếu trạng thái trực tiếp trên hệ thống.',
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: ClinicColors.infoDark,
+                    height: 1.4,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
 }
 
 class AppointmentTicketSheet extends StatefulWidget {
@@ -94,9 +113,16 @@ class _AppointmentTicketSheetState extends State<AppointmentTicketSheet> {
       final fresh = await widget.repository
           .detail(widget.appointment.id, cancellation: cancellation);
       if (!mounted || request != _request) return;
+      final doctorName = fresh.doctorName != 'Bác sĩ phụ trách'
+          ? fresh.doctorName
+          : widget.appointment.doctorName;
+      final specialty = fresh.specialty != 'Lịch khám'
+          ? fresh.specialty
+          : widget.appointment.specialty;
       setState(() => _appointment = fresh.withNames(
-          doctorName: widget.appointment.doctorName,
-          specialty: widget.appointment.specialty));
+          doctorName: doctorName,
+          specialty: specialty,
+          specialtyId: fresh.specialtyId ?? widget.appointment.specialtyId));
     } catch (error) {
       if (mounted && request == _request) {
         setState(() => _error = appointmentError(error));
@@ -110,43 +136,108 @@ class _AppointmentTicketSheetState extends State<AppointmentTicketSheet> {
   Widget build(BuildContext context) => SizedBox(
         height: MediaQuery.sizeOf(context).height,
         child: Scaffold(
-            appBar: AppBar(
-                automaticallyImplyLeading: false,
-                title: const Text('Vé khám'),
-                actions: [
-                  IconButton(
-                      tooltip: 'Đóng vé',
-                      onPressed: () => Navigator.pop(context),
-                      icon: const Icon(Icons.close)),
-                ]),
-            body: SafeArea(
-                child: ListView(
+          backgroundColor: ClinicColors.scaffold,
+          body: Column(
+            children: [
+              ClinicPageHeader(
+                title: 'Vé khám',
+                subtitle: 'Xuất trình mã QR tại quầy lễ tân',
+                trailing: IconButton(
+                  tooltip: 'Đóng vé',
+                  style: IconButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    disabledForegroundColor: Colors.white54,
+                  ),
+                  onPressed: () => Navigator.pop(context),
+                  icon: const Icon(Icons.close),
+                ),
+              ),
+              Expanded(
+                child: SafeArea(
+                  top: false,
+                  child: ListView(
                     primary: false,
                     controller: _scroll,
                     padding: const EdgeInsets.all(20),
                     children: [
-                  if (_loading)
-                    Semantics(
-                        label: 'Đang kiểm tra vé khám',
-                        liveRegion: true,
-                        child: Container(
-                            height: 240,
-                            color: Theme.of(context)
-                                .colorScheme
-                                .surfaceContainerHighest))
-                  else if (_error != null)
-                    Column(children: [
-                      Text(_error!),
-                      TextButton(
-                          onPressed: _load, child: const Text('Thử lại vé'))
-                    ])
-                  else if (_appointment case final appointment?)
-                    if (appointment.ticketAvailable(DateTime.now()))
-                      widget.builder?.call(context, appointment) ??
-                          AppointmentTicketCard(appointment: appointment)
-                    else
-                      const Text(
-                          'Lịch hẹn này chưa được xác nhận, đã kết thúc hoặc đã hủy. Hãy quay lại và tải lại danh sách.'),
-                ]))),
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                      if (_loading)
+                        Semantics(
+                          label: 'Đang kiểm tra vé khám',
+                          liveRegion: true,
+                          child: Container(
+                            height: 280,
+                            decoration: BoxDecoration(
+                              color: ClinicColors.surfaceSubtle,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(color: ClinicColors.border),
+                            ),
+                          ),
+                        )
+                      else if (_error != null)
+                        Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: ClinicColors.dangerLight,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(
+                              color: ClinicColors.danger.withValues(alpha: 0.35),
+                            ),
+                          ),
+                          child: Column(
+                            children: [
+                              Text(
+                                _error!,
+                                textAlign: TextAlign.center,
+                                style: const TextStyle(
+                                  color: ClinicColors.dangerDark,
+                                ),
+                              ),
+                              const SizedBox(height: 12),
+                              OutlinedButton(
+                                onPressed: _load,
+                                style: OutlinedButton.styleFrom(
+                                  minimumSize: const Size(0, 48),
+                                  foregroundColor: ClinicColors.dangerDark,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                                child: const Text('Thử lại vé'),
+                              ),
+                            ],
+                          ),
+                        )
+                      else if (_appointment case final appointment?)
+                        if (appointment.ticketAvailable(DateTime.now()))
+                          widget.builder?.call(context, appointment) ??
+                              AppointmentTicketCard(appointment: appointment)
+                        else
+                          Container(
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: ClinicColors.warningLight,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color:
+                                    ClinicColors.warning.withValues(alpha: 0.35),
+                              ),
+                            ),
+                            child: const Text(
+                              'Lịch hẹn này chưa được xác nhận, đã kết thúc hoặc đã hủy. Hãy quay lại và tải lại danh sách.',
+                              style: TextStyle(color: ClinicColors.warningDark),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
       );
 }

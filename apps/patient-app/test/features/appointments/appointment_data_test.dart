@@ -183,4 +183,114 @@ void main() {
     expect(appointmentError(const FormatException('Sensitive detail')),
         isNot(contains('Sensitive')));
   });
+
+  test('fetchAll and detail request view=detail&include=names and never call summary',
+      () async {
+    final gateway = AppointmentGateway(
+      appointments: [
+        {
+          ...appointmentJson(),
+          'doctorSummary': {'id': doctorId, 'displayName': 'BS. Lê Minh'},
+          'specialtySummary': {'id': 'spec-1', 'name': null},
+        }
+      ],
+      override: (request) async {
+        if (request.url.path == '/api/v1/specialties') {
+          return success(pageData([
+            {'id': 'spec-1', 'name': 'Tim mạch'}
+          ]));
+        }
+        return null;
+      },
+    );
+    final repo = AppointmentRepository(gateway.api);
+    final list = await repo.fetchAll();
+    expect(list.single.doctorName, 'BS. Lê Minh');
+    expect(list.single.specialty, 'Tim mạch');
+    expect(list.single.specialtyId, 'spec-1');
+
+    final listReq = gateway.requests
+        .firstWhere((r) => r.url.path == '/api/v1/appointments');
+    expect(listReq.url.queryParameters['view'], 'detail');
+    expect(listReq.url.queryParameters['include'], 'names');
+
+    // Second fetchAll uses cached specialties without hitting /specialties again.
+    await repo.fetchAll();
+    expect(
+        gateway.requests
+            .where((r) => r.url.path == '/api/v1/specialties')
+            .length,
+        1);
+    expect(
+        gateway.requests
+            .where((r) => r.url.path.startsWith('/api/v1/doctors/'))
+            .length,
+        0);
+
+    final detailed = await repo.detail(appointmentId);
+    expect(detailed.doctorName, 'BS. Lê Minh');
+    expect(detailed.specialty, 'Tim mạch');
+    final detailReq = gateway.requests
+        .firstWhere((r) => r.url.path == '/api/v1/appointments/$appointmentId');
+    expect(detailReq.url.queryParameters['view'], 'detail');
+    expect(detailReq.url.queryParameters['include'], 'names');
+    expect(
+        gateway.requests
+            .any((r) => r.url.path == '/api/v1/appointments/summary'),
+        isFalse);
+  });
+
+  test('specialty lookup fallback handles 503 safely and rethrows 401',
+      () async {
+    final outage = AppointmentGateway(
+      appointments: [
+        {
+          ...appointmentJson(),
+          'doctorSummary': {'id': doctorId, 'displayName': 'Bác sĩ An'},
+          'specialtySummary': {'id': 'spec-1', 'name': null},
+        }
+      ],
+      override: (request) async => request.url.path == '/api/v1/specialties'
+          ? failure('DEPENDENCY_UNAVAILABLE', status: 503)
+          : null,
+    );
+    final rows = await AppointmentRepository(outage.api).fetchAll();
+    expect(rows.single.specialty, 'Lịch khám');
+
+    final expired = AppointmentGateway(
+      appointments: [
+        {
+          ...appointmentJson(),
+          'doctorSummary': {'id': doctorId, 'displayName': 'Bác sĩ An'},
+          'specialtySummary': {'id': 'spec-1', 'name': null},
+        }
+      ],
+      override: (request) async => request.url.path == '/api/v1/specialties'
+          ? failure('AUTH_TOKEN_INVALID', status: 401)
+          : null,
+    );
+    await expectLater(
+        AppointmentRepository(expired.api).fetchAll(), throwsA(isA<Exception>()));
+  });
+
+  test(
+      'cancel and reschedule auto-generate Idempotency-Key and omit blank reason',
+      () async {
+    final gateway = AppointmentGateway();
+    final repo = AppointmentRepository(gateway.api);
+    final start = DateTime.parse('${clinicDay(2)}T03:00:00Z');
+    await repo.reschedule(appointmentId, start, start.add(const Duration(minutes: 30)),
+        reason: '   ');
+    await repo.cancel(appointmentId, reason: '  ', idempotencyKey: '');
+
+    expect(gateway.writes, hasLength(2));
+    for (final write in gateway.writes) {
+      final key = write.headers['Idempotency-Key'];
+      expect(key, isNotNull);
+      expect(key!.isNotEmpty, isTrue);
+      expect(key.length, lessThanOrEqualTo(255));
+      expect((jsonDecode(write.body) as Map<String, dynamic>).containsKey('reason'),
+          isFalse);
+    }
+  });
 }

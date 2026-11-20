@@ -5,7 +5,10 @@ import 'package:flutter/material.dart';
 
 import '../../../core/api/api_models.dart';
 import '../../../core/api/clinic_api_client.dart';
-import '../../doctors/doctor_booking_controls.dart';
+import '../../../core/theme/app_theme.dart';
+import '../../../shared/widgets/clinic_page_header.dart';
+import '../../../shared/widgets/horizontal_date_strip.dart';
+import '../../../shared/widgets/slot_grid_selector.dart';
 import '../../doctors/doctor_models.dart';
 import '../appointment_models.dart';
 import '../data/appointment_repository.dart';
@@ -133,6 +136,12 @@ class _RescheduleSheetState extends State<RescheduleSheet> {
     await _loadSlots();
   }
 
+  String _formatDateDdMmYyyy(String isoDate) {
+    final parts = isoDate.split('-');
+    if (parts.length != 3) return isoDate;
+    return '${parts[2]}/${parts[1]}/${parts[0]}';
+  }
+
   Future<void> _chooseDate() async {
     final first = DateTime.parse(clinicDate(DateTime.now()));
     final parsed = DateTime.parse(_date);
@@ -217,15 +226,35 @@ class _RescheduleSheetState extends State<RescheduleSheet> {
     }
   }
 
+  Widget _slotSkeleton() => Semantics(
+        label: 'Đang tải khung giờ',
+        liveRegion: true,
+        child: Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: List.generate(
+            6,
+            (_) => Container(
+              width: 108,
+              height: 48,
+              decoration: BoxDecoration(
+                color: ClinicColors.surfaceSubtle,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: ClinicColors.border),
+              ),
+            ),
+          ),
+        ),
+      );
+
   @override
   Widget build(BuildContext context) {
     final appointment = widget.appointment;
     final enabled = !_busy && !_review && !_finished;
-    final first = clinicDate(DateTime.now());
-    final last = DateTime.parse(first)
-        .add(const Duration(days: 365))
-        .toIso8601String()
-        .substring(0, 10);
+    final todayDate = DateTime.parse(clinicDate(DateTime.now()));
+    final selectedDate = DateTime.parse(_date);
+    final bottomInset = MediaQuery.viewInsetsOf(context).bottom;
+
     return PopScope(
       canPop: false,
       onPopInvokedWithResult: (didPop, _) {
@@ -234,135 +263,372 @@ class _RescheduleSheetState extends State<RescheduleSheet> {
       child: SizedBox(
         height: MediaQuery.sizeOf(context).height,
         child: Scaffold(
-          appBar: AppBar(
-              automaticallyImplyLeading: false,
-              title: Text(widget.cancel ? 'Hủy lịch hẹn?' : 'Đổi lịch hẹn'),
-              actions: [
-                IconButton(
-                    tooltip: 'Đóng',
-                    onPressed: _busy ? null : _close,
-                    icon: const Icon(Icons.close)),
-              ]),
-          body: SafeArea(
-              child: ListView(
-                  primary: false,
-                  controller: _scroll,
-                  padding: const EdgeInsets.all(20),
-                  children: [
-                Text(appointment.doctorName,
-                    style: Theme.of(context).textTheme.titleLarge),
-                const SizedBox(height: 8),
-                Text(
-                    'Lịch hiện tại: ${appointment.displayDate}, ${appointment.displayTime} (giờ Việt Nam)'),
-                const SizedBox(height: 16),
-                if (widget.cancel)
-                  const Text(
-                      'Bạn có chắc muốn hủy lịch hẹn này? Hãy kiểm tra thông tin trước khi xác nhận.')
-                else ...[
-                  DoctorDateControl(
-                      input: DoctorDateInput(
-                          selectedDate: _date,
-                          firstDate: first,
-                          lastDate: last,
-                          onChanged: _setDate,
-                          onOpenCalendar: _chooseDate,
-                          enabled: enabled)),
-                  const SizedBox(height: 12),
-                  if (_loading)
-                    Semantics(
-                        label: 'Đang tải khung giờ',
-                        liveRegion: true,
-                        child: Column(
-                            children: List.generate(
-                                3,
-                                (_) => Padding(
-                                      padding: const EdgeInsets.symmetric(
-                                          vertical: 5),
-                                      child: Container(
-                                          height: 36,
-                                          color: Theme.of(context)
-                                              .colorScheme
-                                              .surfaceContainerHighest),
-                                    ))))
-                  else if (_slotError != null)
-                    Column(children: [
-                      Text(_slotError!),
-                      TextButton(
-                          onPressed: enabled ? _loadSlots : null,
-                          child: const Text('Thử lại khung giờ'))
-                    ])
-                  else if (_slots.isEmpty)
-                    const Text(
-                        'Ngày này chưa có khung giờ trống khác. Hãy chọn ngày khác.')
-                  else
-                    InputDecorator(
-                        decoration:
-                            const InputDecoration(labelText: 'Khung giờ trống'),
-                        child: DropdownButtonHideUnderline(
-                            child: DropdownButton<String>(
-                          value: _selected == null ? null : slotKey(_selected!),
-                          isExpanded: true,
-                          hint: const Text('Chọn khung giờ'),
-                          items: _slots
-                              .map((slot) => DropdownMenuItem(
-                                  value: slotKey(slot),
-                                  child: Text(
-                                      '${clinicTime(slot.startAt)}–${clinicTime(slot.endAt)}')))
-                              .toList(),
-                          onChanged: enabled
-                              ? (value) => setState(() => _selected = _slots
-                                  .firstWhere((slot) => slotKey(slot) == value))
-                              : null,
-                        ))),
-                ],
-                const SizedBox(height: 20),
-                TextField(
-                    controller: _reason,
-                    enabled: enabled,
-                    maxLength: 500,
-                    minLines: 2,
-                    maxLines: 4,
-                    decoration: const InputDecoration(
-                        labelText: 'Lý do (không bắt buộc)',
-                        border: OutlineInputBorder())),
-                if (_error != null)
-                  Semantics(
-                      liveRegion: true,
-                      child: Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 12),
-                          child: Text(_error!,
+          backgroundColor: ClinicColors.scaffold,
+          resizeToAvoidBottomInset: false,
+          body: Column(
+            children: [
+              ClinicPageHeader(
+                title: widget.cancel ? 'Hủy lịch hẹn?' : 'Đổi lịch hẹn',
+                subtitle: widget.cancel
+                    ? 'Xác nhận hủy lịch hẹn'
+                    : 'Chọn ngày và khung giờ khám mới',
+                trailing: IconButton(
+                  tooltip: 'Đóng',
+                  style: IconButton.styleFrom(
+                    foregroundColor: Colors.white,
+                    disabledForegroundColor: Colors.white54,
+                  ),
+                  onPressed: _busy ? null : _close,
+                  icon: const Icon(Icons.close),
+                ),
+              ),
+              Expanded(
+                child: SafeArea(
+                  top: false,
+                  child: ListView(
+                    primary: false,
+                    controller: _scroll,
+                    padding: EdgeInsets.fromLTRB(0, 16, 0, 20 + bottomInset),
+                    children: [
+                      Column(
+                        crossAxisAlignment: CrossAxisAlignment.stretch,
+                        children: [
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        child: Container(
+                          padding: const EdgeInsets.all(16),
+                          decoration: BoxDecoration(
+                            color: ClinicColors.card,
+                            borderRadius: BorderRadius.circular(12),
+                            border: Border.all(color: ClinicColors.border),
+                          ),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                appointment.doctorName,
+                                style: Theme.of(context)
+                                    .textTheme
+                                    .titleLarge
+                                    ?.copyWith(
+                                      fontWeight: FontWeight.w700,
+                                      color: ClinicColors.ink,
+                                    ),
+                              ),
+                              const SizedBox(height: 6),
+                              Text(
+                                'Lịch hiện tại: ${appointment.displayDate}, ${appointment.displayTime} (giờ Việt Nam)',
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  color: ClinicColors.muted,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      if (widget.cancel)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          child: Container(
+                            padding: const EdgeInsets.all(14),
+                            decoration: BoxDecoration(
+                              color: ClinicColors.warningLight,
+                              borderRadius: BorderRadius.circular(12),
+                              border: Border.all(
+                                color: ClinicColors.warning
+                                    .withValues(alpha: 0.35),
+                              ),
+                            ),
+                            child: const Text(
+                              'Bạn có chắc muốn hủy lịch hẹn này? Hãy kiểm tra thông tin trước khi xác nhận.',
                               style: TextStyle(
+                                fontSize: 14,
+                                color: ClinicColors.warningDark,
+                              ),
+                            ),
+                          ),
+                        )
+                      else ...[
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          child: Row(
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    const Text(
+                                      'Ngày khám mới',
+                                      style: TextStyle(
+                                        fontSize: 15,
+                                        fontWeight: FontWeight.w700,
+                                        color: ClinicColors.ink,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      'Đã chọn: ${_formatDateDdMmYyyy(_date)} (giờ Việt Nam)',
+                                      style: const TextStyle(
+                                        fontSize: 13,
+                                        color: ClinicColors.muted,
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                              TextButton.icon(
+                                onPressed: enabled ? _chooseDate : null,
+                                style: TextButton.styleFrom(
+                                  minimumSize: const Size(0, 48),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                                icon: const Icon(Icons.calendar_month_outlined,
+                                    size: 18),
+                                label: const Text('Chọn ngày khác'),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        IgnorePointer(
+                          ignoring: !enabled,
+                          child: Opacity(
+                            opacity: enabled ? 1.0 : 0.6,
+                            child: MediaQuery.withClampedTextScaling(
+                              maxScaleFactor: 1.35,
+                              child: HorizontalDateStrip(
+                                startDate: todayDate,
+                                selectedDate: selectedDate,
+                                daysCount: 30,
+                                onDateSelected: (date) {
+                                  final iso =
+                                      '${date.year.toString().padLeft(4, '0')}-'
+                                      '${date.month.toString().padLeft(2, '0')}-'
+                                      '${date.day.toString().padLeft(2, '0')}';
+                                  _setDate(iso);
+                                },
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 20),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              const Text(
+                                'Khung giờ trống (giờ Việt Nam)',
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.w700,
+                                  color: ClinicColors.ink,
+                                ),
+                              ),
+                              const SizedBox(height: 10),
+                              if (_loading)
+                                _slotSkeleton()
+                              else if (_slotError != null)
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.all(14),
+                                  decoration: BoxDecoration(
+                                    color: ClinicColors.dangerLight,
+                                    borderRadius: BorderRadius.circular(12),
+                                    border: Border.all(
+                                      color: ClinicColors.danger
+                                          .withValues(alpha: 0.35),
+                                    ),
+                                  ),
+                                  child: Column(
+                                    children: [
+                                      Text(
+                                        _slotError!,
+                                        textAlign: TextAlign.center,
+                                        style: const TextStyle(
+                                          color: ClinicColors.dangerDark,
+                                        ),
+                                      ),
+                                      const SizedBox(height: 8),
+                                      OutlinedButton(
+                                        onPressed: enabled ? _loadSlots : null,
+                                        style: OutlinedButton.styleFrom(
+                                          minimumSize: const Size(0, 48),
+                                          foregroundColor:
+                                              ClinicColors.dangerDark,
+                                          shape: RoundedRectangleBorder(
+                                            borderRadius:
+                                                BorderRadius.circular(12),
+                                          ),
+                                        ),
+                                        child: const Text('Thử lại khung giờ'),
+                                      ),
+                                    ],
+                                  ),
+                                )
+                              else if (_slots.isEmpty)
+                                Container(
+                                  width: double.infinity,
+                                  padding: const EdgeInsets.all(16),
+                                  decoration: BoxDecoration(
+                                    color: ClinicColors.card,
+                                    borderRadius: BorderRadius.circular(12),
+                                    border:
+                                        Border.all(color: ClinicColors.border),
+                                  ),
+                                  child: const Text(
+                                    'Ngày này chưa có khung giờ trống khác. Hãy chọn ngày khác.',
+                                    style: TextStyle(
+                                      fontSize: 14,
+                                      color: ClinicColors.muted,
+                                    ),
+                                  ),
+                                )
+                              else
+                                IgnorePointer(
+                                  ignoring: !enabled,
+                                  child: Opacity(
+                                    opacity: enabled ? 1.0 : 0.6,
+                                    child: SlotGridSelector(
+                                      slots: _slots
+                                          .map((slot) => SlotOption(
+                                                startAt: slot.startAt,
+                                                endAt: slot.endAt,
+                                              ))
+                                          .toList(growable: false),
+                                      selectedSlot: _selected == null
+                                          ? null
+                                          : SlotOption(
+                                              startAt: _selected!.startAt,
+                                              endAt: _selected!.endAt,
+                                            ),
+                                      onSlotSelected: (option) {
+                                        setState(() {
+                                          _selected = DoctorSlot(
+                                            startAt: option.startAt,
+                                            endAt: option.endAt,
+                                          );
+                                        });
+                                      },
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ],
+                      const SizedBox(height: 16),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        child: TextField(
+                          controller: _reason,
+                          enabled: enabled,
+                          maxLength: 500,
+                          minLines: 2,
+                          maxLines: 4,
+                          decoration: const InputDecoration(
+                            labelText: 'Lý do (không bắt buộc)',
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                      ),
+                      if (_error != null)
+                        Padding(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 20, vertical: 10),
+                          child: Semantics(
+                            liveRegion: true,
+                            child: Container(
+                              padding: const EdgeInsets.all(12),
+                              decoration: BoxDecoration(
+                                color: ClinicColors.dangerLight,
+                                borderRadius: BorderRadius.circular(12),
+                                border: Border.all(
                                   color:
-                                      Theme.of(context).colorScheme.error)))),
-                if (_review)
-                  FilledButton(
-                      onPressed: _close,
-                      child: const Text('Đóng và kiểm tra lại danh sách'))
-                else
-                  FilledButton(
-                      onPressed: enabled &&
-                              (widget.cancel ||
-                                  (!_loading &&
-                                      _slotError == null &&
-                                      _selected != null))
-                          ? _submit
-                          : null,
-                      style: widget.cancel
-                          ? FilledButton.styleFrom(
-                              backgroundColor:
-                                  Theme.of(context).colorScheme.error)
-                          : null,
-                      child: Text(_busy
-                          ? 'Đang lưu…'
-                          : widget.cancel
-                              ? 'Xác nhận hủy lịch'
-                              : 'Xác nhận đổi lịch')),
-                TextButton(
-                    onPressed: _busy ? null : _close,
-                    child: const Text('Quay lại')),
-              ])),
-        ),
+                                      ClinicColors.danger.withValues(alpha: 0.35),
+                                ),
+                              ),
+                              child: Text(
+                                _error!,
+                                style: const TextStyle(
+                                  color: ClinicColors.dangerDark,
+                                  fontSize: 13,
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      const SizedBox(height: 12),
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 20),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            if (_review)
+                              FilledButton(
+                                onPressed: _close,
+                                style: FilledButton.styleFrom(
+                                  minimumSize: const Size(0, 48),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                                child: const Text(
+                                    'Đóng và kiểm tra lại danh sách'),
+                              )
+                            else
+                              FilledButton(
+                                onPressed: enabled &&
+                                        (widget.cancel ||
+                                            (!_loading &&
+                                                _slotError == null &&
+                                                _selected != null))
+                                    ? _submit
+                                    : null,
+                                style: FilledButton.styleFrom(
+                                  backgroundColor: widget.cancel
+                                      ? ClinicColors.danger
+                                      : ClinicColors.primary,
+                                  foregroundColor: Colors.white,
+                                  minimumSize: const Size(0, 48),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                                child: Text(_busy
+                                    ? 'Đang lưu…'
+                                    : widget.cancel
+                                        ? 'Xác nhận hủy lịch'
+                                        : 'Xác nhận đổi lịch'),
+                              ),
+                            const SizedBox(height: 8),
+                            TextButton(
+                              onPressed: _busy ? null : _close,
+                              style: TextButton.styleFrom(
+                                minimumSize: const Size(0, 48),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                              child: const Text('Quay lại'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
-    );
+    ),
+  ),
+);
   }
 }

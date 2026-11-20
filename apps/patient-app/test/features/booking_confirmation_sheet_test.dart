@@ -6,6 +6,8 @@ import 'package:clinic_patient_app/core/session/session.dart';
 import 'package:clinic_patient_app/features/appointments/appointments_page.dart';
 import 'package:clinic_patient_app/features/appointments/booking_confirmation_sheet.dart';
 import 'package:clinic_patient_app/features/appointments/booking_selection.dart';
+import 'package:clinic_patient_app/shared/widgets/clinic_page_header.dart';
+import 'package:clinic_patient_app/shared/widgets/slot_grid_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:http/http.dart' as http;
@@ -325,5 +327,45 @@ void main() {
     await _submit(tester);
     expect(tester.takeException(), isNull);
     tester.view.resetViewInsets();
+  });
+
+  testWidgets(
+      'BookingConfirmationSheet renders ClinicPageHeader, SlotGridSelector UTC+7 on conflict, and 48px button',
+      (tester) async {
+    final writes = <http.Request>[];
+    await _open(tester, _api((request) async {
+      if (request.method == 'POST') {
+        writes.add(request);
+        return writes.length == 1
+            ? _failure('APPOINTMENT_SLOT_UNAVAILABLE', 409)
+            : _success({'id': 'appointment-2'}, status: 201);
+      }
+      return _success([
+        {'startAt': '2030-01-07T02:00:00Z', 'endAt': '2030-01-07T02:30:00Z'},
+        {'startAt': '2030-01-07T07:00:00Z', 'endAt': '2030-01-07T07:30:00Z'},
+      ]);
+    }));
+
+    expect(find.byType(ClinicPageHeader), findsOneWidget);
+    expect(
+        tester.getSize(find.byType(FilledButton)).height, greaterThanOrEqualTo(48));
+
+    await _submit(tester);
+    expect(find.byType(SlotGridSelector), findsOneWidget);
+    expect(find.text('Buổi sáng'), findsOneWidget);
+    expect(find.text('Buổi chiều'), findsOneWidget);
+    expect(find.text('14:00–14:30'), findsOneWidget);
+    expect(
+        tester
+            .getSize(find.widgetWithText(OutlinedButton, 'Chọn ngày khác'))
+            .height,
+        greaterThanOrEqualTo(48));
+
+    await tester.ensureVisible(find.text('14:00–14:30'));
+    await tester.tap(find.text('14:00–14:30'));
+    await tester.pumpAndSettle();
+    await _submit(tester);
+    expect(jsonDecode(writes.last.body)['scheduledStartAt'],
+        '2030-01-07T07:00:00.000Z');
   });
 }

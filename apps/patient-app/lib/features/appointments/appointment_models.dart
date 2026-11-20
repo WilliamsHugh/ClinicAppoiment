@@ -20,6 +20,7 @@ class PatientAppointment {
       required this.endAt,
       required this.status,
       this.reason,
+      this.specialtyId,
       this.doctorName = 'Bác sĩ phụ trách',
       this.specialty = 'Lịch khám'});
   final String id;
@@ -28,6 +29,7 @@ class PatientAppointment {
   final DateTime endAt;
   final String status;
   final String? reason;
+  final String? specialtyId;
   final String doctorName;
   final String specialty;
 
@@ -43,6 +45,17 @@ class PatientAppointment {
         !end.isAfter(start)) {
       throw const FormatException('Invalid appointment');
     }
+    final doctorSummary = json['doctorSummary'] is Map<String, dynamic>
+        ? json['doctorSummary'] as Map<String, dynamic>
+        : null;
+    final specialtySummary = json['specialtySummary'] is Map<String, dynamic>
+        ? json['specialtySummary'] as Map<String, dynamic>
+        : null;
+    final rawSpecialtyId = json['specialtyId'] ?? specialtySummary?['id'];
+    final specialtyId =
+        rawSpecialtyId is String && rawSpecialtyId.trim().isNotEmpty
+            ? rawSpecialtyId.trim()
+            : null;
     return PatientAppointment(
         id: id,
         doctorId: doctorId,
@@ -50,9 +63,14 @@ class PatientAppointment {
         endAt: end,
         status: status,
         reason: json['reason'] as String?,
-        doctorName:
-            appointmentDisplayName(json['doctorName']) ?? 'Bác sĩ phụ trách',
-        specialty: appointmentDisplayName(json['specialty']) ?? 'Lịch khám');
+        specialtyId: specialtyId,
+        doctorName: appointmentDisplayName(doctorSummary?['displayName']) ??
+            appointmentDisplayName(json['doctorName']) ??
+            'Bác sĩ phụ trách',
+        specialty: appointmentDisplayName(specialtySummary?['name']) ??
+            appointmentDisplayName(json['specialtyName']) ??
+            appointmentDisplayName(json['specialty']) ??
+            'Lịch khám');
   }
 
   bool get canModify => status == 'PENDING' || status == 'CONFIRMED';
@@ -75,7 +93,9 @@ class PatientAppointment {
 
   String get displayTime => '${clinicTime(startAt)}–${clinicTime(endAt)}';
   PatientAppointment withNames(
-          {required String doctorName, required String specialty}) =>
+          {required String doctorName,
+          required String specialty,
+          String? specialtyId}) =>
       PatientAppointment(
           id: id,
           doctorId: doctorId,
@@ -83,6 +103,7 @@ class PatientAppointment {
           endAt: endAt,
           status: status,
           reason: reason,
+          specialtyId: specialtyId ?? this.specialtyId,
           doctorName: doctorName,
           specialty: specialty);
 }

@@ -9,6 +9,10 @@ import 'package:clinic_patient_app/features/appointments/appointments_page.dart'
 import 'package:clinic_patient_app/features/appointments/widgets/appointment_card.dart';
 import 'package:clinic_patient_app/features/appointments/widgets/appointment_ticket.dart';
 import 'package:clinic_patient_app/features/appointments/widgets/reschedule_sheet.dart';
+import 'package:clinic_patient_app/shared/widgets/clinic_page_header.dart';
+import 'package:clinic_patient_app/shared/widgets/horizontal_date_strip.dart';
+import 'package:clinic_patient_app/shared/widgets/qr_ticket_card.dart';
+import 'package:clinic_patient_app/shared/widgets/slot_grid_selector.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -52,8 +56,7 @@ Future<void> tapVisible(WidgetTester tester, Finder target) async {
 }
 
 Future<void> chooseSlot(WidgetTester tester, String label) async {
-  await tapVisible(tester, find.byType(DropdownButton<String>));
-  await tapVisible(tester, find.text(label).last);
+  await tapVisible(tester, find.text(label));
 }
 
 Future<void> captureReview(
@@ -108,7 +111,11 @@ void main() {
                 : null);
     await showAppointments(tester, gateway);
     await tapVisible(tester, find.text('Đổi lịch'));
-    await tapVisible(tester, find.byTooltip('Ngày tiếp theo'));
+    final nextDay = DateTime.parse(clinicDay(2));
+    await tapVisible(
+        tester,
+        find.bySemanticsLabel(
+            RegExp('^Ngày ${nextDay.day} tháng ${nextDay.month},')));
     oldResponse.complete(success([
       {
         'startAt': '${clinicDay(1)}T04:00:00Z',
@@ -133,7 +140,7 @@ void main() {
                 : null);
     await showAppointments(tester, gateway);
     await tapVisible(tester, find.text('Đổi lịch'));
-    expect(find.byType(DropdownButton<String>), findsNothing);
+    expect(find.byType(SlotGridSelector), findsNothing);
     expect(
         tester
             .widget<FilledButton>(
@@ -243,7 +250,10 @@ void main() {
     await tapVisible(tester, find.text('Quay lại'));
     expect(gateway.writes, isEmpty);
     await tapVisible(tester, find.text('Hủy lịch'));
-    await tester.enterText(find.byType(TextField), ' Bận công việc ');
+    await tester.enterText(
+        find.descendant(
+            of: find.byType(RescheduleSheet), matching: find.byType(TextField)),
+        ' Bận công việc ');
     await tapVisible(tester, find.text('Xác nhận hủy lịch'));
     expect(find.byType(RescheduleSheet), findsNothing);
     expect(find.text('Đã hủy lịch hẹn.'), findsOneWidget);
@@ -401,6 +411,7 @@ void main() {
     await showAppointments(tester, gateway);
     await tapVisible(tester, find.text('Xem vé QR'));
     expect(find.byType(QrImageView), findsOneWidget);
+    expect(find.byType(QrTicketCard), findsOneWidget);
     expect(
         tester
             .widget<AppointmentTicketCard>(find.byType(AppointmentTicketCard))
@@ -496,7 +507,8 @@ void main() {
       final doctorLabel = find.descendant(
           of: find.byType(RescheduleSheet), matching: find.text('Bác sĩ An'));
       final sheetBar = find.descendant(
-          of: find.byType(RescheduleSheet), matching: find.byType(AppBar));
+          of: find.byType(RescheduleSheet),
+          matching: find.byType(ClinicPageHeader));
       expect(tester.getTopLeft(doctorLabel).dy,
           greaterThanOrEqualTo(tester.getBottomLeft(sheetBar).dy));
       final content = find.descendant(
@@ -511,4 +523,121 @@ void main() {
       expect(tester.takeException(), isNull);
     });
   }
+
+  testWidgets(
+      'RescheduleSheet groups UTC+7 slots into morning and afternoon and submits UTC payload',
+      (tester) async {
+    final gateway = AppointmentGateway(
+      override: (request) async {
+        if (request.url.path.endsWith('/available-slots')) {
+          final date = request.url.queryParameters['date'];
+          return success([
+            {
+              'startAt': '${date}T02:00:00.000Z',
+              'endAt': '${date}T02:30:00.000Z',
+            },
+            {
+              'startAt': '${date}T07:00:00.000Z',
+              'endAt': '${date}T07:30:00.000Z',
+            },
+          ]);
+        }
+        return null;
+      },
+    );
+    await showAppointments(tester, gateway);
+    await tapVisible(tester, find.text('Đổi lịch'));
+    expect(find.byType(HorizontalDateStrip), findsOneWidget);
+    expect(find.byType(SlotGridSelector), findsOneWidget);
+    expect(find.text('Buổi sáng'), findsOneWidget);
+    expect(find.text('Buổi chiều'), findsOneWidget);
+    expect(find.text('09:00–09:30'), findsOneWidget);
+    expect(find.text('14:00–14:30'), findsOneWidget);
+
+    await chooseSlot(tester, '14:00–14:30');
+    await tapVisible(tester, find.text('Xác nhận đổi lịch'));
+    expect(jsonDecode(gateway.writes.single.body)['scheduledStartAt'],
+        '${clinicDay(1)}T07:00:00.000Z');
+    expect(jsonDecode(gateway.writes.single.body)['scheduledEndAt'],
+        '${clinicDay(1)}T07:30:00.000Z');
+  });
+
+  testWidgets('QrTicketCard displays resolved specialty name', (tester) async {
+    final gateway = AppointmentGateway(
+      appointments: [
+        {
+          ...appointmentJson(status: 'CONFIRMED'),
+          'doctorSummary': {'id': doctorId, 'displayName': 'Bác sĩ An'},
+          'specialtySummary': {'id': 'spec-1', 'name': null},
+        }
+      ],
+      override: (request) async {
+        if (request.url.path == '/api/v1/specialties') {
+          return success(pageData([
+            {'id': 'spec-1', 'name': 'Tim mạch'}
+          ]));
+        }
+        return null;
+      },
+    );
+    await showAppointments(tester, gateway);
+    expect(find.text('Tim mạch'), findsOneWidget);
+    await tapVisible(tester, find.text('Xem vé QR'));
+    final ticket = tester.widget<QrTicketCard>(find.byType(QrTicketCard));
+    expect(ticket.specialtyName, 'Tim mạch');
+    expect(find.descendant(of: find.byType(QrTicketCard), matching: find.text('Tim mạch')),
+        findsOneWidget);
+  });
+
+  testWidgets(
+      'RescheduleSheet and AppointmentTicketSheet fit 360x640 @ 1.4x with keyboard and 48px targets',
+      (tester) async {
+    tester.view.physicalSize = const Size(360, 640);
+    tester.view.devicePixelRatio = 1;
+    tester.platformDispatcher.textScaleFactorTestValue = 1.4;
+    addTearDown(() {
+      tester.view.resetPhysicalSize();
+      tester.view.resetDevicePixelRatio();
+      tester.platformDispatcher.clearTextScaleFactorTestValue();
+      tester.view.resetViewInsets();
+    });
+
+    final gateway = AppointmentGateway(
+        appointments: [appointmentJson(status: 'CONFIRMED')]);
+    await showAppointments(tester, gateway);
+
+    // Verify >= 48px touch targets on AppointmentCard buttons
+    for (final label in ['Xem vé QR', 'Đổi lịch', 'Hủy lịch']) {
+      final box = tester.getSize(find.ancestor(
+          of: find.text(label),
+          matching: find.byWidgetPredicate(
+              (w) => w is FilledButton || w is OutlinedButton)));
+      expect(box.height, greaterThanOrEqualTo(48));
+    }
+
+    // Open RescheduleSheet with virtual keyboard
+    await tapVisible(tester, find.text('Đổi lịch'));
+    tester.view.viewInsets = const FakeViewPadding(bottom: 280);
+    await tester.pumpAndSettle();
+    await tester.enterText(
+        find.descendant(
+            of: find.byType(RescheduleSheet), matching: find.byType(TextField)),
+        'Đổi lịch buổi chiều');
+    await tester.pumpAndSettle();
+    final submitBtnSize = tester.getSize(
+        find.widgetWithText(FilledButton, 'Xác nhận đổi lịch'));
+    final backBtnSize =
+        tester.getSize(find.widgetWithText(TextButton, 'Quay lại'));
+    expect(submitBtnSize.height, greaterThanOrEqualTo(48));
+    expect(backBtnSize.height, greaterThanOrEqualTo(48));
+    expect(tester.takeException(), isNull);
+
+    tester.view.resetViewInsets();
+    await tapVisible(tester, find.byTooltip('Đóng'));
+
+    // Open AppointmentTicketSheet at 360x640 @ 1.4x
+    await tapVisible(tester, find.text('Xem vé QR'));
+    expect(find.byType(QrTicketCard), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 }

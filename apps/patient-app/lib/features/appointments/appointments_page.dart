@@ -2,7 +2,10 @@ import 'package:flutter/material.dart';
 
 import '../../core/api/clinic_api_client.dart';
 import '../../core/session/session.dart';
+import '../../core/theme/app_theme.dart';
 import '../../shared/widgets/async_states.dart';
+import '../../shared/widgets/clinic_page_header.dart';
+import '../../shared/widgets/clinic_search_field.dart';
 import 'appointment_models.dart';
 import 'booking_confirmation_sheet.dart';
 import 'booking_selection.dart';
@@ -31,6 +34,7 @@ class AppointmentsPage extends StatefulWidget {
 class _AppointmentsPageState extends State<AppointmentsPage>
     with SingleTickerProviderStateMixin {
   late final TabController _tab;
+  final _searchController = TextEditingController();
   late ClinicApiClient _api;
   late AppointmentRepository _repo;
   BookingSelection? _completedSelection;
@@ -42,6 +46,7 @@ class _AppointmentsPageState extends State<AppointmentsPage>
   bool _loading = true;
   String? _error;
   String? _notice;
+  String _query = '';
   List<PatientAppointment> _items = [];
 
   @override
@@ -70,6 +75,8 @@ class _AppointmentsPageState extends State<AppointmentsPage>
       ++_loadRequest;
       _items = [];
       _notice = null;
+      _query = '';
+      _searchController.clear();
       _resetApi();
       _load();
     } else if (oldWidget.refreshVersion != widget.refreshVersion) {
@@ -85,6 +92,7 @@ class _AppointmentsPageState extends State<AppointmentsPage>
   @override
   void dispose() {
     _cancellation?.cancel();
+    _searchController.dispose();
     _tab.removeListener(_onTabChanged);
     _tab.dispose();
     super.dispose();
@@ -92,6 +100,11 @@ class _AppointmentsPageState extends State<AppointmentsPage>
 
   void _onTabChanged() {
     if (mounted) setState(() {});
+  }
+
+  void _clearSearch() {
+    _searchController.clear();
+    setState(() => _query = '');
   }
 
   Future<void> _load() async {
@@ -169,7 +182,9 @@ class _AppointmentsPageState extends State<AppointmentsPage>
         _items = _items
             .map((item) => item.id == updated.id
                 ? updated.withNames(
-                    doctorName: item.doctorName, specialty: item.specialty)
+                    doctorName: item.doctorName,
+                    specialty: item.specialty,
+                    specialtyId: item.specialtyId)
                 : item)
             .toList();
         _notice = cancel ? 'Đã hủy lịch hẹn.' : 'Đã đổi lịch thành công.';
@@ -209,103 +224,326 @@ class _AppointmentsPageState extends State<AppointmentsPage>
         children: List.generate(
             3,
             (_) => Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 8),
+                  padding: const EdgeInsets.only(bottom: 12),
                   child: Container(
-                      height: 112,
+                      height: 124,
                       decoration: BoxDecoration(
-                          color: Theme.of(context)
-                              .colorScheme
-                              .surfaceContainerHighest,
-                          borderRadius: BorderRadius.circular(12))),
+                          color: ClinicColors.card,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(color: ClinicColors.border)),
+                      padding: const EdgeInsets.all(16),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Container(
+                            height: 16,
+                            width: 180,
+                            decoration: BoxDecoration(
+                              color: ClinicColors.surfaceSubtle,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                          ),
+                          const SizedBox(height: 10),
+                          Container(
+                            height: 12,
+                            width: 120,
+                            decoration: BoxDecoration(
+                              color: ClinicColors.surfaceSubtle,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          Container(
+                            height: 36,
+                            decoration: BoxDecoration(
+                              color: ClinicColors.surfaceSubtle,
+                              borderRadius: BorderRadius.circular(8),
+                            ),
+                          ),
+                        ],
+                      )),
                 )),
       ));
+
+  List<PatientAppointment> _filterItems(List<PatientAppointment> tabItems) {
+    final keyword = _query.trim().toLowerCase();
+    if (keyword.isEmpty) return tabItems;
+    return tabItems.where((item) {
+      final doctor = item.doctorName.toLowerCase();
+      final specialty = item.specialty.toLowerCase();
+      final reason = (item.reason ?? '').toLowerCase();
+      return doctor.contains(keyword) ||
+          specialty.contains(keyword) ||
+          reason.contains(keyword);
+    }).toList(growable: false);
+  }
 
   @override
   Widget build(BuildContext context) {
     final now = DateTime.now();
     final tab = AppointmentTab.values[_tab.index];
-    final items = _items.where((item) => item.belongsTo(tab, now)).toList()
+    final tabItems = _items.where((item) => item.belongsTo(tab, now)).toList()
       ..sort((a, b) => tab == AppointmentTab.upcoming
           ? a.startAt.compareTo(b.startAt)
           : b.startAt.compareTo(a.startAt));
+    final items = _filterItems(tabItems);
     final enabled = !_loading &&
         _error == null &&
         !_openingAction &&
         !_openingConfirmation &&
         !_openingTicket;
+
     return Scaffold(
-      appBar: AppBar(
-          title: const Text('Lịch hẹn'),
-          actions: [
-            IconButton(
-                tooltip: 'Tải lại lịch hẹn',
-                onPressed: _loading ? null : _load,
-                icon: const Icon(Icons.refresh)),
-          ],
-          bottom: TabBar(
-              controller: _tab,
-              isScrollable: false,
-              indicatorSize: TabBarIndicatorSize.tab,
-              labelPadding: EdgeInsets.zero,
-              tabs: appointmentTabLabels
-                  .map((label) => Tab(text: label))
-                  .toList())),
+      backgroundColor: ClinicColors.scaffold,
+      resizeToAvoidBottomInset: false,
       body: Column(children: [
+        ClinicPageHeader(
+          title: 'Lịch hẹn',
+          subtitle: 'Theo dõi lịch khám, vé QR và đổi lịch',
+          padding: const EdgeInsets.fromLTRB(20, 12, 16, 8),
+          trailing: IconButton(
+            tooltip: 'Tải lại lịch hẹn',
+            onPressed: _loading ? null : _load,
+            style: IconButton.styleFrom(
+              foregroundColor: Colors.white,
+              disabledForegroundColor: Colors.white54,
+            ),
+            icon: const Icon(Icons.refresh),
+          ),
+          bottom: TabBar(
+            controller: _tab,
+            isScrollable: false,
+            indicatorSize: TabBarIndicatorSize.tab,
+            labelPadding: EdgeInsets.zero,
+            labelColor: Colors.white,
+            unselectedLabelColor: Colors.white70,
+            indicatorColor: Colors.white,
+            indicatorWeight: 3,
+            indicatorPadding: const EdgeInsets.symmetric(horizontal: 16),
+            dividerColor: Colors.transparent,
+            labelStyle: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w700,
+            ),
+            unselectedLabelStyle: const TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.w500,
+            ),
+            tabs: appointmentTabLabels
+                .map((label) => Tab(
+                      child: Text(
+                        label,
+                        maxLines: 1,
+                        softWrap: false,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ))
+                .toList(),
+          ),
+        ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              ClinicSearchField(
+                controller: _searchController,
+                hintText: 'Tìm bác sĩ, chuyên khoa, lý do...',
+                semanticsLabel: 'Tìm lịch hẹn trong danh sách đã tải',
+                onChanged: (value) => setState(() => _query = value),
+                onClear: () => setState(() => _query = ''),
+              ),
+              const SizedBox(height: 6),
+              const Text(
+                'Lọc cục bộ trong danh sách đã tải theo bác sĩ, chuyên khoa hoặc lý do.',
+                style: TextStyle(
+                  fontSize: 12,
+                  color: ClinicColors.muted,
+                ),
+              ),
+            ],
+          ),
+        ),
         if (widget.bookingSelection case final selection?
             when selection != _completedSelection)
-          Card(
-              margin: const EdgeInsets.all(16),
-              child: Padding(
-                  padding: const EdgeInsets.all(12),
-                  child: Column(children: [
-                    Text('${selection.doctorName}, ${selection.displayTime}'),
-                    TextButton(
-                        onPressed: _confirmBooking,
-                        child: const Text('Xem và xác nhận đặt lịch')),
-                  ]))),
+          Container(
+            margin: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            padding: const EdgeInsets.all(14),
+            decoration: BoxDecoration(
+              color: ClinicColors.primarySoft,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(
+                color: ClinicColors.primary.withValues(alpha: 0.3),
+              ),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Text(
+                  '${selection.doctorName}, ${selection.displayTime}',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    color: ClinicColors.ink,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                OutlinedButton(
+                  onPressed: _confirmBooking,
+                  style: OutlinedButton.styleFrom(
+                    minimumSize: const Size(0, 48),
+                    backgroundColor: ClinicColors.card,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                  child: const Text('Xem và xác nhận đặt lịch'),
+                ),
+              ],
+            ),
+          ),
         Expanded(
-            child: RefreshIndicator(
-                onRefresh: _load,
-                child: ListView(
-                    padding: const EdgeInsets.all(16),
-                    physics: const AlwaysScrollableScrollPhysics(),
-                    children: [
-                      if (_notice != null)
-                        Semantics(
-                            liveRegion: true,
-                            child: Padding(
-                                padding: const EdgeInsets.only(bottom: 16),
-                                child: Text(_notice!))),
-                      if (_error != null) ...[
-                        AppErrorState(message: _error!, onRetry: _load),
-                        if (_items.isNotEmpty)
-                          const Text(
-                              'Dữ liệu có thể đã thay đổi. Tải lại thành công trước khi tiếp tục thao tác.'),
-                      ],
-                      if (_loading)
-                        _skeleton()
-                      else if (items.isEmpty && _error == null)
-                        Column(children: [
+          child: RefreshIndicator(
+            onRefresh: _load,
+            child: SingleChildScrollView(
+              padding: EdgeInsets.fromLTRB(
+                  16, 8, 16, 20 + MediaQuery.viewInsetsOf(context).bottom),
+              physics: const AlwaysScrollableScrollPhysics(),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  if (_notice != null)
+                    Semantics(
+                      liveRegion: true,
+                      child: Container(
+                        margin: const EdgeInsets.only(bottom: 12),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 14, vertical: 12),
+                        decoration: BoxDecoration(
+                          color: ClinicColors.successLight,
+                          borderRadius: BorderRadius.circular(12),
+                          border: Border.all(
+                            color: ClinicColors.success.withValues(alpha: 0.35),
+                          ),
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.check_circle_outline,
+                              size: 18,
+                              color: ClinicColors.success,
+                            ),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: Text(
+                                _notice!,
+                                style: const TextStyle(
+                                  color: ClinicColors.successDark,
+                                  fontWeight: FontWeight.w600,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  if (_error != null) ...[
+                    Container(
+                      margin: const EdgeInsets.only(bottom: 12),
+                      decoration: BoxDecoration(
+                        color: ClinicColors.card,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: ClinicColors.border),
+                      ),
+                      child: AppErrorState(message: _error!, onRetry: _load),
+                    ),
+                    if (_items.isNotEmpty)
+                      const Padding(
+                        padding: EdgeInsets.only(bottom: 12),
+                        child: Text(
+                          'Dữ liệu có thể đã thay đổi. Tải lại thành công trước khi tiếp tục thao tác.',
+                          style: TextStyle(
+                            fontSize: 13,
+                            color: ClinicColors.muted,
+                          ),
+                        ),
+                      ),
+                  ],
+                  if (_loading)
+                    _skeleton()
+                  else if (tabItems.isEmpty && _error == null)
+                    Container(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      decoration: BoxDecoration(
+                        color: ClinicColors.card,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: ClinicColors.border),
+                      ),
+                      child: Column(
+                        children: [
                           AppEmptyState(
-                              title: 'Chưa có lịch hẹn',
-                              message:
-                                  'Chưa có dữ liệu trong mục ${appointmentTabLabels[_tab.index]}.',
-                              icon: Icons.calendar_month_outlined),
+                            title: 'Chưa có lịch hẹn',
+                            message:
+                                'Chưa có dữ liệu trong mục ${appointmentTabLabels[_tab.index]}.',
+                            icon: Icons.calendar_month_outlined,
+                          ),
                           TextButton(
-                              onPressed: _load,
-                              child: const Text('Kiểm tra lại')),
-                        ])
-                      else
-                        ...items.map((item) => Padding(
-                            padding: const EdgeInsets.only(bottom: 12),
-                            child: AppointmentCard(
-                              appointment: item,
-                              enabled: enabled,
-                              onCancel: () => _change(item, cancel: true),
-                              onReschedule: () => _change(item),
-                              onTicket: () => _ticket(item),
-                            ))),
-                    ]))),
+                            onPressed: _load,
+                            style: TextButton.styleFrom(
+                              minimumSize: const Size(0, 48),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            child: const Text('Kiểm tra lại'),
+                          ),
+                        ],
+                      ),
+                    )
+                  else if (items.isEmpty && _error == null)
+                    Container(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      decoration: BoxDecoration(
+                        color: ClinicColors.card,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: ClinicColors.border),
+                      ),
+                      child: Column(
+                        children: [
+                          AppEmptyState(
+                            title: 'Không tìm thấy lịch hẹn phù hợp',
+                            message:
+                                'Không có kết quả cho "${_query.trim()}" trong mục ${appointmentTabLabels[_tab.index]}.',
+                            icon: Icons.search_off_outlined,
+                          ),
+                          OutlinedButton.icon(
+                            onPressed: _clearSearch,
+                            style: OutlinedButton.styleFrom(
+                              minimumSize: const Size(0, 48),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                            icon: const Icon(Icons.close, size: 18),
+                            label: const Text('Xóa tìm kiếm'),
+                          ),
+                        ],
+                      ),
+                    )
+                  else
+                    ...items.map((item) => Padding(
+                        padding: const EdgeInsets.only(bottom: 12),
+                        child: AppointmentCard(
+                          appointment: item,
+                          enabled: enabled,
+                          onCancel: () => _change(item, cancel: true),
+                          onReschedule: () => _change(item),
+                          onTicket: () => _ticket(item),
+                        ))),
+                ],
+              ),
+            ),
+          ),
+        ),
       ]),
     );
   }
