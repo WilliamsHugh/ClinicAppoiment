@@ -1,162 +1,283 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/theme/app_theme.dart';
+import '../notification_models.dart';
 
 class NotificationTile extends StatelessWidget {
   const NotificationTile({
-    required this.data,
+    required this.notification,
     required this.onTap,
-    required this.onMarkRead,
+    this.onMarkRead,
+    this.markingRead = false,
     super.key,
   });
-  final Map<String, dynamic> data;
+
+  final AppNotification notification;
   final VoidCallback onTap;
   final VoidCallback? onMarkRead;
-
-  bool get unread => data['status'] == 'UNREAD';
-
-  IconData _iconForType(String? type) {
-    switch (type) {
-      case 'appointment.reminder.24h':
-        return Icons.alarm;
-      case 'appointment.reminder.1h':
-        return Icons.notification_important_outlined;
-      case 'appointment.created':
-      case 'appointment.confirmed':
-        return Icons.event_available_outlined;
-      default:
-        return Icons.notifications_outlined;
-    }
-  }
+  final bool markingRead;
 
   @override
   Widget build(BuildContext context) {
-    final type = data['type']?.toString();
-    final isReminder = type?.contains('reminder') == true;
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-            color: unread
-                ? ClinicColors.primary.withValues(alpha: 0.18)
-                : ClinicColors.border),
-        boxShadow: [
-          BoxShadow(
-              color: Colors.black.withValues(alpha: 0.04),
-              blurRadius: 10,
-              offset: const Offset(0, 4))
-        ],
+    final unread = notification.isUnread;
+    final meta = notification.typeMeta;
+    final cardBackground = unread
+        ? Color.lerp(ClinicColors.card, ClinicColors.primarySoft, 0.45)!
+        : ClinicColors.card;
+    final borderColor = unread
+        ? ClinicColors.primary.withValues(alpha: 0.35)
+        : ClinicColors.border;
+    final routeHint = notification.routeHintLabel;
+    final timestamp = notification.formattedCreatedAt;
+    final showFooter = routeHint != null || (unread && onMarkRead != null);
+
+    return Material(
+      color: cardBackground,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(12),
+        side: BorderSide(color: borderColor),
       ),
+      clipBehavior: Clip.antiAlias,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(16),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: 36,
-              height: 36,
-              decoration: BoxDecoration(
-                color: unread
-                    ? (isReminder
-                        ? const Color(0xFFFFF7ED)
-                        : const Color(0xFFEFF6FF))
-                    : const Color(0xFFF1F5F9),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(_iconForType(type),
-                  size: 18,
-                  color: isReminder
-                      ? const Color(0xFFF59E0B)
-                      : ClinicColors.primary),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
+        borderRadius: BorderRadius.circular(12),
+        child: Padding(
+          padding: const EdgeInsets.all(14),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Row(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Row(
-                    children: [
-                      Expanded(
-                        child: Text(data['title'].toString(),
-                            style: TextStyle(
-                                fontSize: 12,
-                                fontWeight:
-                                    unread ? FontWeight.w700 : FontWeight.w600,
-                                color: ClinicColors.ink)),
-                      ),
-                      if (unread)
-                        Container(
-                          width: 8,
-                          height: 8,
-                          decoration: const BoxDecoration(
-                              color: ClinicColors.primary,
-                              shape: BoxShape.circle),
-                        ),
-                    ],
+                  Container(
+                    width: 38,
+                    height: 38,
+                    decoration: BoxDecoration(
+                      color: unread
+                          ? meta.backgroundColor
+                          : ClinicColors.surfaceSubtle,
+                      shape: BoxShape.circle,
+                    ),
+                    child: Icon(
+                      meta.icon,
+                      size: 19,
+                      color: unread ? meta.foregroundColor : ClinicColors.muted,
+                    ),
                   ),
-                  const SizedBox(height: 4),
-                  Text(data['message'].toString(),
-                      maxLines: 2,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                          fontSize: 11,
-                          color: ClinicColors.muted,
-                          height: 1.35)),
-                  const SizedBox(height: 6),
-                  Row(
-                    children: [
-                      if (isReminder)
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                              horizontal: 6, vertical: 2),
-                          decoration: BoxDecoration(
-                              color: const Color(0xFFFFF7ED),
-                              borderRadius: BorderRadius.circular(8)),
-                          child: Text(
-                              type == 'appointment.reminder.24h'
-                                  ? 'Nhắc 24h'
-                                  : 'Nhắc 1h',
-                              style: const TextStyle(
-                                  fontSize: 10,
-                                  fontWeight: FontWeight.w700,
-                                  color: Color(0xFFF59E0B))),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 4,
+                          crossAxisAlignment: WrapCrossAlignment.center,
+                          children: [
+                            _StatusPill(
+                              label: meta.label,
+                              foregroundColor: meta.foregroundColor,
+                              backgroundColor: meta.backgroundColor,
+                            ),
+                            if (unread)
+                              const _StatusPill(
+                                label: 'Chưa đọc',
+                                foregroundColor: ClinicColors.primaryDark,
+                                backgroundColor: ClinicColors.primarySoft,
+                                showDot: true,
+                              )
+                            else if (notification.isFailed)
+                              const _StatusPill(
+                                label: 'Gửi lỗi',
+                                foregroundColor: ClinicColors.danger,
+                                backgroundColor: ClinicColors.dangerLight,
+                              ),
+                          ],
                         ),
-                      const Spacer(),
-                      Text(_fmt(data['createdAt'].toString()),
-                          style: const TextStyle(
-                              fontSize: 10, color: ClinicColors.mutedLight)),
-                    ],
+                        const SizedBox(height: 8),
+                        Text(
+                          notification.title,
+                          softWrap: true,
+                          style: TextStyle(
+                            fontSize: 14,
+                            fontWeight:
+                                unread ? FontWeight.w700 : FontWeight.w600,
+                            color: ClinicColors.ink,
+                            height: 1.35,
+                          ),
+                        ),
+                        if (notification.message.isNotEmpty) ...[
+                          const SizedBox(height: 4),
+                          Text(
+                            notification.message,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              color: ClinicColors.muted,
+                              height: 1.4,
+                            ),
+                          ),
+                        ],
+                        if (timestamp.isNotEmpty) ...[
+                          const SizedBox(height: 8),
+                          Row(
+                            children: [
+                              const Icon(
+                                Icons.schedule,
+                                size: 13,
+                                color: ClinicColors.muted,
+                              ),
+                              const SizedBox(width: 4),
+                              Flexible(
+                                child: Text(
+                                  timestamp,
+                                  softWrap: true,
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    color: ClinicColors.muted,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ],
+                    ),
                   ),
                 ],
               ),
-            ),
-            if (unread) ...[
-              const SizedBox(width: 6),
-              TextButton(
-                onPressed: onMarkRead,
-                style: TextButton.styleFrom(
-                    padding:
-                        const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                    minimumSize: Size.zero,
-                    tapTargetSize: MaterialTapTargetSize.shrinkWrap),
-                child: const Text('Đã đọc', style: TextStyle(fontSize: 11)),
-              ),
+              if (showFooter) ...[
+                const SizedBox(height: 10),
+                const Divider(height: 1),
+                const SizedBox(height: 4),
+                Row(
+                  children: [
+                    if (routeHint != null)
+                      Expanded(
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.arrow_forward_rounded,
+                              size: 15,
+                              color: ClinicColors.primary,
+                            ),
+                            const SizedBox(width: 6),
+                            Flexible(
+                              child: Text(
+                                routeHint,
+                                softWrap: true,
+                                style: const TextStyle(
+                                  fontSize: 13,
+                                  fontWeight: FontWeight.w600,
+                                  color: ClinicColors.primary,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      )
+                    else
+                      const Spacer(),
+                    if (unread && onMarkRead != null) ...[
+                      const SizedBox(width: 8),
+                      GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        excludeFromSemantics: true,
+                        onTap: () {},
+                        child: TextButton(
+                          onPressed: markingRead ? null : onMarkRead,
+                          style: TextButton.styleFrom(
+                            foregroundColor: ClinicColors.primary,
+                            minimumSize: const Size(48, 48),
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 10,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            textStyle: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                          child: Stack(
+                            alignment: Alignment.center,
+                            children: [
+                              Opacity(
+                                opacity: markingRead ? 0 : 1,
+                                child: const Text('Đã đọc'),
+                              ),
+                              if (markingRead)
+                                const SizedBox(
+                                  width: 16,
+                                  height: 16,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+              ],
             ],
-          ],
+          ),
         ),
       ),
     );
   }
+}
 
-  String _fmt(String iso) {
-    try {
-      final d = DateTime.parse(iso).toLocal();
-      return '${d.day}/${d.month} ${d.hour.toString().padLeft(2, '0')}:${d.minute.toString().padLeft(2, '0')}';
-    } catch (_) {
-      return iso;
-    }
+class _StatusPill extends StatelessWidget {
+  const _StatusPill({
+    required this.label,
+    required this.foregroundColor,
+    required this.backgroundColor,
+    this.showDot = false,
+  });
+
+  final String label;
+  final Color foregroundColor;
+  final Color backgroundColor;
+  final bool showDot;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      decoration: BoxDecoration(
+        color: backgroundColor,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (showDot) ...[
+            Container(
+              width: 7,
+              height: 7,
+              decoration: BoxDecoration(
+                color: foregroundColor,
+                shape: BoxShape.circle,
+              ),
+            ),
+            const SizedBox(width: 5),
+          ],
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.w700,
+              color: foregroundColor,
+            ),
+          ),
+        ],
+      ),
+    );
   }
 }

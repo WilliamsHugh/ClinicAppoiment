@@ -2,3 +2,6 @@
 // Re-exported via lib/main.dart PatientShell.
 
 library;
+
+export 'notification_models.dart';
+export 'notifications_page.dart';
