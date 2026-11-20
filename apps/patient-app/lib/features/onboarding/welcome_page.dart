@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../core/theme/app_theme.dart';
+import '../../shared/widgets/health_human_logo.dart';
 import '../auth/auth_page.dart';
 
 class OnboardingSlideData {
@@ -155,12 +156,11 @@ class _WelcomePageState extends State<WelcomePage> {
                         ),
                         child: Row(
                           children: [
-                            const Icon(
-                              Icons.waves,
-                              color: Colors.white,
-                              size: 20,
+                            const HealthHumanLogo(
+                              size: 26,
+                              withBadge: false,
                             ),
-                            const SizedBox(width: 6),
+                            const SizedBox(width: 8),
                             Text(
                               'Health&Human',
                               style: TextStyle(

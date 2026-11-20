@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/session/session.dart';
+import '../../../core/theme/app_theme.dart';
+import 'auth_pill_field.dart';
 
 final RegExp _emailFormatRegex = RegExp(r'^[^@\s]+@[^@\s]+\.[^@\s]+$');
 
@@ -66,56 +68,50 @@ class _LoginFormState extends State<LoginForm> {
     return Form(
       key: _formKey,
       autovalidateMode: AutovalidateMode.onUserInteraction,
-      child: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            TextFormField(
-              controller: _email,
-              keyboardType: TextInputType.emailAddress,
-              decoration: const InputDecoration(
-                hintText: 'Email',
-                prefixIcon: Icon(Icons.mail_outline, size: 18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          AuthPillField(
+            controller: _email,
+            hintText: 'Email',
+            prefixIcon: Icons.mail_outline_rounded,
+            keyboardType: TextInputType.emailAddress,
+            textInputAction: TextInputAction.next,
+            validator: validateAuthEmail,
+          ),
+          const SizedBox(height: 16),
+          AuthPillField(
+            controller: _pass,
+            hintText: 'Mật khẩu',
+            prefixIcon: Icons.lock_outline_rounded,
+            obscureText: _obscure,
+            textInputAction: TextInputAction.done,
+            onFieldSubmitted: (_) => _loading ? null : _handle(),
+            suffixIcon: IconButton(
+              tooltip: _obscure ? 'Hiện mật khẩu' : 'Ẩn mật khẩu',
+              icon: Icon(
+                _obscure
+                    ? Icons.visibility_off_outlined
+                    : Icons.visibility_outlined,
+                size: 20,
+                color: ClinicColors.mutedLight,
               ),
-              validator: validateAuthEmail,
+              onPressed: () => setState(() => _obscure = !_obscure),
             ),
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: _pass,
-              obscureText: _obscure,
-              decoration: InputDecoration(
-                hintText: 'Mật khẩu',
-                prefixIcon: const Icon(Icons.lock_outline, size: 18),
-                suffixIcon: IconButton(
-                  icon: Icon(
-                    _obscure ? Icons.visibility_off : Icons.visibility,
-                    size: 18,
-                  ),
-                  onPressed: () => setState(() => _obscure = !_obscure),
-                ),
-              ),
-              validator: validateAuthPassword,
-            ),
-            const SizedBox(height: 12),
-            if (_errorMessage case final message?) ...[
-              _AuthErrorMessage(key: const Key('login-error'), message: message),
-              const SizedBox(height: 12),
-            ],
-            FilledButton(
-              onPressed: _loading ? null : _handle,
-              child: _loading
-                  ? const SizedBox(
-                      height: 18,
-                      width: 18,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : const Text('Đăng nhập'),
-            ),
+            validator: validateAuthPassword,
+          ),
+          if (_errorMessage case final message?) ...[
+            const SizedBox(height: 16),
+            _AuthErrorMessage(key: const Key('login-error'), message: message),
           ],
-        ),
+          const SizedBox(height: 28),
+          AuthPrimaryButton(
+            label: 'Đăng nhập',
+            loading: _loading,
+            onPressed: _handle,
+          ),
+        ],
       ),
     );
   }
@@ -131,11 +127,11 @@ class _AuthErrorMessage extends StatelessWidget {
     return Semantics(
       liveRegion: true,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
         decoration: BoxDecoration(
           color: const Color(0xFFFEF2F2),
           border: Border.all(color: const Color(0xFFFECACA)),
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(14),
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,

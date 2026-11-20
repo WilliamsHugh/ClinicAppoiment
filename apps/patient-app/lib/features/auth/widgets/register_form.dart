@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../../core/session/session.dart';
+import '../../../core/theme/app_theme.dart';
+import 'auth_pill_field.dart';
 import 'login_form.dart';
 
 const String kRegisterConfirmationNotice =
@@ -76,93 +78,79 @@ class _RegisterFormState extends State<RegisterForm> {
     return Form(
       key: _formKey,
       autovalidateMode: AutovalidateMode.onUserInteraction,
-      child: SingleChildScrollView(
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            TextFormField(
-              controller: _name,
-              decoration: const InputDecoration(
-                hintText: 'Họ và tên',
-                prefixIcon: Icon(Icons.person_outline, size: 18),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          AuthPillField(
+            controller: _name,
+            hintText: 'Họ và tên',
+            prefixIcon: Icons.person_outline_rounded,
+            textInputAction: TextInputAction.next,
+            validator: (v) =>
+                (v == null || v.trim().length < 2) ? 'Nhập họ tên' : null,
+          ),
+          const SizedBox(height: 14),
+          AuthPillField(
+            controller: _email,
+            hintText: 'Email',
+            prefixIcon: Icons.mail_outline_rounded,
+            keyboardType: TextInputType.emailAddress,
+            textInputAction: TextInputAction.next,
+            validator: validateAuthEmail,
+          ),
+          const SizedBox(height: 14),
+          AuthPillField(
+            controller: _pass,
+            hintText: 'Mật khẩu',
+            prefixIcon: Icons.lock_outline_rounded,
+            obscureText: _obscure,
+            textInputAction: TextInputAction.next,
+            suffixIcon: IconButton(
+              tooltip: _obscure ? 'Hiện mật khẩu' : 'Ẩn mật khẩu',
+              icon: Icon(
+                _obscure
+                    ? Icons.visibility_off_outlined
+                    : Icons.visibility_outlined,
+                size: 20,
+                color: ClinicColors.mutedLight,
               ),
-              validator: (v) =>
-                  (v == null || v.trim().length < 2) ? 'Nhập họ tên' : null,
+              onPressed: () => setState(() => _obscure = !_obscure),
             ),
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: _email,
-              keyboardType: TextInputType.emailAddress,
-              decoration: const InputDecoration(
-                hintText: 'Email',
-                prefixIcon: Icon(Icons.mail_outline, size: 18),
-              ),
-              validator: validateAuthEmail,
+            validator: validateAuthPassword,
+          ),
+          const SizedBox(height: 14),
+          AuthPillField(
+            controller: _confirm,
+            hintText: 'Xác nhận mật khẩu',
+            prefixIcon: Icons.lock_outline_rounded,
+            obscureText: _obscure,
+            textInputAction: TextInputAction.done,
+            onFieldSubmitted: (_) => _loading ? null : _handle(),
+            validator: (v) => v != _pass.text ? 'Mật khẩu không khớp' : null,
+          ),
+          if (_errorMessage case final message?) ...[
+            const SizedBox(height: 14),
+            _AuthFeedback(
+              key: const Key('register-error'),
+              message: message,
+              isError: true,
             ),
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: _pass,
-              obscureText: _obscure,
-              decoration: InputDecoration(
-                hintText: 'Mật khẩu',
-                prefixIcon: const Icon(Icons.lock_outline, size: 18),
-                suffixIcon: IconButton(
-                  icon: Icon(
-                    _obscure ? Icons.visibility_off : Icons.visibility,
-                    size: 18,
-                  ),
-                  onPressed: () => setState(() => _obscure = !_obscure),
-                ),
-              ),
-              validator: validateAuthPassword,
-            ),
-            const SizedBox(height: 12),
-            TextFormField(
-              controller: _confirm,
-              obscureText: _obscure,
-              decoration: const InputDecoration(
-                hintText: 'Xác nhận mật khẩu',
-                prefixIcon: Icon(Icons.lock_outline, size: 18),
-              ),
-              validator: (v) => v != _pass.text ? 'Mật khẩu không khớp' : null,
-            ),
-            const SizedBox(height: 16),
-            if (_errorMessage case final message?) ...[
-              _AuthFeedback(
-                key: const Key('register-error'),
-                message: message,
-                isError: true,
-              ),
-              const SizedBox(height: 12),
-            ] else if (_noticeMessage case final message?) ...[
-              _AuthFeedback(
-                key: const Key('register-notice'),
-                message: message,
-                isError: false,
-              ),
-              const SizedBox(height: 12),
-            ],
-            FilledButton(
-              onPressed: _loading ? null : _handle,
-              child: _loading
-                  ? const SizedBox(
-                      height: 18,
-                      width: 18,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: Colors.white,
-                      ),
-                    )
-                  : const Text('Đăng ký'),
-            ),
-            const SizedBox(height: 8),
-            const Text(
-              'Bằng việc đăng ký, bạn đồng ý với điều khoản phòng khám.',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+          ] else if (_noticeMessage case final message?) ...[
+            const SizedBox(height: 14),
+            _AuthFeedback(
+              key: const Key('register-notice'),
+              message: message,
+              isError: false,
             ),
           ],
-        ),
+          const SizedBox(height: 24),
+          AuthPrimaryButton(
+            label: 'Đăng ký',
+            loading: _loading,
+            onPressed: _handle,
+          ),
+        ],
       ),
     );
   }
@@ -188,11 +176,11 @@ class _AuthFeedback extends StatelessWidget {
     return Semantics(
       liveRegion: true,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 11),
         decoration: BoxDecoration(
           color: background,
           border: Border.all(color: border),
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: BorderRadius.circular(14),
         ),
         child: Row(
           crossAxisAlignment: CrossAxisAlignment.start,
